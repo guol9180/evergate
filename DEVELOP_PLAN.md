@@ -82,9 +82,13 @@
 - 目标：错误分类器 → cooldown 状态机 → key 池调度 → 路由器；表驱动单测覆盖任务书 4.5 节全部规则
 - 验收标准：`go test ./internal/retry/... ./internal/pool/... ./internal/router/...` 全部通过；调度器分支覆盖率 ≥ 90%（对应验收清单 #10）
 - 边界：不接 HTTP；不接真实上游
-- 状态：planned
+- 状态：done
 - 进度：
   - 2026-11-09 计划 任务卡确认，验收标准生效
+  - 2026-11-09 执行 开始 T3：retry（错误分类器+重试预算）→ pool（cooldown 状态机+加权轮询）→ router（优先级+加权随机），全部注入时钟/随机源保证可测
+  - 2026-11-09 执行 新增三包：internal/retry（Classify 表驱动分类：网络/408/409/429/5xx→可重试、401/403→auth、400/404/413/422→透传、内容策略标识识别、ParseRetryAfter 秒数/HTTP日期、Budget 3渠道×2key+总时长上限）；internal/pool（StateMachine：active/cooldown/half_open/disabled、档位退避 30s→2m→10m→30m、Retry-After 优先、探测单飞、Snapshot/Restore 重启恢复；nginx 风格平滑加权轮询 wrr；Manager.Acquire 调度+ReportFailure 分类驱动+DeriveChannelStatus 渠道健康推导）；internal/router（priority 升序分组+同级 weight 加权随机排序 Efraimidis–Spirakis+模型映射）。全程注入假时钟/固定种子，无真实 sleep
+  - 2026-11-09 验证 gofmt 无 diff、go vet、go build、go test ./... 全绿；调度三包覆盖率 pool 94.8% / retry 97.6% / router 97.0%（语句总计 95.6%，≥90% 达标，对应验收清单 #10）；WRR 序列断言 nginx 经典 a,a,b,a,c,a,a；状态机全流转（含档位升级 2m→10m→30m 封顶、探测单飞互斥、429 立即冷却、401 禁用、快照恢复后冷却按原到期时间生效）逐条实测
+  - 2026-11-09 交付 T3 验收标准全部满足：internal/{retry,pool,router} 共 9 文件（6 源码 + 3 测试），纯逻辑零 HTTP 依赖，待 T4 relay 接线
 
 ### T4: relay 链路（P0）
 

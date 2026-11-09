@@ -1,0 +1,124 @@
+package pool
+
+import (
+	"sync"
+	"time"
+
+	"evergate/internal/retry"
+	"evergate/internal/store"
+)
+
+// Manager key 池调度器：渠道内按权重轮询，跳过 cooldown/disabled；
+// cooldown 到期放行单个 half_open 探测请求（任务书 4.5②③）。
+type Manager struct {
+	mu sync.Mutex
+	sm *StateMachine
+	rr map[int64]*wrrPicker
+}
+
+// NewManager failThreshold/schedule 传参给状态机，now 为可注入时钟。
+func NewManager(failThreshold int, schedule []time.Duration, now func() time.Time) *Manager {
+	return &Manager{
+		sm: NewStateMachine(failThreshold, schedule, now),
+		rr: make(map[int64]*wrrPicker),
+	}
+}
+
+// StateMachine 暴露内部状态机（持久化/恢复用）。
+func (m *Manager) StateMachine() *StateMachine { return m.sm }
+
+// Acquire 为渠道选择下一个可用 key；无可用 key 返回 nil（视为渠道故障）。
+// cooldown 已到期的 key 以 half_open 探测身份参与，同 key 同时只放行 1 个探测。
+func (m *Manager) Acquire(channelID int64, keys []*store.ChannelKey) *store.ChannelKey {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	eligible := make([]*store.ChannelKey, 0, len(keys))
+	probeCandidates := make(map[int64]bool)
+	for _, k := range keys {
+		if !k.Enabled {
+			continue
+		}
+		switch m.sm.State(k.ID) {
+		case store.KeyStateActive:
+			eligible = append(eligible, k)
+		case store.KeyStateCooldown:
+			// 到期且探测名额未被占用 → 可作为探测候选
+			if m.sm.cooldownExpiredByID(k.ID) && !m.sm.probeOccupied(k.ID) {
+				eligible = append(eligible, k)
+				probeCandidates[k.ID] = true
+			}
+		case store.KeyStateHalfOpen:
+			if !m.sm.probeOccupied(k.ID) {
+				eligible = append(eligible, k)
+				probeCandidates[k.ID] = true
+			}
+		default: // disabled
+		}
+	}
+	if len(eligible) == 0 {
+		return nil
+	}
+	picker := m.rr[channelID]
+	if picker == nil {
+		picker = newWRRPicker()
+		m.rr[channelID] = picker
+	}
+	picked := picker.pick(eligible)
+	if picked != nil && probeCandidates[picked.ID] {
+		m.sm.beginProbe(picked.ID)
+	}
+	return picked
+}
+
+// ReportSuccess 上报一次成功。
+func (m *Manager) ReportSuccess(keyID int64) { m.sm.OnSuccess(keyID) }
+
+// ReportFailure 按错误分类驱动状态机：
+// auth → 禁用；retryable+Retry-After → 按 Retry-After 冷却；
+// retryable → 计失败；non_retryable/content_policy → 不惩罚 key。
+func (m *Manager) ReportFailure(keyID int64, c retry.Classification) {
+	switch c.Kind {
+	case retry.KindAuth:
+		m.sm.OnAuthFailure(keyID)
+	case retry.KindRetryable:
+		if c.RetryAfter > 0 {
+			m.sm.OnRateLimited(keyID, c.RetryAfter)
+		} else {
+			m.sm.OnFailure(keyID)
+		}
+	default:
+		// 请求本身的问题，key 无辜，不改变状态。
+	}
+}
+
+// Reset 手动重新启用某 key（管理员操作优先）。
+func (m *Manager) Reset(keyID int64) { m.sm.Reset(keyID) }
+
+// DeriveChannelStatus 由 key 状态推导渠道健康（任务书 4.5⑦）：
+// 无可用 key 或全部不可用 → down；部分不可用 → degraded；否则 active。
+func DeriveChannelStatus(keys []*store.ChannelKey, stateFn func(int64) string) string {
+	enabled := 0
+	available := 0
+	cooldownOrDisabled := 0
+	for _, k := range keys {
+		if !k.Enabled {
+			continue
+		}
+		enabled++
+		switch state := stateFn(k.ID); state {
+		case store.KeyStateActive, store.KeyStateHalfOpen:
+			available++
+		default: // cooldown / disabled
+			cooldownOrDisabled++
+		}
+	}
+	switch {
+	case enabled == 0 || available == 0:
+		return store.ChannelStatusDown
+	case cooldownOrDisabled > 0:
+		return store.ChannelStatusDegraded
+	default:
+		return store.ChannelStatusActive
+	}
+}
