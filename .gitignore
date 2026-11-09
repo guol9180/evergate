@@ -1,0 +1,10 @@
+# 构建产物
+bin/
+/evergate
+/evergate.exe
+
+# 运行时数据
+data/
+
+# 本地 Go 构建缓存（沙箱写权限用，已与 GOPATH 分离）
+.gocache/

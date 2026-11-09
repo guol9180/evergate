@@ -1,0 +1,100 @@
+// evergate 是唯一入口：加载配置 → 迁移 DB → 启动 HTTP。
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"evergate/internal/config"
+	"evergate/internal/server"
+	"evergate/internal/store"
+)
+
+// version 由构建注入（T7 用 -ldflags 覆盖），开发态为 dev。
+const version = "dev"
+
+func main() {
+	if err := run(); err != nil {
+		slog.Error("evergate exited with error", slog.Any("error", err))
+		os.Exit(1)
+	}
+}
+
+func run() error {
+	cfgPath := flag.String("config", "evergate.yml", "引导配置文件路径")
+	flag.Parse()
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	if _, statErr := os.Stat(*cfgPath); errors.Is(statErr, fs.ErrNotExist) {
+		logger.Warn("config file not found, using defaults", slog.String("config", *cfgPath))
+	}
+
+	db, err := store.Open(cfg.Storage.SQLitePath)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer func() { _ = db }() // 连接随进程退出关闭；T2 起模型迁移在此前完成
+	if err := store.Migrate(db); err != nil {
+		return fmt.Errorf("migrate database: %w", err)
+	}
+
+	engine := server.New(server.Options{
+		BasePath: cfg.Server.BasePath,
+		DB:       db,
+		Logger:   logger,
+	})
+
+	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           engine,
+		ReadHeaderTimeout: 10 * time.Second,
+		// 不设 WriteTimeout：SSE 长流式不能被全局写超时打断（任务书 4.5⑥）。
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+	logger.Info("evergate started",
+		slog.String("version", version),
+		slog.String("addr", addr),
+		slog.String("base_path", cfg.Server.BasePath),
+		slog.String("db", cfg.Storage.SQLitePath),
+	)
+
+	// Windows 下以 Ctrl+C（SIGINT）为主，SIGTERM 兜底；最长 30s 排空（任务书 4.9）。
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-errCh:
+		return fmt.Errorf("http server: %w", err)
+	case <-ctx.Done():
+		logger.Info("shutdown signal received, draining requests (max 30s)")
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("graceful shutdown: %w", err)
+	}
+	logger.Info("evergate stopped")
+	return nil
+}
