@@ -67,9 +67,14 @@
 - 目标：全部表模型（channels / channel_keys / tokens / request_logs / usage_daily / admins）与 DAO + AES-GCM 加密工具 + 首次启动初始化（默认管理员、生成 master_key）
 - 验收标准：AutoMigrate 建表成功；上游 key 密文落库且可解密使用；首次启动生成 admin/admin123 与 master_key 并写回配置；加密工具有单元测试
 - 边界：不做调度与管理 API；不做用量聚合任务
-- 状态：planned
+- 状态：done
 - 进度：
   - 2026-11-09 计划 任务卡确认，验收标准生效
+  - 2026-11-09 执行 开始 T2：六表模型 + AES-GCM 加密 + 首次启动初始化（默认管理员 / master_key 生成写回）
+  - 2026-11-09 执行 新增 internal/store/models.go（channels/channel_keys/tokens/request_logs/usage_daily/admins 六表，JSON 列用 GORM serializer，UsageDaily 显式 TableName 防 usage_dailies 错名，UTC 经 gorm NowFunc 强制）、crypto.go（AES-256-GCM：Encrypt/Decrypt/GenerateRandomKey，base64(nonce||cipher)）、bootstrap.go（EnsureAdmin 幂等 + bcrypt 校验）、internal/config/persist.go（密钥写回：按行替换保留注释，失败兜底整体重写）；main.go 接线密钥生成与默认管理员；引入 golang.org/x/crypto（bcrypt）；清理已含代码目录的 4 个 .gitkeep
+  - 2026-11-09 验证 go vet / go test ./...（config 4 用例 + store 9 用例，含加密往返/错钥/防篡改/建表/管理员幂等/UTC 存储/写回保注释）/ go build 全部通过
+  - 2026-11-09 验证 运行时首次启动：日志出现「generated missing secrets and wrote back to config」与「default admin created」；evergate.yml 两密钥写入且注释保留；sqlite_master 实查 6 表齐全（含 usage_daily 正确表名）；admins 行 bcrypt 哈希 60 字符（$2a$10$）、must_change=true、无明文；重启后无重复生成/建管理员（幂等），:8787/healthz 两次均 200；优雅停机正常
+  - 2026-11-09 交付 T2 验收标准全部满足；「key 密文落库」全链路（渠道 API 写入）在 T5 接入，本卡以单测证明加解密正确
 
 ### T3: 调度内核（P0，纯逻辑先写测试）
 

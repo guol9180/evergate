@@ -44,6 +44,31 @@ func run() error {
 		logger.Warn("config file not found, using defaults", slog.String("config", *cfgPath))
 	}
 
+	// 首次启动：生成空缺的 master_key / session_secret 并写回配置文件（任务书 4.7）。
+	secretsGenerated := false
+	if cfg.Security.MasterKey == "" {
+		key, err := store.GenerateRandomKey()
+		if err != nil {
+			return fmt.Errorf("generate master key: %w", err)
+		}
+		cfg.Security.MasterKey = key
+		secretsGenerated = true
+	}
+	if cfg.Security.SessionSecret == "" {
+		key, err := store.GenerateRandomKey()
+		if err != nil {
+			return fmt.Errorf("generate session secret: %w", err)
+		}
+		cfg.Security.SessionSecret = key
+		secretsGenerated = true
+	}
+	if secretsGenerated {
+		if err := cfg.Persist(*cfgPath); err != nil {
+			return fmt.Errorf("persist generated secrets: %w", err)
+		}
+		logger.Warn("generated missing secrets and wrote back to config", slog.String("config", *cfgPath))
+	}
+
 	db, err := store.Open(cfg.Storage.SQLitePath)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -51,6 +76,16 @@ func run() error {
 	defer func() { _ = db }() // 连接随进程退出关闭；T2 起模型迁移在此前完成
 	if err := store.Migrate(db); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
+	}
+	created, err := store.EnsureAdmin(db, store.DefaultAdminUsername, store.DefaultAdminPassword)
+	if err != nil {
+		return fmt.Errorf("ensure default admin: %w", err)
+	}
+	if created {
+		logger.Warn("default admin created, must change password on first login",
+			slog.String("username", store.DefaultAdminUsername),
+			slog.String("password", store.DefaultAdminPassword),
+		)
 	}
 
 	engine := server.New(server.Options{

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -25,6 +26,8 @@ func Open(path string) (*gorm.DB, error) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		// GORM 自带日志静默：运行日志统一走 slog（见 AGENTS.md 代码风格）。
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+		// 红线：所有时间以 UTC 存储（见 AGENTS.md 代码风格）。
+		NowFunc: func() time.Time { return time.Now().UTC() },
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite %s: %w", path, err)
@@ -32,10 +35,19 @@ func Open(path string) (*gorm.DB, error) {
 	return db, nil
 }
 
-// Migrate 对给定模型执行 GORM AutoMigrate（个人项目阶段唯一迁移方式，见 AGENTS.md 禁止事项）。
-func Migrate(db *gorm.DB, models ...any) error {
-	if len(models) == 0 {
-		return nil
+// Migrate 对全部表模型执行 GORM AutoMigrate（个人项目阶段唯一迁移方式，见 AGENTS.md 禁止事项）。
+func Migrate(db *gorm.DB) error {
+	return db.AutoMigrate(AllModels()...)
+}
+
+// AllModels 返回全部表模型，供 AutoMigrate 使用。
+func AllModels() []any {
+	return []any{
+		&Channel{},
+		&ChannelKey{},
+		&Token{},
+		&RequestLog{},
+		&UsageDaily{},
+		&Admin{},
 	}
-	return db.AutoMigrate(models...)
 }
