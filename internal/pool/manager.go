@@ -75,18 +75,22 @@ func (m *Manager) Acquire(channelID int64, keys []*store.ChannelKey) *store.Chan
 func (m *Manager) ReportSuccess(keyID int64) { m.sm.OnSuccess(keyID) }
 
 // ReportFailure 按错误分类驱动状态机：
-// auth → 禁用；retryable+Retry-After → 按 Retry-After 冷却；
-// retryable → 计失败；non_retryable/content_policy → 不惩罚 key。
+// auth → 禁用；rate_limited+Retry-After → 按 Retry-After 冷却；rate_limited → 计失败；
+// transient → 计失败（跨请求累积达阈值冷却 key，持续故障的渠道最终 down——任务书语义；
+// 单请求内"跳渠道不试同渠道第二把 key"由 relay 层负责——bifrost：服务器过载换 key 无益）；
+// model_unavailable / non_retryable / content_policy 不惩罚 key。
 func (m *Manager) ReportFailure(keyID int64, c retry.Classification) {
 	switch c.Kind {
 	case retry.KindAuth:
 		m.sm.OnAuthFailure(keyID)
-	case retry.KindRetryable:
+	case retry.KindRateLimited:
 		if c.RetryAfter > 0 {
 			m.sm.OnRateLimited(keyID, c.RetryAfter)
 		} else {
 			m.sm.OnFailure(keyID)
 		}
+	case retry.KindTransient:
+		m.sm.OnFailure(keyID)
 	default:
 		// 请求本身的问题，key 无辜，不改变状态。
 	}

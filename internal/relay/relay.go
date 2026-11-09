@@ -200,14 +200,14 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	start := r.opt.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		cls := retry.Classify(retry.Result{Err: err})
+		// 网络/连接/超时类错误：瞬时故障——本请求内跳渠道（不浪费同渠道第二把 key），
+		// 但仍计入 key 失败（持续故障最终冷却，见 pool.Manager.ReportFailure）。
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			cls = retry.Classification{Kind: retry.KindRetryable}
 			err = errors.New("overall timeout")
 		}
-		r.opt.Pool.ReportFailure(key.ID, cls)
-		appendTrace(0, string(cls.Kind), err.Error(), start)
-		return outcomeNextKey
+		r.opt.Pool.ReportFailure(key.ID, retry.Classification{Kind: retry.KindTransient})
+		appendTrace(0, string(retry.KindTransient), err.Error(), start)
+		return outcomeNextChannel
 	}
 	defer resp.Body.Close()
 
@@ -221,7 +221,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			cls := retry.Classify(retry.Result{Err: rerr})
 			r.opt.Pool.ReportFailure(key.ID, cls)
 			appendTrace(0, string(cls.Kind), rerr.Error(), start)
-			return outcomeNextKey
+			return outcomeNextChannel
 		}
 		r.opt.Pool.ReportSuccess(key.ID)
 		appendTrace(http.StatusOK, "", "", start)
@@ -241,7 +241,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		BodySnippet: string(errBody),
 	})
 	switch cls.Kind {
-	case retry.KindRetryable, retry.KindAuth:
+	case retry.KindRateLimited, retry.KindAuth:
 		r.opt.Pool.ReportFailure(key.ID, cls)
 		msg := string(errBody)
 		if len(msg) > 200 {
@@ -249,6 +249,17 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		}
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		return outcomeNextKey
+	case retry.KindTransient, retry.KindModelUnavailable:
+		// 服务器故障：计失败但本请求内换渠道；渠道缺模型：不惩罚 key，换渠道
+		if cls.Kind == retry.KindTransient {
+			r.opt.Pool.ReportFailure(key.ID, cls)
+		}
+		msg := string(errBody)
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
+		return outcomeNextChannel
 	default:
 		// 不可重试 / 内容策略：直接透传给客户端（验收 #7 之外的 4xx 契约）
 		appendTrace(resp.StatusCode, string(cls.Kind), "", start)

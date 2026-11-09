@@ -2,11 +2,13 @@ package relay
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,7 +49,20 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 		cls := retry.Classify(retry.Result{Err: err})
 		r.opt.Pool.ReportFailure(key.ID, cls)
 		appendTrace(string(cls.Kind), err.Error())
-		return outcomeNextKey
+		return outcomeNextChannel
+	}
+
+	// 首 chunk 若是 SSE 错误事件（骑在 200 上的失败，bifrost stream_error 经验），
+	// 此时尚未写给客户端，仍在可重试窗口内，按推断状态正常分类换候选。
+	if cls, isErr := parseSSEErrorEvent(first); isErr {
+		appendTrace(string(cls.Kind), "upstream stream error event")
+		switch cls.Kind {
+		case retry.KindRateLimited, retry.KindAuth:
+			r.opt.Pool.ReportFailure(key.ID, cls)
+			return outcomeNextKey
+		default:
+			return outcomeNextChannel
+		}
 	}
 
 	// === 红线：首 chunk 即写给客户端，此后不再重试 ===
@@ -65,6 +80,13 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 		line, rerr := br.ReadBytes('\n')
 		if len(line) > 0 {
 			w.writeFlush(line)
+			// 流中途的错误事件：透传给客户端（红线：不重试），解析语义仅用于日志
+			if cls, isErr := parseSSEErrorEvent(line); isErr {
+				r.opt.Logger.Error("upstream sse error event",
+					"kind", string(cls.Kind),
+					"channel", cand.Channel.Name,
+				)
+			}
 		}
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
@@ -86,6 +108,43 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 			return outcomeDone
 		}
 	}
+}
+
+// parseSSEErrorEvent 判断一行 SSE 数据是否为上游错误事件（data: {"error":{...}}），
+// 是则返回按推断状态得出的分类（bifrost streamErrorStatus 思路）。
+func parseSSEErrorEvent(line []byte) (retry.Classification, bool) {
+	// 快速路径：绝大多数 chunk 不含 "error"，先做廉价字节检查避免逐 chunk JSON 解析
+	if !bytes.Contains(line, []byte(`"error"`)) {
+		return retry.Classification{}, false
+	}
+	s := strings.TrimSpace(string(line))
+	if !strings.HasPrefix(s, "data:") {
+		return retry.Classification{}, false
+	}
+	payload := strings.TrimSpace(strings.TrimPrefix(s, "data:"))
+	if payload == "" || payload == "[DONE]" {
+		return retry.Classification{}, false
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(payload), &wire); err != nil {
+		return retry.Classification{}, false
+	}
+	errRaw, ok := wire["error"]
+	if !ok {
+		return retry.Classification{}, false
+	}
+	var errObj struct {
+		Type string `json:"type"`
+		Code string `json:"code"`
+	}
+	_ = json.Unmarshal(errRaw, &errObj)
+	status := retry.StreamErrorStatus(errObj.Type, errObj.Code)
+	cls := retry.Classify(retry.Result{StatusCode: status, BodySnippet: payload})
+	// SSE 错误事件没有 Retry-After 头可言：推断为限流时给默认冷却（LiteLLM cooldown 语义）
+	if status == 429 && cls.Kind == retry.KindRateLimited && cls.RetryAfter == 0 {
+		cls.RetryAfter = 60 * time.Second
+	}
+	return cls, true
 }
 
 // readAllWithFirstTokenTimeout 非流式读取：在首 token 窗口内读完整个响应体。

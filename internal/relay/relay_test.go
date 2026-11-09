@@ -496,3 +496,101 @@ func lookupKeyID(t *testing.T, env *testEnv, plainKey string) int64 {
 
 var _ = bytes.NewBuffer // 保留 imports 一致性
 var _ = bufio.NewReader
+
+// ---------- 学习成果回归：404 model_not_found 应换渠道（bifrost ModelAccess） ----------
+
+func TestModelNotFoundFailsOverToNextChannel(t *testing.T) {
+	env := newEnv(t)
+	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"message":"The model 'gpt-x' does not exist","type":"invalid_request_error","code":"model_not_found"}}`))
+	})
+	secondary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"content":"served-by-secondary"}`))
+	})
+	env.addChannel(t, "primary", primary.server.URL, 0, []string{"gpt-x"}, nil, "sk-p")
+	env.addChannel(t, "secondary", secondary.server.URL, 1, []string{"gpt-x"}, nil, "sk-s")
+
+	resp, body := env.chat(t, `{"model":"gpt-x","messages":[]}`)
+	if resp.StatusCode != 200 || !strings.Contains(body, "served-by-secondary") {
+		t.Fatalf("model_not_found 应换渠道成功: %d %s", resp.StatusCode, body)
+	}
+	// key 不应被惩罚
+	if state := env.pool.StateMachine().State(lookupKeyID(t, env, "sk-p")); state != store.KeyStateActive {
+		t.Fatalf("model_not_found 不应惩罚 key, state = %s", state)
+	}
+}
+
+// ---------- 学习成果回归：瞬时错误单请求内跳渠道 + 跨请求阈值冷却（混合策略） ----------
+
+func TestTransientSkipsSecondKeyAndCoolsAfterThreshold(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	env.addChannel(t, "only", up.server.URL, 0, []string{"m"}, nil, "sk-1", "sk-2")
+
+	// 单请求内：key1 500 后应跳过渠道（不再尝试同渠道 key2）
+	resp, _ := env.chat(t, `{"model":"m","messages":[]}`)
+	if resp.StatusCode != 503 {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+	if h, _, auths := up.snapshot(); h != 1 || len(auths) != 1 {
+		t.Fatalf("瞬时错误应跳过同渠道第二把 key: hits=%d auths=%v", h, auths)
+	}
+	// WRR 轮流选 key：6 次请求后两把 key 各计满 3 次失败进入冷却
+	for i := 0; i < 5; i++ {
+		if resp, _ := env.chat(t, `{"model":"m","messages":[]}`); resp.StatusCode != 503 {
+			t.Fatalf("第 %d 次应 503", i+2)
+		}
+	}
+	hits, _, _ := up.snapshot()
+	if hits != 6 {
+		t.Fatalf("6 次请求应合计 6 次上游调用（每请求恰一把 key）: %d", hits)
+	}
+	if state := env.pool.StateMachine().State(lookupKeyID(t, env, "sk-1")); state != store.KeyStateCooldown {
+		t.Fatalf("持续 5xx 达阈值应冷却 key1: %s", state)
+	}
+	if state := env.pool.StateMachine().State(lookupKeyID(t, env, "sk-2")); state != store.KeyStateCooldown {
+		t.Fatalf("持续 5xx 达阈值应冷却 key2: %s", state)
+	}
+	// 冷却后不再打上游
+	if resp, _ := env.chat(t, `{"model":"m","messages":[]}`); resp.StatusCode != 503 {
+		t.Fatal("冷却期应 503")
+	}
+	if h, _, _ := up.snapshot(); h != 6 {
+		t.Fatalf("冷却期上游不应再被调用: %d", h)
+	}
+}
+
+// ---------- 学习成果回归：SSE 首 chunk 错误事件（bifrost stream_error） ----------
+
+func TestStreamFirstChunkErrorEventFailsOver(t *testing.T) {
+	env := newEnv(t)
+	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`data: {"error":{"message":"rate limit exceeded","type":"rate_limit_error"}}` + "\n\n"))
+		w.(http.Flusher).Flush()
+	})
+	secondary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: {\"delta\":\"recovered\"}\n\ndata: [DONE]\n\n"))
+		w.(http.Flusher).Flush()
+	})
+	env.addChannel(t, "primary", primary.server.URL, 0, []string{"m"}, nil, "sk-p")
+	env.addChannel(t, "secondary", secondary.server.URL, 1, []string{"m"}, nil, "sk-s")
+
+	resp, body := env.chat(t, `{"model":"m","stream":true,"messages":[]}`)
+	if resp.StatusCode != 200 || !strings.Contains(body, "recovered") {
+		t.Fatalf("首 chunk 为错误事件应无感切换次渠道: %d %s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "rate limit exceeded") {
+		t.Fatalf("错误事件不应透出给客户端（首 token 前可重试）: %s", body)
+	}
+	// rate_limit_error 语义应冷却主渠道 key（SSE 状态推断 429）
+	if state := env.pool.StateMachine().State(lookupKeyID(t, env, "sk-p")); state != store.KeyStateCooldown {
+		t.Fatalf("SSE rate_limit_error 应按 429 冷却 key, state = %s", state)
+	}
+}

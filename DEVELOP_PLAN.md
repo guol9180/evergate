@@ -103,6 +103,19 @@
   - 2026-11-09 验证 gofmt/vet/build 全量 test 全绿（7 包）；运行时冒烟：:8787 healthz 200、/v1/models 200 空列表、非法 JSON→400 OpenAI 错误体、优雅停机
   - 2026-11-09 交付 T4 验收标准全部满足（验收清单 #2-#7）；token 鉴权/请求日志落库为 T5 范围
 
+### T4a: 参考项目补课与对照评审（P0，用户指令）
+
+- 目标：补执行任务书第 2 章学习指令——精读 gpt-load 调度内核源码、读 LiteLLM Router 文档、读 bifrost 错误分类；与 T3/T4 实现逐项对照，产出差距清单
+- 验收标准：完成 gpt-load 精读（凭据池/重试/错误分类/流式处理四个主题）+ LiteLLM Router 文档阅读 + bifrost 错误分类阅读；对照报告落盘 docs/；发现的差距全部转为决策（立即修 / 建卡延后 / 维持现状并说明理由）
+- 边界：new-api（AGPL）本轮不看代码，其产品交互留待 T6 前端时参考截图与功能清单；不引入参考项目任何代码（只学设计，除非明确标注 MIT/Apache 且有必要）
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-09 计划 用户选择方案 A：先补课再继续 T5；任务卡确认
+  - 2026-11-09 执行 经代理克隆 gpt-load / bifrost 源码至临时目录并抓取 LiteLLM Router 文档；精读 gpt-load internal/health（错误判定引擎）与 internal/state（调度账本/quota 冷却）、bifrost core/failureclass.go（错误分类学）与 providers/*/errors.go（SSE 流内错误）、LiteLLM Router 语义（allowed_fails/cooldown_time）
+  - 2026-11-09 执行 照评审发现 8 项差距全部修复：SSE 流内错误事件解析（首 chunk 错误仍可重试）、404 model_not_found 换渠道不惩罚 key、瞬时错误混合策略（单请求跳渠道+跨请求阈值冷却）、凭据/配额/限流文案/529 标识识别、SSE 推断限流默认 60s 冷却；详见 docs/参考项目对照评审.md
+  - 2026-11-09 验证 retry 42 用例（31 分类 + 11 流错误状态）+ relay 12 集成用例（含 3 个新场景：model_not_found 换渠道、瞬时错误混合语义、SSE 首 chunk 错误无感切换）全绿；gofmt/vet/7 包 test/build 全绿
+  - 2026-11-09 交付 对照评审报告（docs/参考项目对照评审.md）：8 项已修复 + 5 项 P1 建议 + 4 项有依据维持现状
+
 ### T5: 管理 API（P0）
 
 - 目标：auth / channels / keys / tokens / logs 的 REST + 下游令牌鉴权中间件 + 请求日志异步落库（缓冲 channel）

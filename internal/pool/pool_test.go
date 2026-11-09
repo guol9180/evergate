@@ -249,9 +249,9 @@ func TestManagerAcquireSkipsUnavailable(t *testing.T) {
 		t.Fatalf("应选中 key1, got %v", got)
 	}
 	// key1 冷却
-	m.ReportFailure(1, retry.Classification{Kind: retry.KindRetryable})
-	m.ReportFailure(1, retry.Classification{Kind: retry.KindRetryable})
-	m.ReportFailure(1, retry.Classification{Kind: retry.KindRetryable})
+	m.ReportFailure(1, retry.Classification{Kind: retry.KindRateLimited})
+	m.ReportFailure(1, retry.Classification{Kind: retry.KindRateLimited})
+	m.ReportFailure(1, retry.Classification{Kind: retry.KindRateLimited})
 	if got := m.Acquire(10, keys); got != nil {
 		t.Fatalf("唯一可用 key 冷却时应返回 nil, got %v", got)
 	}
@@ -275,7 +275,7 @@ func TestManagerReportFailureMapping(t *testing.T) {
 		t.Fatal("auth 应禁用")
 	}
 	// 429 + Retry-After → 立即按 60s 冷却
-	m.ReportFailure(2, retry.Classification{Kind: retry.KindRetryable, RetryAfter: 60 * time.Second})
+	m.ReportFailure(2, retry.Classification{Kind: retry.KindRateLimited, RetryAfter: 60 * time.Second})
 	if m.StateMachine().State(2) != store.KeyStateCooldown {
 		t.Fatal("429 应冷却")
 	}
