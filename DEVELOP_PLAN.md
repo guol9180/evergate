@@ -121,9 +121,14 @@
 - 目标：auth / channels / keys / tokens / logs 的 REST + 下游令牌鉴权中间件 + 请求日志异步落库（缓冲 channel）
 - 验收标准：登录登出可用；渠道与 key CRUD + 批量导入 + 连通测试可用；令牌 CRUD 可用；日志分页查询可用；任何接口不回显明文（对应验收清单 #9）
 - 边界：不做用量统计报表（P1）；不做 Playground（P1）
-- 状态：planned
+- 状态：done
 - 进度：
   - 2026-11-09 计划 任务卡确认，验收标准生效
+  - 2026-11-09 执行 开始 T5：auth/channels/keys/tokens/logs REST + 令牌鉴权中间件 + 日志异步落库 + cooldown 状态持久化（验收 #8）
+  - 2026-11-09 执行 新增 internal/admin（HMAC 无状态 Cookie 会话 + sessionMiddleware 强制首登改密 + auth/channels CRUD/toggle/test 连通测试/keys 批量导入启停删除/tokens CRUD/logs 分页多维筛选），key 列表零密文字段（验收 #9）；internal/relay/auth.go（令牌 SHA-256 鉴权中间件）+ logwriter.go（缓冲 channel + 1s/64条批量刷盘 + 满溢丢弃计数）；internal/health/persist.go（cooldown 状态 5s 定期持久化 + 启动恢复 + 停机刷盘，验收 #8）；ChannelKey 增 Level 列；main 全量接线（UTC 时钟贯穿）
+  - 2026-11-09 验证 单测全绿：admin 4 组（登录失败/403 强制改密/改密放行/渠道 key 级联/令牌明文仅一次/日志分页筛选/会话防篡改）、relay auth 3 组（缺失/错误/禁用/过期令牌 401、日志批量落库）、health 持久化 2 组（快照往返恢复原到期时间/active 不恢复）
+  - 2026-11-09 验证 运行时端到端（真实进程 + curl）：登录→改密前 403→改密→建渠道→批量导 3 key→建令牌（明文仅一次）→令牌列表无明文→带令牌 /v1/models 返回渠道模型→无令牌 401→chat 失败 503（上游不可达，预期）→日志异步落库（model/status/重试轨迹/令牌名齐全）；优雅停机
+  - 2026-11-09 交付 T5 验收标准全部满足；用量统计/Playground 为 P1
 
 ### T6: 前端管理台（P0）
 

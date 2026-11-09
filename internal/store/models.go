@@ -50,6 +50,7 @@ type ChannelKey struct {
 	Weight           int        `gorm:"not null;default:1" json:"weight"`
 	State            string     `gorm:"size:16;not null;default:'active'" json:"state"`
 	ConsecutiveFails int        `gorm:"not null;default:0" json:"consecutive_fails"`
+	Level            int        `gorm:"not null;default:0" json:"level"` // 退避档位（状态机持久化，重启恢复）
 	SuccessCount     int64      `gorm:"not null;default:0" json:"success_count"`
 	FailCount        int64      `gorm:"not null;default:0" json:"fail_count"`
 	LastError        string     `json:"last_error"`

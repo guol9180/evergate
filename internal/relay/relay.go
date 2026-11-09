@@ -34,9 +34,10 @@ type Options struct {
 	Defaults  config.Defaults
 	Logger    *slog.Logger
 	Now       func() time.Time
+	LogWriter *LogWriter // 可为 nil（测试中不落日志）
 }
 
-// Relay 转发器。零拷贝路径见 stream.go；本文件负责编排与重试。
+// Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
 type Relay struct {
 	opt        Options
 	mu         sync.Mutex
@@ -59,27 +60,63 @@ type attemptOutcome int
 
 const (
 	outcomeDone        attemptOutcome = iota // 已向客户端写完响应（成功/透传/流结束）
-	outcomeNextKey                           // 换下一个 key（同渠道或下一渠道）
-	outcomeNextChannel                       // 直接换下一候选渠道
+	outcomeNextKey                           // 换下一个 key（同渠道）
+	outcomeNextChannel                       // 换下一候选渠道
 )
 
+// hitRecord 记录实际命中的渠道/key 与首个 token 延迟（供请求日志）。
+type hitRecord struct {
+	channelID        int64
+	channelName      string
+	keyID            int64
+	upstreamModel    string
+	firstTokenMS     int64
+	promptTokens     int64
+	completionTokens int64
+}
+
 // HandleChatCompletions 处理 POST /v1/chat/completions（含 stream:true SSE）。
+// 无论成败，结束统一异步落一条请求日志（含重试轨迹）。
 func (r *Relay) HandleChatCompletions(c *gin.Context) {
+	start := r.opt.Now()
+	hit := &hitRecord{}
+	trace, status, errType, errMsg := r.dispatch(c, hit)
+	if r.opt.LogWriter != nil {
+		tokenID, tokenName := tokenFromContext(c)
+		total := r.opt.Now().Sub(start)
+		r.opt.LogWriter.Submit(&store.RequestLog{
+			TokenID: tokenID, TokenName: tokenName,
+			ChannelID: hit.channelID, ChannelName: hit.channelName, KeyID: hit.keyID,
+			Model: firstNonEmpty(hitLoggedModel(c), ""), UpstreamModel: hit.upstreamModel,
+			Stream:     isStreamRequest(c),
+			StatusCode: status, ErrorType: errType, ErrorMessage: errMsg,
+			RetryTrace:   trace,
+			FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
+			PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
+			IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+		})
+	}
+}
+
+// dispatch 执行完整编排，返回（重试轨迹, 最终状态码, 错误类型, 错误消息）。
+func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, int, string, string) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "读取请求体失败")
-		return
+		return nil, http.StatusBadRequest, "invalid_request_error", "读取请求体失败"
 	}
 	model, stream, ok := parseChatRequest(body)
 	if !ok {
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
-		return
+		return nil, http.StatusBadRequest, "invalid_request_error", "缺少 model 字段"
 	}
+	c.Set("evergate.model", model)
+	c.Set("evergate.stream", stream)
 
 	var channels []*store.Channel
 	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
 		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
-		return
+		return nil, http.StatusInternalServerError, "server_error", err.Error()
 	}
 	candidates := r.opt.Router.Route(model, channels)
 
@@ -103,10 +140,10 @@ loop:
 				continue loop // 渠道无可用 key（或只剩已试过的 key）→ 换下一候选渠道
 			}
 			usedKeys[key.ID] = true
-			out := r.attemptOne(c, cand, key, body, model, stream, &trace)
+			out := r.attemptOne(c, cand, key, body, model, stream, &trace, hit)
 			switch out {
 			case outcomeDone:
-				return
+				return trace, c.Writer.Status(), "", ""
 			case outcomeNextChannel:
 				continue loop
 			}
@@ -115,10 +152,14 @@ loop:
 
 	// 全部渠道耗尽 / 预算用尽 → 503 + OpenAI 错误体（验收 #7）
 	msg := "all upstream channels exhausted"
+	errType := "server_error"
 	if n := len(trace); n > 0 {
 		last := trace[n-1]
 		if last.ErrorMessage != "" {
 			msg += ": " + last.ErrorMessage
+		}
+		if last.ErrorType != "" {
+			errType = last.ErrorType
 		}
 	}
 	r.opt.Logger.Warn("relay exhausted",
@@ -126,6 +167,7 @@ loop:
 		slog.Int("attempts", len(trace)),
 	)
 	writeOpenAIError(c, http.StatusServiceUnavailable, "server_error", "all_channels_exhausted", msg)
+	return trace, http.StatusServiceUnavailable, errType, msg
 }
 
 // HandleModels 处理 GET /v1/models：启用渠道模型去重合并。
@@ -154,7 +196,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 }
 
 // attemptOne 执行一次上游尝试并分类处置。
-func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt) attemptOutcome {
+func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord) attemptOutcome {
 	ch := cand.Channel
 	connect, firstToken, overall := resolveTimeouts(ch, r.opt.Defaults)
 	appendTrace := func(status int, errType, errMsg string, attemptStart time.Time) {
@@ -213,7 +255,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 
 	if resp.StatusCode == http.StatusOK {
 		if stream {
-			return r.streamResponse(c, resp, key, cand, firstToken, cancel, trace)
+			return r.streamResponse(c, resp, key, cand, firstToken, cancel, trace, hit)
 		}
 		// 非流式：响应到达即首 token，在窗口内读完整体
 		data, rerr := readAllWithFirstTokenTimeout(resp.Body, ctx, cancel, firstToken)
@@ -225,6 +267,8 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		}
 		r.opt.Pool.ReportSuccess(key.ID)
 		appendTrace(http.StatusOK, "", "", start)
+		recordHit(hit, ch, key, cand.UpstreamModel, r.opt.Now().Sub(start))
+		parseUsage(data, hit)
 		ct := resp.Header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/json"
@@ -261,7 +305,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		return outcomeNextChannel
 	default:
-		// 不可重试 / 内容策略：直接透传给客户端（验收 #7 之外的 4xx 契约）
+		// 不可重试 / 内容策略：直接透传给客户端
 		appendTrace(resp.StatusCode, string(cls.Kind), "", start)
 		ct := resp.Header.Get("Content-Type")
 		if ct == "" {
@@ -270,6 +314,30 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		c.Data(resp.StatusCode, ct, errBody)
 		return outcomeDone
 	}
+}
+
+// recordHit 记录成功命中的渠道/key（供请求日志）。
+func recordHit(hit *hitRecord, ch *store.Channel, key *store.ChannelKey, upstreamModel string, firstTokenLatency time.Duration) {
+	hit.channelID = ch.ID
+	hit.channelName = ch.Name
+	hit.keyID = key.ID
+	hit.upstreamModel = upstreamModel
+	hit.firstTokenMS = firstTokenLatency.Milliseconds()
+}
+
+// parseUsage 尝试从非流式响应中提取 usage 字段。
+func parseUsage(data []byte, hit *hitRecord) {
+	var out struct {
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		return
+	}
+	hit.promptTokens = out.Usage.PromptTokens
+	hit.completionTokens = out.Usage.CompletionTokens
 }
 
 // transport 按连接超时缓存 Transport（渠道可覆盖 connect 超时）。
@@ -351,4 +419,25 @@ func sortStrings(s []string) {
 			s[j], s[j-1] = s[j-1], s[j]
 		}
 	}
+}
+
+func firstNonEmpty(s, fallback string) string {
+	if s != "" {
+		return s
+	}
+	return fallback
+}
+
+// hitLoggedModel 从请求上下文取模型名（dispatch 内解析后写入）。
+func hitLoggedModel(c *gin.Context) string {
+	v, _ := c.Get("evergate.model")
+	s, _ := v.(string)
+	return s
+}
+
+// isStreamRequest 判断请求是否流式（dispatch 内解析后写入）。
+func isStreamRequest(c *gin.Context) bool {
+	v, _ := c.Get("evergate.stream")
+	b, _ := v.(bool)
+	return b
 }

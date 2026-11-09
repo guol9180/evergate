@@ -16,7 +16,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"evergate/internal/admin"
 	"evergate/internal/config"
+	"evergate/internal/health"
 	"evergate/internal/pool"
 	"evergate/internal/relay"
 	"evergate/internal/router"
@@ -93,11 +95,22 @@ func run() error {
 		)
 	}
 
+	// 全局 UTC 时钟（AGENTS 红线：所有时间以 UTC 存储）
+	nowFn := func() time.Time { return time.Now().UTC() }
 	poolMgr := pool.NewManager(
 		cfg.Defaults.Cooldown.FailThreshold,
 		pool.ScheduleFrom(cfg.Defaults.Cooldown.Base.Duration, cfg.Defaults.Cooldown.Max.Duration),
-		time.Now,
+		nowFn,
 	)
+	if err := health.RestoreCooldowns(db, poolMgr); err != nil {
+		logger.Warn("restore key cooldown states failed", slog.Any("error", err))
+	}
+	stopPersist := health.StartCooldownPersister(db, poolMgr, logger, 5*time.Second)
+	defer stopPersist()
+
+	logWriter := relay.NewLogWriter(db, 256, logger)
+	defer logWriter.Close()
+
 	routerInst := router.New(time.Now().UnixNano())
 	relayHandler := relay.New(relay.Options{
 		DB:        db,
@@ -106,6 +119,14 @@ func run() error {
 		MasterKey: cfg.Security.MasterKey,
 		Defaults:  cfg.Defaults,
 		Logger:    logger,
+		Now:       nowFn,
+		LogWriter: logWriter,
+	})
+	adminAPI := admin.New(admin.Options{
+		DB:        db,
+		MasterKey: cfg.Security.MasterKey,
+		Pool:      poolMgr,
+		Session:   admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
 	})
 
 	engine := server.New(server.Options{
@@ -113,8 +134,9 @@ func run() error {
 		DB:       db,
 		Logger:   logger,
 		SetupRoutes: func(r gin.IRoutes) {
-			r.POST("/v1/chat/completions", relayHandler.HandleChatCompletions)
-			r.GET("/v1/models", relayHandler.HandleModels)
+			r.POST("/v1/chat/completions", relay.TokenAuth(db), relayHandler.HandleChatCompletions)
+			r.GET("/v1/models", relay.TokenAuth(db), relayHandler.HandleModels)
+			adminAPI.RegisterRoutes(r)
 		},
 	})
 

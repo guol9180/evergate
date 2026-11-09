@@ -25,7 +25,7 @@ const keepaliveInterval = 15 * time.Second
 
 // streamResponse 处理流式透传：首 chunk 前是可重试窗口，首 chunk 写给客户端后
 // 永不重试，只能以 SSE error event 明确上报（任务书 4.5⑥ 红线）。
-func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.ChannelKey, cand router.Candidate, firstToken time.Duration, cancel context.CancelFunc, trace *[]store.RetryAttempt) attemptOutcome {
+func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.ChannelKey, cand router.Candidate, firstToken time.Duration, cancel context.CancelFunc, trace *[]store.RetryAttempt, hit *hitRecord) attemptOutcome {
 	start := r.opt.Now()
 	appendTrace := func(errType, errMsg string) {
 		*trace = append(*trace, store.RetryAttempt{
@@ -68,6 +68,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 	// === 红线：首 chunk 即写给客户端，此后不再重试 ===
 	r.opt.Pool.ReportSuccess(key.ID)
 	appendTrace("", "")
+	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 
 	w := newSSEWriter(c.Writer)
 	w.header()
