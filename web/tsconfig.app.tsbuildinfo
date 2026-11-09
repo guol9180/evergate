@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/api/client.ts","./src/api/hooks.ts","./src/api/types.ts","./src/components/layout.tsx","./src/components/ui.tsx","./src/lib/format.ts","./src/pages/changepassword.tsx","./src/pages/channels.tsx","./src/pages/dashboard.tsx","./src/pages/login.tsx","./src/pages/logs.tsx","./src/pages/tokens.tsx"],"version":"5.9.3"}

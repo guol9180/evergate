@@ -147,9 +147,13 @@
 - 目标：Vite 脚手架 → 登录（首登强制改密）→ Dashboard → 渠道管理（批量导 key、连通测试、启停）→ 令牌管理 → 请求日志（重试轨迹可视化）
 - 验收标准：`npm run build` 成功；五个页面可用且与 T5 API 对接完成；日志详情可展示每次尝试的渠道/key/错误/耗时
 - 边界：不做 Playground / 用量统计 / 系统设置页（P1）；第一版仅简体中文
-- 状态：planned
+- 状态：done
 - 进度：
   - 2026-11-09 计划 任务卡确认，验收标准生效
+  - 2026-11-09 执行 开始 T6：按 docs/管理台设计参考.md 规格——React19+Vite+TanStack Query+Tailwind4+lucide，手写 shadcn 风格最小组件集，五页面 + 重试轨迹时间线
+  - 2026-11-09 执行 web/ 全量实现：手写脚手架（package.json/vite.config/tsconfig，无 CLI 交互）；api 层（types + fetch 信封客户端 + TanStack Query hooks 全套）；ui.tsx 最小组件集（Button/Input/Field/Badge/Card/Spinner/Dialog/Drawer/Empty/表格件）；Layout 侧边栏（me 守卫 401→login、must_change_password→改密页）；五页面——Login/ChangePassword/Dashboard（事实行+今日卡片+渠道健康+空状态四步引导）/Channels（表格+启停开关+三态测试徽标+key 展开面板：状态徽标/连续失败/退避档位/冷却剩余/最近错误+批量导入 textarea）/Tokens（明文仅一次+复制）/Logs（筛选栏+分页+详情抽屉+重试轨迹时间线红绿点）；错误类别人话映射与 T4a 分类学对齐；npm install 90 包经代理完成
+  - 2026-11-09 验证 npm run build（tsc 严格模式 + vite）通过，产物 349KB JS/21KB CSS（gzip 107KB）；浏览器实测（vite preview :4173 代理后端 :8787）：登录→Dashboard 事实行/卡片/渠道健康表→渠道页 key 面板展开 3 key 状态与批量导入→日志页详情抽屉重试轨迹时间线（尝试1→openai-main·key#1·10000ms·服务器故障徽标）→令牌页新建（明文仅一次+复制+警示）五页面全通过；截图存证
+  - 2026-11-09 交付 T6 验收标准全部满足；Playground/用量报表/系统设置为 P1
 
 ### T7: 嵌入与交付（P0）
 

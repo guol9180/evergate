@@ -1,0 +1,122 @@
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import { Activity, ArrowRight, KeyRound, TowerControl, Waypoints } from 'lucide-react'
+import { useChannels, useLogs } from '../api/hooks'
+import { Badge, Card, Empty, Spinner, Td, Th } from '../components/ui'
+import { fmtInt, fmtMs, fmtTime, stateLabel, stateTone } from '../lib/format'
+
+export default function Dashboard() {
+  const channels = useChannels()
+  const todayStart = useMemo(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d.toISOString()
+  }, [])
+  const logs = useLogs({ start: todayStart, page_size: 100 })
+
+  const chs = channels.data?.items ?? []
+  const logItems = logs.data?.items ?? []
+
+  const stats = useMemo(() => {
+    const models = new Set<string>()
+    chs.forEach((c) => (c.models || []).forEach((m) => models.add(m)))
+    const total = logs.data?.total ?? 0
+    const success = logItems.filter((l) => l.status_code >= 200 && l.status_code < 400).length
+    const latencies = logItems.map((l) => l.total_ms).filter((v) => v > 0).sort((a, b) => a - b)
+    const p95 = latencies.length ? latencies[Math.floor(latencies.length * 0.95)] : null
+    return {
+      channels: chs.length,
+      models: models.size,
+      keys: chs.reduce((s, c) => s + c.key_count, 0),
+      requests: total,
+      successRate: logItems.length ? Math.round((success / logItems.length) * 100) : null,
+      p95,
+    }
+  }, [chs, logItems, logs.data])
+
+  if (channels.isPending) {
+    return <div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>
+  }
+
+  // 空状态：四步引导（new-api 快速上手模式）
+  if (chs.length === 0) {
+    return (
+      <Card className="p-10">
+        <Empty icon={<TowerControl size={40} />} title="欢迎使用 EverGate" hint="按以下四步开始使用你的 AI 网关" />
+        <ol className="mx-auto max-w-md space-y-3 text-sm">
+          {[
+            { n: 1, text: '创建渠道：填入上游 base_url 与支持的模型', to: '/channels' },
+            { n: 2, text: '批量导入上游 API key（支持多行粘贴）', to: '/channels' },
+            { n: 3, text: '创建下游令牌，发给客户端使用', to: '/tokens' },
+            { n: 4, text: '客户端 base_url 指向 http://localhost:8787/v1', to: null },
+          ].map((s) => (
+            <li key={s.n} className="flex items-center gap-3 rounded-lg border border-slate-200 px-4 py-3">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700">{s.n}</span>
+              <span className="flex-1 text-slate-600">{s.text}</span>
+              {s.to && (
+                <Link to={s.to} className="text-xs font-medium text-indigo-600 hover:underline">前往 <ArrowRight size={12} className="inline" /></Link>
+              )}
+            </li>
+          ))}
+        </ol>
+      </Card>
+    )
+  }
+
+  const abnormal = [...chs].sort((a, b) => {
+    const rank = (s: string) => (s === 'down' ? 0 : s === 'degraded' ? 1 : 2)
+    return rank(a.status) - rank(b.status)
+  })
+
+  return (
+    <div className="space-y-6">
+      {/* 事实行（gpt-load HomeSummary 模式） */}
+      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+        <span className="text-2xl font-bold">{stats.channels}</span><span className="text-sm text-slate-500">渠道</span>
+        <span className="text-2xl font-bold">{stats.models}</span><span className="text-sm text-slate-500">去重模型</span>
+        <span className="text-2xl font-bold">{stats.keys}</span><span className="text-sm text-slate-500">上游 key</span>
+      </div>
+
+      {/* 今日卡片 */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[
+          { label: '今日请求', value: fmtInt(stats.requests), icon: Activity },
+          { label: '成功率', value: stats.successRate != null ? `${stats.successRate}%` : '—' },
+          { label: 'P95 延迟', value: fmtMs(stats.p95 ?? undefined) },
+          { label: '异常渠道', value: fmtInt(chs.filter((c) => c.status !== 'active').length) },
+        ].map((c) => (
+          <Card key={c.label} className="p-4">
+            <div className="text-xs text-slate-500">{c.label}</div>
+            <div className="mt-1 text-2xl font-bold text-slate-900">{c.value}</div>
+          </Card>
+        ))}
+      </div>
+
+      {/* 渠道健康列表（HealthSummaryStrip 模式） */}
+      <Card>
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h3 className="text-sm font-semibold">渠道健康</h3>
+          <Link to="/channels" className="text-xs text-indigo-600 hover:underline">管理渠道</Link>
+        </div>
+        <table className="w-full">
+          <thead className="border-b border-slate-100 bg-slate-50/50">
+            <tr><Th>渠道</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>key 数</Th><Th>模型数</Th><Th>更新时间</Th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {abnormal.map((c) => (
+              <tr key={c.id}>
+                <Td className="font-medium">{c.name}</Td>
+                <Td><Badge tone={stateTone[c.status] || ''}>{stateLabel[c.status] || c.status}</Badge></Td>
+                <Td className="text-slate-500">{c.type}</Td>
+                <Td>{c.priority}</Td>
+                <Td>{c.key_count}</Td>
+                <Td>{(c.models || []).length}</Td>
+                <Td className="text-xs text-slate-400">{fmtTime(c.updated_at)}</Td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  )
+}
