@@ -130,6 +130,18 @@
   - 2026-11-09 验证 运行时端到端（真实进程 + curl）：登录→改密前 403→改密→建渠道→批量导 3 key→建令牌（明文仅一次）→令牌列表无明文→带令牌 /v1/models 返回渠道模型→无令牌 401→chat 失败 503（上游不可达，预期）→日志异步落库（model/status/重试轨迹/令牌名齐全）；优雅停机
   - 2026-11-09 交付 T5 验收标准全部满足；用量统计/Playground 为 P1
 
+### T5a: 前端管理台设计补课（P0，用户指令）
+
+- 目标：T6 开工前完成参考学习——精读 gpt-load 前端源码（MIT，可借鉴实现）；new-api 仅读 README/功能清单/交互截图学产品设计（AGPL 红线：不看任何代码）；产出 T6 的页面与交互设计要点
+- 验收标准：gpt-load web/ 结构与关键页面（渠道/凭据/日志/仪表盘）精读完成；new-api 产品功能清单梳理完成；设计要点落盘 docs/管理台设计参考.md 并映射到 T6 五页面
+- 边界：不复制 new-api 任何代码/组件/样式；gpt-load 可借鉴实现但本项目技术栈为 React（任务书 3.2 定稿），只学交互与结构不搬 Vue 代码
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-09 计划 用户指令确认：T6 前先补前端设计学习
+  - 2026-11-09 执行 精读 gpt-load web/src（HomeSummary 事实行、GroupCredentialRecord 凭据可展开行+状态徽标+行内权重+近期成功失败计数、连通测试三态色调、credential-failure-presenter 失败类别人话映射、Monitor 的 LogsFilterForm+LogDetailDrawer 日志详情抽屉、GroupCredentialBatchBar 批量条、HealthSummaryStrip 健康摘要条）；经代理抓取 new-api README（仅功能清单与截图描述，AGPL 红线未读任何代码）梳理渠道配置/路由/用量日志/令牌/快速上手五功能域
+  - 2026-11-09 执行 设计规格落盘 docs/管理台设计参考.md：T6 五页面逐一映射（登录强制改密跳转、Dashboard 事实行+健康列表+空状态四步引导、渠道三态测试+key 展开+批量导入、令牌明文一次+一键复制、日志筛选+详情抽屉+重试轨迹时间线）；技术决策：React19+Vite+TanStack Query+Tailwind4+lucide，shadcn 风格手写最小组件集（不跑 CLI），路由用 react-router 并记录偏离任务书理由
+  - 2026-11-09 交付 T6 设计输入齐备，可直接开工
+
 ### T6: 前端管理台（P0）
 
 - 目标：Vite 脚手架 → 登录（首登强制改密）→ Dashboard → 渠道管理（批量导 key、连通测试、启停）→ 令牌管理 → 请求日志（重试轨迹可视化）
