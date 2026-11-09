@@ -75,6 +75,7 @@
   - 2026-11-09 验证 go vet / go test ./...（config 4 用例 + store 9 用例，含加密往返/错钥/防篡改/建表/管理员幂等/UTC 存储/写回保注释）/ go build 全部通过
   - 2026-11-09 验证 运行时首次启动：日志出现「generated missing secrets and wrote back to config」与「default admin created」；evergate.yml 两密钥写入且注释保留；sqlite_master 实查 6 表齐全（含 usage_daily 正确表名）；admins 行 bcrypt 哈希 60 字符（$2a$10$）、must_change=true、无明文；重启后无重复生成/建管理员（幂等），:8787/healthz 两次均 200；优雅停机正常
   - 2026-11-09 交付 T2 验收标准全部满足；「key 密文落库」全链路（渠道 API 写入）在 T5 接入，本卡以单测证明加解密正确
+  - 2026-11-09 执行 修正安全缺陷：T2 提交误将含真实密钥的 evergate.yml 推送到远程（private）；处理=evergate.yml 出库并 gitignore、模板入库为 evergate.yml.example、本地轮换两密钥（当前无已加密数据，轮换零损失）；旧值仅存于 git 历史 d168d99..537d5ff，因已轮换且仓库 private 无实际风险
 
 ### T3: 调度内核（P0，纯逻辑先写测试）
 

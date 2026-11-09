@@ -6,5 +6,8 @@ bin/
 # 运行时数据
 data/
 
+# 本地引导配置（含生成的真实密钥，模板见 evergate.yml.example）
+evergate.yml
+
 # 本地 Go 构建缓存（沙箱写权限用，已与 GOPATH 分离）
 .gocache/

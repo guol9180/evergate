@@ -1,0 +1,17 @@
+# EverGate 引导配置（唯一需要配置文件的地方）
+# 复制为 evergate.yml 后按需修改；业务数据（渠道/密钥/令牌）一律存 DB，本文件仅做引导。
+server:
+  port: 8787
+  base_path: ""            # 可选挂在子路径下
+storage:
+  sqlite_path: ./data/evergate.db
+  log_retention_days: 14
+security:
+  master_key: ""           # 为空则首次启动自动生成并写回；用于加密上游 key
+  session_secret: ""       # 同上
+defaults:
+  connect_timeout: 10s
+  first_token_timeout: 30s
+  overall_timeout: 300s
+  retry_budget: { channels: 3, keys_per_channel: 2, total: 60s }
+  cooldown: { fail_threshold: 3, base: 30s, max: 30m }
