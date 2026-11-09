@@ -51,10 +51,16 @@
 - 目标：本地 git 仓库初始化（main 分支）+ 首次提交；GitHub 创建同名仓库 `evergate` 并推送
 - 验收标准：`git log` 存在首次提交且不含 data/、.gocache/、bin/ 等被忽略产物；远程 `origin` 指向 `<owner>/evergate`；`git push` 后远程 main 与本地一致
 - 边界：仓库可见性默认 private（用户可随时改 public）；不添加 LICENSE（后续单独决策）；不做 CI/发布配置
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-09 计划 用户指令确认：判断首次远程初始化时机并执行提交推送
   - 2026-11-09 执行 时机判断=可以（文档齐全、T1 可构建可运行、.gitignore 就绪、无密钥数据）；新增 .gitattributes 统一换行符
+  - 2026-11-09 执行 git init -b main + 首次提交 d168d99（26 文件 / 1254 行，feat: 前缀；data/、.gocache/ 经 status --ignored 确认未入库）
+  - 2026-11-09 执行 gh 原 token 失效，两次设备授权失败（直连 github.com API 超时；期间 curl 报 schannel SEC_E_NO_CREDENTIALS 为本地 TLS 组件故障，一度误诊）；用户确认 Clash 代理端口 7900（verge-mihomo），CONNECT 实测通
+  - 2026-11-09 执行 设置 git 全局 GitHub 专用代理 http.https://github.com.proxy=http://127.0.0.1:7900（仅影响 GitHub，不碰其他 git 源）；gh 走会话级 HTTPS_PROXY；重新设备授权成功（guol9180）
+  - 2026-11-09 执行 gh repo create evergate --private --source . --push → https://github.com/guol9180/evergate，main 推送成功并建立跟踪
+  - 2026-11-09 验证 gh repo view：name=evergate、visibility=PRIVATE、defaultBranch=main；git status -sb 显示 main 与 origin/main 同步；origin/main 指向 d168d99
+  - 2026-11-09 交付 远程仓库 https://github.com/guol9180/evergate（private）+ 本地 main d168d99 已推送；用户全局 HTTP(S)_PROXY 环境变量为无效值 http://127.0.0.1:9，未擅自修改（仅 GitHub 流量已经 git 专用配置走 7900），已向用户提示
 
 ### T2: store 层（P0）
 
