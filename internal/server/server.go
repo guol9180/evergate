@@ -16,6 +16,8 @@ type Options struct {
 	BasePath string   // 可选子路径，如 "/eg"
 	DB       *gorm.DB // healthz 探活用，可为 nil
 	Logger   *slog.Logger
+	// SetupRoutes 业务路由注册钩子（relay / admin 等），入参为挂载在 BasePath 下的路由组。
+	SetupRoutes func(r gin.IRoutes)
 }
 
 // New 构建带 recovery 与请求日志的 Gin 引擎。
@@ -34,6 +36,9 @@ func New(opts Options) *gin.Engine {
 		root = r.Group(opts.BasePath)
 	}
 	root.GET("/healthz", healthz(opts.DB))
+	if opts.SetupRoutes != nil {
+		opts.SetupRoutes(root)
+	}
 	return r
 }
 

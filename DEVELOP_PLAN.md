@@ -95,9 +95,13 @@
 - 目标：OpenAI 兼容上游适配器 + SSE 零缓冲透传 + 首 token 超时 + 重试预算串联；httptest mock 双渠道集成测试
 - 验收标准：集成测试覆盖验收清单 #2–#7（非流式/流式首 token 前切换、首 token 后失败不重复、429 cooldown、401 禁用、渠道耗尽 503）
 - 边界：不做管理 API；不做前端
-- 状态：planned
+- 状态：done
 - 进度：
   - 2026-11-09 计划 任务卡确认，验收标准生效
+  - 2026-11-09 执行 新增 internal/relay（relay.go：编排/路由候选/重试预算/同渠道 key 去重/错误透传/503 OpenAI 错误体/模型映射重构请求体（RawMessage 保真）//v1/models 去重合并/渠道级超时覆盖+transport 缓存；stream.go：SSE 零缓冲 flush 循环/首 chunk 前可重试窗口/首 chunk 后永不重试+明确 SSE error event/15s keepalive 心跳）；server 增加 SetupRoutes 钩子；main 接线 router+pool+relay
+  - 2026-11-09 验证 集成测试 9 用例全绿：#2 非流式 500→次渠道（含模型映射生效断言）；#3 流式挂起→首token超时→次渠道完整流且无重复；#4 首 chunk 后断连→SSE 错误事件+次渠道 0 调用+无重复；#5 429+Retry-After→key 冷却至+60s（快照实测）+其余 key 服务+冷却期 0 复用；#6 401→key disabled（后续 0 使用）；#7 双渠道 500→503+OpenAI 错误体三字段+3 次失败后 key 冷却不再打上游；另加 400 透传/多行 SSE 保真/models 排序去重
+  - 2026-11-09 验证 gofmt/vet/build 全量 test 全绿（7 包）；运行时冒烟：:8787 healthz 200、/v1/models 200 空列表、非法 JSON→400 OpenAI 错误体、优雅停机
+  - 2026-11-09 交付 T4 验收标准全部满足（验收清单 #2-#7）；token 鉴权/请求日志落库为 T5 范围
 
 ### T5: 管理 API（P0）
 

@@ -14,7 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"evergate/internal/config"
+	"evergate/internal/pool"
+	"evergate/internal/relay"
+	"evergate/internal/router"
 	"evergate/internal/server"
 	"evergate/internal/store"
 )
@@ -88,10 +93,29 @@ func run() error {
 		)
 	}
 
+	poolMgr := pool.NewManager(
+		cfg.Defaults.Cooldown.FailThreshold,
+		pool.ScheduleFrom(cfg.Defaults.Cooldown.Base.Duration, cfg.Defaults.Cooldown.Max.Duration),
+		time.Now,
+	)
+	routerInst := router.New(time.Now().UnixNano())
+	relayHandler := relay.New(relay.Options{
+		DB:        db,
+		Router:    routerInst,
+		Pool:      poolMgr,
+		MasterKey: cfg.Security.MasterKey,
+		Defaults:  cfg.Defaults,
+		Logger:    logger,
+	})
+
 	engine := server.New(server.Options{
 		BasePath: cfg.Server.BasePath,
 		DB:       db,
 		Logger:   logger,
+		SetupRoutes: func(r gin.IRoutes) {
+			r.POST("/v1/chat/completions", relayHandler.HandleChatCompletions)
+			r.GET("/v1/models", relayHandler.HandleModels)
+		},
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
