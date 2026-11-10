@@ -26,6 +26,7 @@ type responsesStreamTool struct {
 	arguments   strings.Builder
 	outputIndex int
 	done        bool
+	custom      bool
 }
 
 type responsesStream struct {
@@ -46,6 +47,8 @@ type responsesStream struct {
 	tools    map[int]*responsesStreamTool
 	finishRS bool
 	usage    map[string]any
+
+	customTools map[string]struct{}
 }
 
 // streamResponsesResponse converts an upstream Chat Completions SSE stream to
@@ -88,7 +91,10 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 	r.opt.Pool.ReportSuccess(key.ID)
 	appendTrace("", "")
 	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
-	state := &responsesStream{w: newSSEWriter(c.Writer), model: model, now: r.opt.Now(), tools: map[int]*responsesStreamTool{}}
+	state := &responsesStream{
+		w: newSSEWriter(c.Writer), model: model, now: r.opt.Now(),
+		tools: map[int]*responsesStreamTool{}, customTools: responsesCustomTools(c),
+	}
 	state.w.header()
 	stopKeepalive := state.w.startKeepalive()
 	defer stopKeepalive()
@@ -188,8 +194,20 @@ func (s *responsesStream) consume(data string) {
 	for _, call := range delta.ToolCalls {
 		s.ensureCreated()
 		tool := s.tools[call.Index]
+		name := call.Function.Name
+		if name == "" && tool != nil {
+			name = tool.name
+		}
 		if tool == nil {
-			tool = &responsesStreamTool{id: responseItemID("fc", chunk.ID+"-"+call.ID+"-"+call.Function.Name), outputIndex: -1}
+			_, custom := s.customTools[name]
+			idPrefix := "fc"
+			if custom {
+				idPrefix = "ctc"
+			}
+			tool = &responsesStreamTool{
+				id: responseItemID(idPrefix, chunk.ID+"-"+call.ID+"-"+name), outputIndex: -1,
+				name: name, callID: call.ID, custom: custom,
+			}
 			s.tools[call.Index] = tool
 		}
 		if call.ID != "" {
@@ -197,18 +215,27 @@ func (s *responsesStream) consume(data string) {
 		}
 		if call.Function.Name != "" {
 			tool.name = call.Function.Name
+			if tool.outputIndex < 0 {
+				_, tool.custom = s.customTools[tool.name]
+			}
 		}
 		if tool.outputIndex < 0 {
 			tool.outputIndex = len(s.output)
-			s.output = append(s.output, map[string]any{"id": tool.id, "type": "function_call", "status": "in_progress", "call_id": tool.callID, "name": tool.name, "arguments": ""})
+			if tool.custom {
+				s.output = append(s.output, map[string]any{"id": tool.id, "type": "custom_tool_call", "status": "in_progress", "call_id": tool.callID, "name": tool.name, "input": ""})
+			} else {
+				s.output = append(s.output, map[string]any{"id": tool.id, "type": "function_call", "status": "in_progress", "call_id": tool.callID, "name": tool.name, "arguments": ""})
+			}
 			s.event("response.output_item.added", map[string]any{"output_index": tool.outputIndex, "item": s.output[tool.outputIndex]})
 		}
 		if call.Function.Arguments != "" {
 			tool.arguments.WriteString(call.Function.Arguments)
-			s.output[tool.outputIndex]["arguments"] = tool.arguments.String()
-			s.event("response.function_call_arguments.delta", map[string]any{
-				"item_id": tool.id, "output_index": tool.outputIndex, "delta": call.Function.Arguments,
-			})
+			if !tool.custom {
+				s.output[tool.outputIndex]["arguments"] = tool.arguments.String()
+				s.event("response.function_call_arguments.delta", map[string]any{
+					"item_id": tool.id, "output_index": tool.outputIndex, "delta": call.Function.Arguments,
+				})
+			}
 		}
 	}
 	if chunk.Choices[0].FinishReason != "" {
@@ -273,8 +300,21 @@ func (s *responsesStream) finish() {
 			continue
 		}
 		tool.done = true
-		s.event("response.function_call_arguments.done", map[string]any{"item_id": tool.id, "output_index": tool.outputIndex, "arguments": tool.arguments.String()})
-		item := map[string]any{"id": tool.id, "type": "function_call", "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": tool.arguments.String()}
+		var item map[string]any
+		if tool.custom {
+			input, err := customToolInput(tool.arguments.String())
+			if err != nil {
+				s.fail(err.Error())
+				return
+			}
+			s.event("response.custom_tool_call_input.done", map[string]any{
+				"item_id": tool.id, "output_index": tool.outputIndex, "input": input,
+			})
+			item = map[string]any{"id": tool.id, "type": "custom_tool_call", "status": "completed", "call_id": tool.callID, "name": tool.name, "input": input}
+		} else {
+			s.event("response.function_call_arguments.done", map[string]any{"item_id": tool.id, "output_index": tool.outputIndex, "arguments": tool.arguments.String()})
+			item = map[string]any{"id": tool.id, "type": "function_call", "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": tool.arguments.String()}
+		}
 		s.output[tool.outputIndex] = item
 		s.event("response.output_item.done", map[string]any{"output_index": tool.outputIndex, "item": item})
 	}

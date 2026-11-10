@@ -271,6 +271,25 @@
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-10 计划 用户指令确认：以后客户端接入默认覆盖 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三种 API 协议；当前前两者已由 T0/T10 交付，Anthropic Messages 为本卡待开发项
 
+### T14: Responses custom tool 兼容修复（P1，用户反馈缺陷）
+
+- 目标：修复新版 Codex 向 `POST /v1/responses` 声明 `type="custom"` 工具时被 EverGate 400 拒绝的问题，使 custom tool 可完成声明、调用、结果回传与流式事件往返
+- 验收标准：
+  1. 公共 HTTP 边界测试先复现 `unsupported Responses tool type "custom"`，修复后通过；
+  2. custom tool 在上游 Chat Completions 中降级为单字段 `input` 的 function tool，不把 `type="custom"` 原样发给上游；
+  3. 上游 function call 返回 `{"input":"..."}` 时，Responses 输出转换为 `custom_tool_call`，包含 `call_id/name/input`；
+  4. `custom_tool_call_output` 可回传为 Chat Completions tool message，并在下一轮得到最终文本；
+  5. SSE 输出使用 `response.custom_tool_call_input.done` 官方事件，且不泄漏 Chat Completions framing；
+  6. `go test ./... -count=1`、`go vet ./...`、`make build` 通过。
+- 边界：只处理客户端所需的自由文本 custom tool 子集；不实现 grammar/lark/regex 约束、allowed_callers、异步 custom tool、WebSocket；不改变上游仍为 OpenAI-compatible Chat Completions 的架构
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户反馈 Codex 报 `unsupported Responses tool type "custom"`；已核对 OpenAI 官方 Responses 参考确认 custom tool、custom_tool_call、custom_tool_call_output 与 `response.custom_tool_call_input.done` schema，开始建红测
+  - 2026-11-10 执行 红测 `TestResponsesCustomToolStreamRoundTrip` 先在公共 HTTP 边界复现用户原始错误：`400 {"error":{"message":"unsupported Responses tool type \"custom\""}}`
+  - 2026-11-10 执行 `responsesToChat` 支持 custom tool / custom_tool_call / custom_tool_call_output：custom tool 降级为上游 function schema `{input:string}`，回传输出转 tool message；响应侧按请求声明恢复 `custom_tool_call`，SSE 发送官方 `response.custom_tool_call_input.done` 后再 `output_item.done`；同时转换 custom tool_choice 并显式拒绝 async/grammar 变体
+  - 2026-11-10 验证 红测转绿；新增非流式 custom tool 测试与两轮 custom tool 流式回传测试。`go test ./... -count=1` 与 `go vet ./...` 通过，`npm --prefix web run build` 与 `make build` 在沙箱外完成并通过（本沙箱内 esbuild spawn EPERM）
+  - 2026-11-10 交付 T14 验收标准满足。已用 OpenAI 官方 Create Response / streaming events 参考核对字段；未声明支持 grammar、异步 custom tool 或 WebSocket，相关输入会显式报错或在 README 标注不支持
+
 ## 状态枚举
 
 | 状态 | 含义 |

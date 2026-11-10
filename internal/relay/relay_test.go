@@ -272,6 +272,49 @@ func TestResponsesStreamConvertsChatSSE(t *testing.T) {
 	}
 }
 
+func TestResponsesCustomToolNonStream(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Tools []chatTool `json:"tools"`
+		}
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Errorf("unmarshal custom tool request: %v", err)
+		}
+		if len(req.Tools) != 1 || req.Tools[0].Type != "function" || req.Tools[0].Function.Name != "exec_command" {
+			t.Fatalf("custom tool must be converted to a function tool: %#v", req.Tools)
+		}
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-custom","object":"chat.completion","created":123,"model":"upstream-model","choices":[{"index":0,"message":{"role":"assistant","tool_calls":[{"id":"call_custom","type":"function","function":{"name":"exec_command","arguments":"{\"input\":\"echo EverGate\"}"}}]},"finish_reason":"tool_calls"}]}`))
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{
+		"model":"gateway-model",
+		"input":"run custom tool",
+		"tools":[{"type":"custom","name":"exec_command","description":"Run a command"}],
+		"stream":false
+	}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+	var out struct {
+		Output []struct {
+			Type   string `json:"type"`
+			CallID string `json:"call_id"`
+			Name   string `json:"name"`
+			Input  string `json:"input"`
+		} `json:"output"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatalf("unmarshal response: %v\n%s", err, body)
+	}
+	if len(out.Output) != 1 || out.Output[0].Type != "custom_tool_call" ||
+		out.Output[0].CallID != "call_custom" || out.Output[0].Name != "exec_command" ||
+		out.Output[0].Input != "echo EverGate" {
+		t.Fatalf("unexpected custom tool output: %#v", out.Output)
+	}
+}
+
 func TestResponsesStreamToolCallRoundTrip(t *testing.T) {
 	env := newEnv(t)
 	var phase atomic.Int64
@@ -344,6 +387,97 @@ func TestResponsesStreamToolCallRoundTrip(t *testing.T) {
 	}`)
 	if !strings.Contains(second, `"delta":"tool ok"`) {
 		t.Fatalf("second Responses turn did not return final text: %s", second)
+	}
+}
+
+func TestResponsesCustomToolStreamRoundTrip(t *testing.T) {
+	env := newEnv(t)
+	var phase atomic.Int64
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		var payload string
+		if phase.Add(1) == 1 {
+			var req struct {
+				Tools []chatTool `json:"tools"`
+			}
+			if err := json.Unmarshal([]byte(body), &req); err != nil {
+				t.Errorf("unmarshal custom tool request: %v", err)
+			}
+			if len(req.Tools) != 1 || req.Tools[0].Type != "function" || req.Tools[0].Function.Name != "exec_command" {
+				t.Fatalf("custom tool must be converted to a Chat function tool: %#v", req.Tools)
+			}
+			params := req.Tools[0].Function.Parameters
+			if params["type"] != "object" {
+				t.Fatalf("custom tool parameters = %#v", params)
+			}
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-custom","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_custom","type":"function","function":{"name":"exec_command","arguments":"{\"input\":\"echo EverGate\"}"}}]},"finish_reason":"tool_calls"}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		} else {
+			var req struct {
+				Messages []struct {
+					Role       string          `json:"role"`
+					ToolCallID string          `json:"tool_call_id"`
+					ToolCalls  []chatToolCall  `json:"tool_calls"`
+					Content    json.RawMessage `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.Unmarshal([]byte(body), &req); err != nil {
+				t.Errorf("unmarshal second custom tool request: %v", err)
+			}
+			if len(req.Messages) != 2 ||
+				req.Messages[0].ToolCalls[0].Function.Arguments != `{"input":"echo EverGate"}` ||
+				req.Messages[1].Role != "tool" || req.Messages[1].ToolCallID != "call_custom" ||
+				string(req.Messages[1].Content) != `"EverGate tool ok"` {
+				t.Fatalf("custom tool round trip was not converted to Chat messages: %#v", req.Messages)
+			}
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-after-custom","object":"chat.completion.chunk","created":124,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"custom tool ok"}}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		}
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, first := env.responses(t, `{
+		"model":"gateway-model",
+		"input":"run custom tool",
+		"tools":[{"type":"custom","name":"exec_command","description":"Run a command"}],
+		"stream":true
+	}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("custom tool request status = %d, body = %s", resp.StatusCode, first)
+	}
+	wantFirst := []string{
+		"response.created", "response.output_item.added", "response.custom_tool_call_input.done",
+		"response.output_item.done", "response.completed",
+	}
+	if got := sseEventTypes(first); strings.Join(got, ",") != strings.Join(wantFirst, ",") {
+		t.Fatalf("custom tool event types = %v, want %v\nbody:\n%s", got, wantFirst, first)
+	}
+	if !strings.Contains(first, `"type":"custom_tool_call"`) ||
+		!strings.Contains(first, `"call_id":"call_custom"`) ||
+		!strings.Contains(first, `"name":"exec_command"`) ||
+		!strings.Contains(first, `"input":"echo EverGate"`) {
+		t.Fatalf("custom tool output item is incomplete: %s", first)
+	}
+
+	_, second := env.responses(t, `{
+		"model":"gateway-model","stream":true,
+		"input":[
+			{"type":"custom_tool_call","id":"ctc_1","call_id":"call_custom","name":"exec_command","input":"echo EverGate"},
+			{"type":"custom_tool_call_output","id":"ctco_1","call_id":"call_custom","output":"EverGate tool ok"}
+		]
+	}`)
+	if !strings.Contains(second, `"delta":"custom tool ok"`) {
+		t.Fatalf("second custom tool turn did not return final text: %s", second)
 	}
 }
 
