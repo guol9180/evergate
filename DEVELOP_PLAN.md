@@ -314,6 +314,7 @@
   - 2026-11-10 验证 捕获真实 Codex 请求发现 `text.verbosity=low` 亦会被白名单误拒绝，已补 Chat `verbosity` 转换；真实 Codex 0.167.0-alpha.3.2 通过当前源码构建 + mock 上游完整执行 `apply_patch`：grammar 进入 function 参数描述、Codex 创建 `t15-real.txt`、`custom_tool_call_output` 正确回传并获得最终文本
   - 2026-11-10 交付 T15 验收标准满足：`gofmt`、`go vet ./...`、`go test ./... -count=1`、`npm --prefix web run build`、`make build` 全部通过；`npm` / `make` 因沙箱内 esbuild spawn EPERM 在沙箱外执行
   - 2026-11-10 发版 准备发布 v0.1.7：将 apply_patch grammar 修复与 Responses 兼容补齐送入 GitHub Actions 自动打包
+  - 2026-11-10 发版 v0.1.7：Release Action 42793297209 成功；Release 正文正确提取修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（27,991,040 bytes，启动显示 version=v0.1.7）后，用真实 Codex 0.167.0-alpha.3.2 + 18905/18906 隔离实例 + mock 上游复验：上游 function schema 保留 `grammar syntax: lark`，`text.verbosity=low` 与 reasoning effort 正确转换；Codex 执行 apply_patch 创建 `v017-real.txt`，第二轮 custom output 回传成功，最终输出 `v0.1.7 apply patch ok`
 
 ## 状态枚举
 
