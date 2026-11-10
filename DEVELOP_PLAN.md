@@ -182,6 +182,8 @@
   - 2026-11-10 执行 新增 .github/workflows/release.yml（tag v* 触发：npm ci+build → setup-go(go.mod 版本) → CGO_ENABLED=0 三平台构建 → sha256 checksums → softprops/gh-release 挂载）；推 v0.1.1 验证：Actions 全绿，自动产出 4 资产（3 二进制+checksums.txt）
   - 2026-11-10 验证 Release 页面：v0.1.0（手动）+ v0.1.1（自动）均可下载；仓库 PUBLIC；历史 grep 旧密钥值零命中
   - 2026-11-10 交付 T7b 验收标准全部满足：公开仓库安全、v0.1.0 可下载、后续发版=推 tag 即自动打包
+  - 2026-11-10 执行 改进（用户反馈）：自动发版缺少描述——新增 CHANGELOG.md（发版描述唯一来源），工作流按 `## <tag>` 提取段落作为 Release 正文（无段落时回退自动生成笔记），并回填修复 v0.1.1 描述
+  - 2026-11-10 验证 v0.1.2 端到端：Actions 提取 CHANGELOG 段落成功，Release 正文=变更说明+Full Changelog 对比链接，4 资产齐全
 
 ## 状态枚举
 

@@ -6,6 +6,7 @@
 > 完整需求与技术设计见 [docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)。
 
 **下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供三平台单二进制（Windows x64 / Linux x64 / macOS Apple Silicon），推 `v*` tag 自动构建。
+版本变更见 [CHANGELOG.md](./CHANGELOG.md)（发版描述即取自该文件）。
 
 ## 功能
 
