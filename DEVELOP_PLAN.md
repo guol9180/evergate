@@ -211,6 +211,7 @@
   - 2026-11-10 执行 新增 `web/public/logo.svg`（源自管理端 Lucide TowerControl，保留 ISC 来源声明），侧边栏改为直接引用该 SVG；`web/index.html` 引用 SVG favicon 与兼容 ICO；由同一 SVG 渲染生成 16–256px `favicon.ico`，并经 `make icon`（rsrc v0.10.2，构建工具不进 go.mod）生成 `cmd/evergate/rsrc_windows_amd64.syso`
   - 2026-11-10 验证 `make icon` 重复执行 SHA256 一致；`npm --prefix web run build`、`make build`、`make build-all`、`gofmt`、`go vet ./...`、`go test ./...` 全部通过；本机与 Release windows/amd64 exe 经 Windows 图标 API 均提取到 32×32 图标；临时服务实测 `/logo.svg` 与 `/favicon.ico` 均 200 且与源文件 SHA256 一致
   - 2026-11-10 交付 T9 验收标准满足：管理台侧边栏、浏览器角标、Windows exe 图标共用同一视觉源；Linux/macOS 交叉编译不受影响
+  - 2026-11-10 发版 v0.1.4：Release Action 1m47s 成功；重新下载 Release Windows exe 后仍可提取 32×32 图标，三平台二进制 + checksums.txt 共 4 资产齐全，Release 正文正确提取 CHANGELOG 说明
 
 ## 状态枚举
 
