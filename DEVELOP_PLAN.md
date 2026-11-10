@@ -290,6 +290,7 @@
   - 2026-11-10 验证 红测转绿；新增非流式 custom tool 测试与两轮 custom tool 流式回传测试。`go test ./... -count=1` 与 `go vet ./...` 通过，`npm --prefix web run build` 与 `make build` 在沙箱外完成并通过（本沙箱内 esbuild spawn EPERM）
   - 2026-11-10 交付 T14 验收标准满足。已用 OpenAI 官方 Create Response / streaming events 参考核对字段；未声明支持 grammar、异步 custom tool 或 WebSocket，相关输入会显式报错或在 README 标注不支持
   - 2026-11-10 发版 准备发布 v0.1.6：将修复送入 GitHub Actions 自动打包，供已安装用户通过更新入口下载
+  - 2026-11-10 发版 v0.1.6：Release Action 42781290657 成功；Release 正文正确提取 custom tool 修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（27,983,872 bytes，启动显示 version=v0.1.6）后在 18900/18901 隔离实例 + mock 上游完成端到端烟测：第一轮 custom tool 返回 200 且包含 `custom_tool_call`、`input:"ping"` 与 `response.custom_tool_call_input.done`；第二轮 `custom_tool_call_output` 回传返回 200 与最终文本 `remote custom ok`
 
 ## 状态枚举
 
