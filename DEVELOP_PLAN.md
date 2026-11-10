@@ -255,6 +255,7 @@
   - 2026-11-10 执行 新增 `internal/update`（版本比较、GitHub Release 查询、403/429 后 Atom 降级、Windows 资产推导）与管理台会话保护接口 `GET /admin/api/system/update`；前端新增自动更新查询、Dashboard 更新横幅/下载按钮、侧边栏版本区，并优化侧边栏窄屏、登录卡片、背景层级、指标卡与表格滚动
   - 2026-11-10 验证 update/admin 单元测试通过；临时 v0.1.3 实例真实检查到 GitHub v0.1.4 并返回 Windows 下载 URL；无头 Chrome 实测 Dashboard 1280×800 与 390×844 均无横向溢出，且显示 v0.1.4 更新提示与下载入口
   - 2026-11-10 交付 T12 验收标准满足；完整 Go 测试、前端构建与 `make build` 通过
+  - 2026-11-10 发版 v0.1.5：Release Action 2m30s 成功；重新下载 Release Windows exe 后实测 healthz=200、`POST /v1/responses` 未带令牌返回 401、`GET /admin/api/system/update` 未登录返回 401，确认新入口与更新接口已进入远程产物；三平台二进制 + checksums.txt 共 4 资产齐全
 
 ## 状态枚举
 
