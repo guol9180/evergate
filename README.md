@@ -17,7 +17,7 @@ P0（第一版交付范围）：
 - **渠道与 key 池管理**：增删改查、多行批量导入 key、单渠道连通测试
 - **下游令牌**：发放给客户端的 key，SHA-256 哈希校验
 - **请求日志**：每请求一条（含重试轨迹 retry_trace），异步批量落库，不阻塞请求路径
-- **Web 管理台**：登录 / Dashboard / 渠道管理 / 令牌管理 / 请求日志（重试轨迹可视化）
+- **Web 管理台**：登录 / Dashboard / 渠道管理 / 令牌管理 / 请求日志（重试轨迹可视化）；浏览器角标与 Windows exe 使用同一 EverGate logo
 - **安全**：上游 key AES-GCM 加密落库；管理台密码 bcrypt；任何接口不回显明文
 - **交付形态**：`1 个可执行文件 + 1 个 SQLite 数据文件`，运行 `./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 任何外部依赖
 
@@ -42,6 +42,7 @@ P1/P2 方向（会话亲和、Playground、用量报表、Anthropic 原生入口
 ```bash
 make build              # → bin/evergate(.exe)，React 管理台已嵌入（约 27MB）
 make build-all          # 三平台：windows/amd64、linux/amd64、darwin/arm64
+make icon               # favicon.ico → Windows exe 图标资源（.syso）
 ./bin/evergate          # 启动：API 与管理台同端口 :8787（可配，见 evergate.yml）
 go run ./cmd/evergate   # 开发态直接运行
 ```

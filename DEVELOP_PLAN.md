@@ -200,6 +200,18 @@
   - 2026-11-10 交付 T8 验收标准满足；当前仓库未引入前端测试框架，本次真实浏览器反馈环为临时调试产物，验证后删除，不为单缺陷扩依赖（后续若建 P1 前端测试体系再统一引入）
   - 2026-11-10 发版 v0.1.3：Release Action 1m55s 成功；Release 正文正确提取 CHANGELOG 修复说明，三平台二进制 + checksums.txt 共 4 资产齐全
 
+### T9: 品牌图标统一到浏览器角标与 Windows exe（P0，用户反馈）
+
+- 目标：以管理台侧边栏当前 TowerControl 管理端 logo 为唯一视觉源，新增浏览器 favicon，并把同源图标嵌入 Windows exe，供用户将 exe 放到桌面作为启动器
+- 验收标准：`web/dist` 内提供并引用 favicon；Windows 构建产物可通过系统图标 API 提取到非空图标；`npm --prefix web run build`、`go test ./...`、`make build` 全部通过；图标来源保留 Lucide ISC 许可证声明
+- 边界：当前交付形态是单文件 exe 而非安装器，本卡只嵌入 exe 图标，不做安装器/开机自启/快捷方式创建；macOS/Linux 二进制不做图标包装；不新增运行时依赖
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户指令确认：统一管理端 logo、网页角标与 exe 图标
+  - 2026-11-10 执行 新增 `web/public/logo.svg`（源自管理端 Lucide TowerControl，保留 ISC 来源声明），侧边栏改为直接引用该 SVG；`web/index.html` 引用 SVG favicon 与兼容 ICO；由同一 SVG 渲染生成 16–256px `favicon.ico`，并经 `make icon`（rsrc v0.10.2，构建工具不进 go.mod）生成 `cmd/evergate/rsrc_windows_amd64.syso`
+  - 2026-11-10 验证 `make icon` 重复执行 SHA256 一致；`npm --prefix web run build`、`make build`、`make build-all`、`gofmt`、`go vet ./...`、`go test ./...` 全部通过；本机与 Release windows/amd64 exe 经 Windows 图标 API 均提取到 32×32 图标；临时服务实测 `/logo.svg` 与 `/favicon.ico` 均 200 且与源文件 SHA256 一致
+  - 2026-11-10 交付 T9 验收标准满足：管理台侧边栏、浏览器角标、Windows exe 图标共用同一视觉源；Linux/macOS 交叉编译不受影响
+
 ## 状态枚举
 
 | 状态 | 含义 |

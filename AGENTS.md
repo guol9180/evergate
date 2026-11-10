@@ -22,6 +22,7 @@ internal/store/        # GORM 模型与数据访问
 internal/admin/        # 管理台 API handlers
 internal/health/       # 渠道探测任务
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）
+web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
 docs/                  # 设计文档与需求（开发任务书等）
 evergate.yml           # 引导配置（端口/DB路径/主密钥/默认超时）
 Makefile               # 构建入口（T7 实现三平台交叉编译）
@@ -29,6 +30,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 
 - 业务数据（渠道/密钥/令牌）一律存 DB，不进 YAML；YAML 仅做引导。
 - `web/dist` 随仓库提交（约 400KB），保证后端开发者无 Node 环境也能 `go build`；改前端后必须 `make build-web` 并提交更新后的 dist。
+- 品牌图标以 `web/public/logo.svg` 为唯一视觉源；更换图标后需重生成 `web/public/favicon.ico` 并执行 `make icon`，再提交派生产物。
 - Go 文件与包名小写；测试文件与被测文件同包（白盒）或 `_test` 包（黑盒）。
 - React 组件文件 PascalCase，放 `web/src/` 下按页面/组件分目录。
 

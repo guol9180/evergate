@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Waypoints, KeyRound, ScrollText, LogOut, TowerControl } from 'lucide-react'
+import { LayoutDashboard, Waypoints, KeyRound, ScrollText, LogOut } from 'lucide-react'
 import { useLogout, useMe } from '../api/hooks'
 import { Spinner } from './ui'
 
@@ -39,7 +39,7 @@ export default function Layout() {
     <div className="flex h-full">
       <aside className="flex w-52 shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="flex items-center gap-2 px-5 py-4">
-          <TowerControl size={20} className="text-indigo-600" />
+          <img src="/logo.svg" alt="" width={20} height={20} className="shrink-0" />
           <div>
             <div className="text-sm font-bold text-slate-900">EverGate</div>
             <div className="text-[10px] text-slate-400">AI 网关管理台</div>
