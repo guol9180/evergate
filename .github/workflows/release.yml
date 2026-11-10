@@ -39,8 +39,28 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o release/evergate-darwin-arm64  ./cmd/evergate
           sha256sum release/* > release/checksums.txt
 
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          SECTION=$(awk -v ver="${GITHUB_REF_NAME}" '
+            $0 == "## " ver {found=1; next}
+            found && /^## / {exit}
+            found {print}
+          ' CHANGELOG.md)
+          if [ -n "$SECTION" ]; then
+            {
+              echo "body<<CHANGELOG_EOF"
+              echo "$SECTION"
+              echo "CHANGELOG_EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "Found changelog section for ${GITHUB_REF_NAME}"
+          else
+            echo "No changelog section for ${GITHUB_REF_NAME}; release body falls back to generated notes"
+          fi
+
       - name: Attach to Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
+          body: ${{ steps.changelog.outputs.body }}
           generate_release_notes: true
