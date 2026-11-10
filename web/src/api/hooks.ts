@@ -24,9 +24,16 @@ export function useLogout() {
 }
 
 export function useChangePassword() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { old_password: string; new_password: string }) =>
       api<{ changed: boolean }>('/admin/api/auth/password', { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: () => {
+      // 路由守卫读取 ['me'] 缓存；必须同步清除强制改密标记，否则成功后会被旧缓存弹回改密页。
+      qc.setQueryData<AdminInfo>(['me'], (current) =>
+        current ? { ...current, must_change_password: false } : current,
+      )
+    },
   })
 }
 

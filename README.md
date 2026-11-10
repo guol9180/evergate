@@ -2,7 +2,7 @@
 
 本地运行的 AI 网关：把多家 LLM 供应商（OpenAI / Anthropic / Gemini / DeepSeek / 本地 vLLM / 任意 OpenAI 兼容端点）统一为一个 OpenAI 兼容 API；上游或 key 故障时自动切换，客户端无感知。*One gate, every model, zero interruption.*
 
-> **当前状态**：后端骨架已可运行（T1 完成，`/healthz` + SQLite WAL + 优雅停机）；调度内核与管理台按 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md) 推进中。
+> **当前状态**：P0 已完成并发布三平台单二进制；P1 功能按 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md) 里程碑推进。
 > 完整需求与技术设计见 [docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)。
 
 **下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供三平台单二进制（Windows x64 / Linux x64 / macOS Apple Silicon），推 `v*` tag 自动构建。

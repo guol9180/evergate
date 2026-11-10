@@ -185,6 +185,20 @@
   - 2026-11-10 执行 改进（用户反馈）：自动发版缺少描述——新增 CHANGELOG.md（发版描述唯一来源），工作流按 `## <tag>` 提取段落作为 Release 正文（无段落时回退自动生成笔记），并回填修复 v0.1.1 描述
   - 2026-11-10 验证 v0.1.2 端到端：Actions 提取 CHANGELOG 段落成功，Release 正文=变更说明+Full Changelog 对比链接，4 资产齐全
 
+### T8: 首次改密后前端停留改密页缺陷修复（P0，用户反馈）
+
+- 目标：修复首次登录修改密码成功后被路由守卫重定向回 `/change-password` 的前端状态缓存问题
+- 验收标准：真实浏览器流程中提交改密后停留在 `/`，且 `/admin/api/auth/me` 返回 `must_change_password=false`；后端改密 API 行为不变；`go test ./...`、`npm run build`、`make build` 全部通过
+- 边界：不改数据库 schema、不改后端密码哈希与鉴权逻辑、不读取/修改用户安装目录数据（只读确认故障状态）
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户反馈“提交后仍停在首次修改页面”，并提供本地安装数据目录；缺陷卡确认
+  - 2026-11-10 执行 只读检查 `C:\Users\PC\Downloads\data\evergate.db`：`admins.must_change_password=0`，`updated_at=2026-11-10 01:43:12 UTC`，证明后端改密已成功、问题限定在前端路由状态
+  - 2026-11-10 执行 浏览器级反馈环复现两次：改密 API 成功且 `/me` 已返回 false，但页面仍在 `/change-password`（红色稳定）
+  - 2026-11-10 执行 定位与修复：`useMe` 的 `['me']` 缓存在 `staleTime=60s` 内仍保留 `must_change_password=true`，Layout 路由守卫据此把 `/` 弹回改密页；`useChangePassword.onSuccess` 现同步 `setQueryData` 清除强制标记，再执行页面导航
+  - 2026-11-10 验证 同一浏览器反馈环修复前红 2/2、修复后绿 2/2（路径 `/`，`/me.must_change_password=false`）；`npm --prefix web run build`、`make build`、`gofmt`、`go vet ./...`、`go test ./...` 全部通过
+  - 2026-11-10 交付 T8 验收标准满足；当前仓库未引入前端测试框架，本次真实浏览器反馈环为临时调试产物，验证后删除，不为单缺陷扩依赖（后续若建 P1 前端测试体系再统一引入）
+
 ## 状态枚举
 
 | 状态 | 含义 |
