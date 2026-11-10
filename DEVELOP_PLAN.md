@@ -257,6 +257,20 @@
   - 2026-11-10 交付 T12 验收标准满足；完整 Go 测试、前端构建与 `make build` 通过
   - 2026-11-10 发版 v0.1.5：Release Action 2m30s 成功；重新下载 Release Windows exe 后实测 healthz=200、`POST /v1/responses` 未带令牌返回 401、`GET /admin/api/system/update` 未登录返回 401，确认新入口与更新接口已进入远程产物；三平台二进制 + checksums.txt 共 4 资产齐全
 
+### T13: Anthropic Messages 入口与三协议接入矩阵（P1，用户指令）
+
+- 目标：确立 EverGate 后续客户端接入的默认协议矩阵——OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses`、Anthropic Messages `/v1/messages` 三种下游 API 协议均可接入同一模型路由、key 池、重试、cooldown 与请求日志链路；补齐缺失的 Anthropic Messages 入口
+- 验收标准：
+  1. 三个公共入口均支持 TokenAuth、模型映射、key 池调度、故障切换、请求日志与管理台查询；
+  2. `/v1/messages` mock 上游集成测试覆盖非流式、SSE 流式、tool_use/tool_result、上游错误、无效令牌、首事件前故障切换；
+  3. Anthropic SSE 事件序列可被真实 Anthropic-compatible 客户端消费；
+  4. 三种协议共同能力的请求/响应/流式/工具调用有对照测试矩阵，能力差异必须在 README 中显式列明；
+  5. `go test ./...`、`go vet ./...`、`npm --prefix web run build`、`make build` 全部通过。
+- 边界：第一版 `/v1/messages` 是下游入口协议转换，上游仍统一走 OpenAI-compatible Chat Completions；不做 Anthropic 原生上游适配器、不做数据库 schema 变更、不做超出客户端所需范围的字段全集，未支持字段显式返回可诊断错误
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户指令确认：以后客户端接入默认覆盖 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三种 API 协议；当前前两者已由 T0/T10 交付，Anthropic Messages 为本卡待开发项
+
 ## 状态枚举
 
 | 状态 | 含义 |
@@ -272,8 +286,8 @@
 | 里程碑 | 内容 | 完成判据 |
 |---|---|---|
 | P0（本次） | T0–T7 全部 done | 下方「验收清单」全部通过 |
-| P1（后续） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；会话亲和、健康探测徽标、用量成本统计、Playground、令牌额度/白名单强制、请求级 config 覆盖、系统设置、OTel 可选导出 | T10–T12 按上方任务卡验收；其余项开工前再拆任务卡 |
-| P2（后续，暂不建卡） | Anthropic 原生入口 `/v1/messages` 协议互转、多用户角色、语义缓存、按预算模型降级、插件钩子 | 开工前再拆任务卡 |
+| P1（后续） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T13 三协议接入矩阵与 Anthropic Messages 入口；会话亲和、健康探测徽标、用量成本统计、Playground、令牌额度/白名单强制、请求级 config 覆盖、系统设置、OTel 可选导出 | T10–T13 按上方任务卡验收；其余项开工前再拆任务卡 |
+| P2（后续，暂不建卡） | Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | 开工前再拆任务卡 |
 
 ## 验收清单
 

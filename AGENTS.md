@@ -39,6 +39,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 ## 代码风格
 
 - Go：提交前 `gofmt` 无 diff、`go vet` 通过；错误必须处理或显式 `//nolint` 注明理由。
+- 客户端接入协议矩阵默认包含 OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses`、Anthropic Messages `/v1/messages`；新增接入能力必须说明三种入口的可用性，不能只验证单一协议。
 - 所有时间以 UTC 存储，仅展示层转本地时区。
 - 对外错误响应统一 OpenAI 格式 `{error:{message,type,code}}`；全部渠道耗尽返回 503。
 - 管理台 API 返回统一 JSON 结构；任何接口不得回显上游 key 明文。
