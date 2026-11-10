@@ -198,6 +198,7 @@
   - 2026-11-10 执行 定位与修复：`useMe` 的 `['me']` 缓存在 `staleTime=60s` 内仍保留 `must_change_password=true`，Layout 路由守卫据此把 `/` 弹回改密页；`useChangePassword.onSuccess` 现同步 `setQueryData` 清除强制标记，再执行页面导航
   - 2026-11-10 验证 同一浏览器反馈环修复前红 2/2、修复后绿 2/2（路径 `/`，`/me.must_change_password=false`）；`npm --prefix web run build`、`make build`、`gofmt`、`go vet ./...`、`go test ./...` 全部通过
   - 2026-11-10 交付 T8 验收标准满足；当前仓库未引入前端测试框架，本次真实浏览器反馈环为临时调试产物，验证后删除，不为单缺陷扩依赖（后续若建 P1 前端测试体系再统一引入）
+  - 2026-11-10 发版 v0.1.3：Release Action 1m55s 成功；Release 正文正确提取 CHANGELOG 修复说明，三平台二进制 + checksums.txt 共 4 资产齐全
 
 ## 状态枚举
 
