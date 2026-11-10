@@ -315,6 +315,67 @@ func TestResponsesCustomToolNonStream(t *testing.T) {
 	}
 }
 
+func TestResponsesApplyPatchCustomGrammarStream(t *testing.T) {
+	env := newEnv(t)
+	grammar := "start: apply_patch\napply_patch: \"*** Begin Patch\""
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Tools []chatTool `json:"tools"`
+		}
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Errorf("unmarshal apply_patch request: %v", err)
+		}
+		if len(req.Tools) != 1 || req.Tools[0].Function.Name != "apply_patch" {
+			t.Fatalf("apply_patch must stay a named Chat function tool: %#v", req.Tools)
+		}
+		parameters := req.Tools[0].Function.Parameters
+		properties, _ := parameters["properties"].(map[string]any)
+		input, _ := properties["input"].(map[string]any)
+		description, _ := input["description"].(string)
+		if !strings.Contains(description, "grammar syntax: lark") ||
+			!strings.Contains(description, "grammar definition:") ||
+			!strings.Contains(description, grammar) {
+			t.Fatalf("apply_patch grammar was silently dropped: %q", description)
+		}
+		if parameters["additionalProperties"] != false {
+			t.Fatalf("apply_patch schema must reject extra fields: %#v", parameters)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		payload := strings.Join([]string{
+			`data: {"id":"chatcmpl-patch","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_patch","type":"function","function":{"name":"apply_patch","arguments":"{\"input\":\"*** Begin Patch\"}"}}]},"finish_reason":"tool_calls"}]}`,
+			`data: [DONE]`,
+			"",
+		}, "\n\n")
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{
+		"model":"gateway-model",
+		"input":"apply a patch",
+		"tools":[{
+			"type":"custom",
+			"name":"apply_patch",
+			"description":"Apply a patch",
+			"format":{"type":"grammar","syntax":"lark","definition":"start: apply_patch\napply_patch: \"*** Begin Patch\""}
+		}],
+		"stream":true
+	}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("apply_patch grammar status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"type":"custom_tool_call"`) ||
+		!strings.Contains(body, `"name":"apply_patch"`) ||
+		!strings.Contains(body, `"input":"*** Begin Patch"`) ||
+		!strings.Contains(body, "response.custom_tool_call_input.delta") ||
+		!strings.Contains(body, "response.custom_tool_call_input.done") {
+		t.Fatalf("apply_patch grammar response is incomplete: %s", body)
+	}
+}
+
 func TestResponsesStreamToolCallRoundTrip(t *testing.T) {
 	env := newEnv(t)
 	var phase atomic.Int64
@@ -456,8 +517,8 @@ func TestResponsesCustomToolStreamRoundTrip(t *testing.T) {
 		t.Fatalf("custom tool request status = %d, body = %s", resp.StatusCode, first)
 	}
 	wantFirst := []string{
-		"response.created", "response.output_item.added", "response.custom_tool_call_input.done",
-		"response.output_item.done", "response.completed",
+		"response.created", "response.output_item.added", "response.custom_tool_call_input.delta",
+		"response.custom_tool_call_input.done", "response.output_item.done", "response.completed",
 	}
 	if got := sseEventTypes(first); strings.Join(got, ",") != strings.Join(wantFirst, ",") {
 		t.Fatalf("custom tool event types = %v, want %v\nbody:\n%s", got, wantFirst, first)
@@ -478,6 +539,220 @@ func TestResponsesCustomToolStreamRoundTrip(t *testing.T) {
 	}`)
 	if !strings.Contains(second, `"delta":"custom tool ok"`) {
 		t.Fatalf("second custom tool turn did not return final text: %s", second)
+	}
+}
+
+func TestResponsesCustomToolRawArgumentsFallback(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		payload := strings.Join([]string{
+			`data: {"id":"chatcmpl-raw","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_raw","type":"function","function":{"name":"apply_patch","arguments":"*** Begin Patch *** End Patch"}}]},"finish_reason":"tool_calls"}]}`,
+			`data: [DONE]`,
+			"",
+		}, "\n\n")
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{
+		"model":"gateway-model",
+		"input":"apply patch",
+		"tools":[{"type":"custom","name":"apply_patch"}],
+		"stream":true
+	}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("raw custom arguments status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"delta":"*** Begin Patch *** End Patch"`) ||
+		!strings.Contains(body, `"input":"*** Begin Patch *** End Patch"`) {
+		t.Fatalf("raw custom arguments were dropped: %s", body)
+	}
+}
+
+func TestResponsesNamespaceToolsPreserveCallNamespace(t *testing.T) {
+	env := newEnv(t)
+	var phase atomic.Int64
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		var payload string
+		if phase.Add(1) == 1 {
+			var req struct {
+				Tools []chatTool `json:"tools"`
+			}
+			if err := json.Unmarshal([]byte(body), &req); err != nil {
+				t.Errorf("unmarshal namespace request: %v", err)
+			}
+			if len(req.Tools) != 2 || req.Tools[0].Function.Name != "spawn_agent" || req.Tools[1].Function.Name != "apply_patch" {
+				t.Fatalf("namespace tools were not flattened safely: %#v", req.Tools)
+			}
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-namespace","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_function","type":"function","function":{"name":"spawn_agent","arguments":"{\"agent\":\"a\"}"}},{"index":1,"id":"call_patch","type":"function","function":{"name":"apply_patch","arguments":"{\"input\":\"patch\"}"}}]},"finish_reason":"tool_calls"}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		} else {
+			var req struct {
+				Messages []chatMessage `json:"messages"`
+			}
+			if err := json.Unmarshal([]byte(body), &req); err != nil {
+				t.Errorf("unmarshal namespace continuation: %v", err)
+			}
+			if len(req.Messages) != 4 ||
+				req.Messages[0].ToolCalls[0].Function.Name != "spawn_agent" ||
+				req.Messages[1].Role != "tool" ||
+				req.Messages[2].ToolCalls[0].Function.Name != "apply_patch" ||
+				req.Messages[3].Role != "tool" {
+				t.Fatalf("namespace continuation was not replayed: %#v", req.Messages)
+			}
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-namespace-final","object":"chat.completion.chunk","created":124,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"namespace ok"}}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		}
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	tools := `[
+		{"type":"namespace","name":"multi_agent_v1","description":"Agents","tools":[
+			{"type":"function","name":"spawn_agent","description":"Spawn","parameters":{"type":"object","properties":{"agent":{"type":"string"}},"required":["agent"]}},
+			{"type":"custom","name":"apply_patch","description":"Patch"}
+		]}
+	]`
+	_, first := env.responses(t, `{"model":"gateway-model","input":"use tools","stream":true,"tools":`+tools+`}`)
+	if !strings.Contains(first, `"namespace":"multi_agent_v1"`) ||
+		!strings.Contains(first, `"type":"function_call"`) ||
+		!strings.Contains(first, `"type":"custom_tool_call"`) {
+		t.Fatalf("namespace was not restored to Responses output: %s", first)
+	}
+
+	_, second := env.responses(t, `{
+		"model":"gateway-model","stream":true,
+		"input":[
+			{"type":"function_call","call_id":"call_function","name":"spawn_agent","namespace":"multi_agent_v1","arguments":"{\"agent\":\"a\"}"},
+			{"type":"function_call_output","call_id":"call_function","output":"started"},
+			{"type":"custom_tool_call","call_id":"call_patch","name":"apply_patch","namespace":"multi_agent_v1","input":"patch"},
+			{"type":"custom_tool_call_output","call_id":"call_patch","output":"done"}
+		]
+	}`)
+	if !strings.Contains(second, `"delta":"namespace ok"`) {
+		t.Fatalf("namespace continuation did not finish: %s", second)
+	}
+}
+
+func TestResponsesAdditionalToolsItemIsHoisted(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []chatMessage `json:"messages"`
+			Tools    []chatTool    `json:"tools"`
+		}
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Errorf("unmarshal additional_tools request: %v", err)
+		}
+		if len(req.Messages) != 1 || req.Messages[0].Role != "user" {
+			t.Fatalf("additional_tools item leaked into messages: %#v", req.Messages)
+		}
+		if len(req.Tools) != 2 || req.Tools[0].Function.Name != "lookup" || req.Tools[1].Function.Name != "apply_patch" {
+			t.Fatalf("additional_tools were not hoisted: %#v", req.Tools)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		payload := strings.Join([]string{
+			`data: {"id":"chatcmpl-additional","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_patch","type":"function","function":{"name":"apply_patch","arguments":"{\"input\":\"patch\"}"}}]},"finish_reason":"tool_calls"}]}`,
+			`data: [DONE]`,
+			"",
+		}, "\n\n")
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{
+		"model":"gateway-model",
+		"stream":true,
+		"input":[
+			{"type":"additional_tools","id":"at_1","role":"developer","tools":[
+				{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}}}},
+				{"type":"custom","name":"apply_patch","format":{"type":"grammar","syntax":"lark","definition":"start: patch"}}
+			]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"use tool"}]}
+		]
+	}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("additional_tools status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"type":"custom_tool_call"`) || !strings.Contains(body, `"input":"patch"`) {
+		t.Fatalf("additional_tools custom output was incomplete: %s", body)
+	}
+}
+
+func TestResponsesConfigurationUpdateOverridesReasoningEffort(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages        []chatMessage `json:"messages"`
+			ReasoningEffort string        `json:"reasoning_effort"`
+			Verbosity       string        `json:"verbosity"`
+		}
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Errorf("unmarshal configuration_update request: %v", err)
+		}
+		if len(req.Messages) != 1 || req.Messages[0].Role != "user" {
+			t.Fatalf("configuration_update leaked into messages: %#v", req.Messages)
+		}
+		if req.ReasoningEffort != "high" {
+			t.Fatalf("reasoning_effort = %q, want high", req.ReasoningEffort)
+		}
+		if req.Verbosity != "low" {
+			t.Fatalf("verbosity = %q, want low", req.Verbosity)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		payload := strings.Join([]string{
+			`data: {"id":"chatcmpl-config","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"config ok"}}]}`,
+			`data: [DONE]`,
+			"",
+		}, "\n\n")
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{
+		"model":"gateway-model",
+		"stream":true,
+		"reasoning":{"effort":"low"},
+		"text":{"verbosity":"low"},
+		"input":[
+			{"type":"configuration_update","reasoning":{"effort":"high"}},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}
+		]
+	}`)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"delta":"config ok"`) {
+		t.Fatalf("configuration_update was not accepted: %d %s", resp.StatusCode, body)
+	}
+}
+
+func TestResponsesRejectsUnsupportedCustomGrammarSyntax(t *testing.T) {
+	env := newEnv(t)
+	resp, body := env.responses(t, `{
+		"model":"gateway-model",
+		"input":"apply patch",
+		"tools":[{"type":"custom","name":"apply_patch","format":{"type":"grammar","syntax":"json","definition":"start"}}]
+	}`)
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "grammar syntax") {
+		t.Fatalf("unsupported grammar syntax should be diagnostic: %d %s", resp.StatusCode, body)
 	}
 }
 

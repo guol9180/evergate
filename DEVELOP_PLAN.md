@@ -292,6 +292,29 @@
   - 2026-11-10 发版 准备发布 v0.1.6：将修复送入 GitHub Actions 自动打包，供已安装用户通过更新入口下载
   - 2026-11-10 发版 v0.1.6：Release Action 42781290657 成功；Release 正文正确提取 custom tool 修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（27,983,872 bytes，启动显示 version=v0.1.6）后在 18900/18901 隔离实例 + mock 上游完成端到端烟测：第一轮 custom tool 返回 200 且包含 `custom_tool_call`、`input:"ping"` 与 `response.custom_tool_call_input.done`；第二轮 `custom_tool_call_output` 回传返回 200 与最终文本 `remote custom ok`
 
+### T15: Codex apply_patch grammar 与 Responses 兼容性审计（P1，用户反馈缺陷）
+
+- 目标：修复 Codex 声明 `apply_patch` Responses custom tool grammar 时被 EverGate 400 拒绝的问题，并系统学习允许参考项目的 Responses↔Chat Completions 桥接实现，审计 EverGate 当前 Responses 子集，避免继续逐字段踩坑
+- 验收标准：
+  1. 公共 HTTP 边界红测先复现 `Responses custom tool "apply_patch" grammar format is not supported`，修复后通过；
+  2. 官方 schema 与至少三个允许参考项目（gpt-load / bifrost / LiteLLM 核心，或 OpenAI Codex 开源实现）的实际桥接策略完成核对，结论落入 docs；
+  3. 尽可能捕获本机 Codex 真实 `/v1/responses` 请求形状（令牌脱敏），对照 EverGate 支持矩阵列出已支持 / 显式不支持 / 误拒绝项；
+  4. `apply_patch` grammar 在 Chat Completions 上游获得可执行的降级策略，不能静默丢失约束；custom tool 调用与回传仍保持 T14 语义；
+  5. 回归测试覆盖 grammar 声明、非流式、SSE、`custom_tool_call_output` 与错误诊断；
+  6. Responses namespace 工具 flattened 后的输出必须恢复原 `namespace`，历史回传仍使用上游扁平名；用 mock 上游覆盖 function 与 custom 两类 namespace call；
+  7. Responses Lite `additional_tools` 被 hoist 到上游 tools，`configuration_update.reasoning.effort` 能覆盖上游 reasoning effort，`text.verbosity` 转为 Chat `verbosity`；
+  8. 真实 Codex 0.167 alpha 完成一轮 `apply_patch` 创建文件与 `custom_tool_call_output` 回传；
+  9. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 全部通过。
+- 边界：本卡仍不把 EverGate 改成 Responses 原生上游透传，不改渠道模型与数据库 schema；只修 Codex 所需 Responses 子集与明显误拒绝项；参考项目严格遵守 AGENTS 许可证红线，不复制 new-api / OmniRoute 代码
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户反馈新版错误为 `Responses custom tool "apply_patch" grammar format is not supported`，并要求学习其他项目的 Responses 对接方式；T14 只支持自由文本 custom tool，grammar 变体被显式拒绝，需重新审计而非继续局部补丁
+  - 2026-11-10 执行 已完成 OpenAI 官方 schema、OpenAI Codex、Bifrost、gpt-load、LiteLLM 源码审计并新增 `docs/Responses协议兼容性审计.md`；额外发现 EverGate 当前只扁平化 namespace 工具、输出不恢复 namespace，属于下一个高概率 Codex 断点，纳入本卡修复范围
+  - 2026-11-10 执行 红测 `TestResponsesApplyPatchCustomGrammarStream` 复现 `Responses custom tool "apply_patch" grammar format is not supported`；随后实现 grammar→function 参数描述降级、raw arguments fallback、custom input `.delta + .done` 双事件、namespace 恢复、`additional_tools` hoist 与 `configuration_update` effort 覆盖
+  - 2026-11-10 验证 捕获真实 Codex 请求发现 `text.verbosity=low` 亦会被白名单误拒绝，已补 Chat `verbosity` 转换；真实 Codex 0.167.0-alpha.3.2 通过当前源码构建 + mock 上游完整执行 `apply_patch`：grammar 进入 function 参数描述、Codex 创建 `t15-real.txt`、`custom_tool_call_output` 正确回传并获得最终文本
+  - 2026-11-10 交付 T15 验收标准满足：`gofmt`、`go vet ./...`、`go test ./... -count=1`、`npm --prefix web run build`、`make build` 全部通过；`npm` / `make` 因沙箱内 esbuild spawn EPERM 在沙箱外执行
+  - 2026-11-10 发版 准备发布 v0.1.7：将 apply_patch grammar 修复与 Responses 兼容补齐送入 GitHub Actions 自动打包
+
 ## 状态枚举
 
 | 状态 | 含义 |

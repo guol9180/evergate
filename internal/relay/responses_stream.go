@@ -27,6 +27,7 @@ type responsesStreamTool struct {
 	outputIndex int
 	done        bool
 	custom      bool
+	namespace   string
 }
 
 type responsesStream struct {
@@ -48,7 +49,7 @@ type responsesStream struct {
 	finishRS bool
 	usage    map[string]any
 
-	customTools map[string]struct{}
+	toolIdentities map[string]responsesToolIdentity
 }
 
 // streamResponsesResponse converts an upstream Chat Completions SSE stream to
@@ -93,7 +94,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 	state := &responsesStream{
 		w: newSSEWriter(c.Writer), model: model, now: r.opt.Now(),
-		tools: map[int]*responsesStreamTool{}, customTools: responsesCustomTools(c),
+		tools: map[int]*responsesStreamTool{}, toolIdentities: responsesToolIdentities(c),
 	}
 	state.w.header()
 	stopKeepalive := state.w.startKeepalive()
@@ -199,14 +200,14 @@ func (s *responsesStream) consume(data string) {
 			name = tool.name
 		}
 		if tool == nil {
-			_, custom := s.customTools[name]
+			identity := toolIdentity(s.toolIdentities, name)
 			idPrefix := "fc"
-			if custom {
+			if identity.Custom {
 				idPrefix = "ctc"
 			}
 			tool = &responsesStreamTool{
 				id: responseItemID(idPrefix, chunk.ID+"-"+call.ID+"-"+name), outputIndex: -1,
-				name: name, callID: call.ID, custom: custom,
+				name: name, callID: call.ID, custom: identity.Custom, namespace: identity.Namespace,
 			}
 			s.tools[call.Index] = tool
 		}
@@ -216,15 +217,25 @@ func (s *responsesStream) consume(data string) {
 		if call.Function.Name != "" {
 			tool.name = call.Function.Name
 			if tool.outputIndex < 0 {
-				_, tool.custom = s.customTools[tool.name]
+				identity := toolIdentity(s.toolIdentities, tool.name)
+				tool.custom = identity.Custom
+				tool.namespace = identity.Namespace
 			}
 		}
 		if tool.outputIndex < 0 {
 			tool.outputIndex = len(s.output)
 			if tool.custom {
-				s.output = append(s.output, map[string]any{"id": tool.id, "type": "custom_tool_call", "status": "in_progress", "call_id": tool.callID, "name": tool.name, "input": ""})
+				item := map[string]any{"id": tool.id, "type": "custom_tool_call", "status": "in_progress", "call_id": tool.callID, "name": tool.name, "input": ""}
+				if tool.namespace != "" {
+					item["namespace"] = tool.namespace
+				}
+				s.output = append(s.output, item)
 			} else {
-				s.output = append(s.output, map[string]any{"id": tool.id, "type": "function_call", "status": "in_progress", "call_id": tool.callID, "name": tool.name, "arguments": ""})
+				item := map[string]any{"id": tool.id, "type": "function_call", "status": "in_progress", "call_id": tool.callID, "name": tool.name, "arguments": ""}
+				if tool.namespace != "" {
+					item["namespace"] = tool.namespace
+				}
+				s.output = append(s.output, item)
 			}
 			s.event("response.output_item.added", map[string]any{"output_index": tool.outputIndex, "item": s.output[tool.outputIndex]})
 		}
@@ -302,11 +313,10 @@ func (s *responsesStream) finish() {
 		tool.done = true
 		var item map[string]any
 		if tool.custom {
-			input, err := customToolInput(tool.arguments.String())
-			if err != nil {
-				s.fail(err.Error())
-				return
-			}
+			input := customToolInput(tool.arguments.String())
+			s.event("response.custom_tool_call_input.delta", map[string]any{
+				"item_id": tool.id, "output_index": tool.outputIndex, "delta": input,
+			})
 			s.event("response.custom_tool_call_input.done", map[string]any{
 				"item_id": tool.id, "output_index": tool.outputIndex, "input": input,
 			})
@@ -314,6 +324,9 @@ func (s *responsesStream) finish() {
 		} else {
 			s.event("response.function_call_arguments.done", map[string]any{"item_id": tool.id, "output_index": tool.outputIndex, "arguments": tool.arguments.String()})
 			item = map[string]any{"id": tool.id, "type": "function_call", "status": "completed", "call_id": tool.callID, "name": tool.name, "arguments": tool.arguments.String()}
+		}
+		if tool.namespace != "" {
+			item["namespace"] = tool.namespace
 		}
 		s.output[tool.outputIndex] = item
 		s.event("response.output_item.done", map[string]any{"output_index": tool.outputIndex, "item": item})

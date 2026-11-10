@@ -73,7 +73,7 @@ supports_websockets = false
 setx EVERGATE_API_KEY "eg-你的EverGate令牌"
 ```
 
-EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat Completions 请求，并保留路由、key 池、重试、cooldown 与请求日志链路。当前支持 `function` 与自由文本 `custom` 两类工具：custom tool 会在上游降级为单字段 `input` 的 function schema，返回时恢复为 `custom_tool_call` / `custom_tool_call_output`；grammar 约束、异步/deferred custom tool、programmatic allowed_callers 与 Responses WebSocket 不在本阶段支持范围内。
+EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat Completions 请求，并保留路由、key 池、重试、cooldown 与请求日志链路。当前支持 `function`、自由文本 `custom`、`lark`/`regex` grammar custom tool、namespace 工具、Responses Lite `additional_tools`、`configuration_update.reasoning.effort` 与 `text.verbosity`；custom tool 会在上游降级为单字段 `input` 的 function schema，grammar 会写入参数描述（Chat 上游无法硬约束），返回时恢复为 `custom_tool_call` / `custom_tool_call_output` 并补回 namespace。异步/deferred custom tool、programmatic allowed_callers、图片输入、加密 compaction 与 Responses WebSocket 不在本阶段支持范围内。
 
 > 端口约定：默认 `8787`，避开本地 Java 项目常用的 8080；如需修改只改 `evergate.yml` 的 `server.port`，无需改代码。
 - 存活检查：`GET /healthz`；指标：`GET /metrics`（仅允许 loopback 访问）
