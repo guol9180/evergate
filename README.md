@@ -21,7 +21,7 @@ P0（第一版交付范围）：
 - **安全**：上游 key AES-GCM 加密落库；管理台密码 bcrypt；任何接口不回显明文
 - **交付形态**：`1 个可执行文件 + 1 个 SQLite 数据文件`，运行 `./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 任何外部依赖
 
-P1/P2 方向（会话亲和、Playground、用量报表、Anthropic 原生入口等）见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)。
+P1/P2 方向（Codex `/v1/responses` 兼容入口、会话亲和、Playground、用量报表、Anthropic 原生入口等）见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)。
 
 **非目标**：多租户 SaaS 计费、K8s 部署、MCP/A2A 协议代理、模型训练/微调、语义缓存（P2 再议）。
 

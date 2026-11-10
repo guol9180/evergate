@@ -213,6 +213,21 @@
   - 2026-11-10 交付 T9 验收标准满足：管理台侧边栏、浏览器角标、Windows exe 图标共用同一视觉源；Linux/macOS 交叉编译不受影响
   - 2026-11-10 发版 v0.1.4：Release Action 1m47s 成功；重新下载 Release Windows exe 后仍可提取 32×32 图标，三平台二进制 + checksums.txt 共 4 资产齐全，Release 正文正确提取 CHANGELOG 说明
 
+### T10: Codex 接入兼容层——OpenAI Responses API 入口（P1，用户指令）
+
+- 目标：新增 `POST /v1/responses`，把 Codex 使用的 OpenAI Responses 请求/流式事件转换为现有 OpenAI-compatible Chat Completions 上游协议，使 Codex 可通过 EverGate 下游令牌走统一路由、key 池、重试与日志链路
+- 验收标准：
+  1. Codex `config.toml` 可配置 `base_url="http://127.0.0.1:8787/v1"`、`wire_api="responses"` 并完成一次真实代码问答任务；
+  2. mock 上游集成测试覆盖非流式、SSE 流式、工具调用、上游错误、令牌无效四类场景；
+  3. Responses SSE 事件序列可被 Codex 消费，首个事件前复用现有重试/切换能力，首个事件后不得重复输出；
+  4. 请求进入既有 TokenAuth、模型路由、key 池、cooldown、retry、request log 与管理台日志链路；
+  5. README 提供 Codex 接入示例（`model_provider`、`base_url`、`env_key`/令牌来源），并说明当前上游仍走 Chat Completions 转换；
+  6. `go test ./...`、`go vet ./...`、`make build` 全部通过。
+- 边界：本卡做协议转换入口，不改数据库 schema；不新增外部服务；第一版不改渠道模型（上游仍按 OpenAI-compatible Chat Completions 处理），不做 Anthropic `/v1/messages`；Responses 字段只实现 Codex 实际所需子集，未支持字段必须显式返回可诊断错误而非静默丢弃
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户指令确认：把 Codex 接入加入开发计划。前置事实已核实：Codex 官方配置要求自定义 provider 使用 `wire_api="responses"`；当前 EverGate `POST /v1/responses` 返回 404，现有入口仅 `/v1/chat/completions` 与 `/v1/models`
+
 ## 状态枚举
 
 | 状态 | 含义 |
@@ -228,7 +243,7 @@
 | 里程碑 | 内容 | 完成判据 |
 |---|---|---|
 | P0（本次） | T0–T7 全部 done | 下方「验收清单」全部通过 |
-| P1（后续，暂不建卡） | 会话亲和、健康探测徽标、用量成本统计、Playground、令牌额度/白名单强制、请求级 config 覆盖、系统设置、OTel 可选导出 | 开工前再拆任务卡 |
+| P1（后续） | T10 Codex 接入；会话亲和、健康探测徽标、用量成本统计、Playground、令牌额度/白名单强制、请求级 config 覆盖、系统设置、OTel 可选导出 | T10 按上方任务卡验收；其余项开工前再拆任务卡 |
 | P2（后续，暂不建卡） | Anthropic 原生入口 `/v1/messages` 协议互转、多用户角色、语义缓存、按预算模型降级、插件钩子 | 开工前再拆任务卡 |
 
 ## 验收清单
