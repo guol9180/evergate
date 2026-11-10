@@ -30,8 +30,8 @@ export default function ChangePassword() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-slate-50">
-      <Card className="w-96 p-8">
+    <div className="flex h-full items-center justify-center p-6">
+      <Card className="w-full max-w-md bg-white/95 p-8 shadow-xl backdrop-blur">
         <div className="mb-4 flex flex-col items-center gap-2 text-center">
           <ShieldAlert size={28} className="text-amber-500" />
           <h1 className="text-lg font-bold">首次登录须修改密码</h1>

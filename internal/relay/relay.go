@@ -273,6 +273,16 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		if ct == "" {
 			ct = "application/json"
 		}
+		if isResponsesRequest(c) {
+			converted, cerr := convertChatCompletionToResponses(data, model, r.opt.Now())
+			if cerr != nil {
+				appendTrace(0, "internal", "转换 Responses 响应失败: "+cerr.Error(), start)
+				writeOpenAIError(c, http.StatusBadGateway, "server_error", "responses_conversion_failed", cerr.Error())
+				return outcomeDone
+			}
+			data = converted
+			ct = "application/json"
+		}
 		c.Data(http.StatusOK, ct, data)
 		return outcomeDone
 	}

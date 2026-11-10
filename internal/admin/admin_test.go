@@ -131,6 +131,14 @@ func TestAuthFlowAndForcedPasswordChange(t *testing.T) {
 	}
 }
 
+func TestSystemUpdateStatusRequiresAuth(t *testing.T) {
+	env := newEnv(t)
+	code, _, _ := env.req(t, "GET", "/admin/api/system/update", "", "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("update status without session = %d, want 401", code)
+	}
+}
+
 func TestChannelAndKeyManagement(t *testing.T) {
 	env := newEnv(t)
 	login(t, env, "admin", "admin123")

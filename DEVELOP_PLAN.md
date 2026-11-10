@@ -224,9 +224,37 @@
   5. README 提供 Codex 接入示例（`model_provider`、`base_url`、`env_key`/令牌来源），并说明当前上游仍走 Chat Completions 转换；
   6. `go test ./...`、`go vet ./...`、`make build` 全部通过。
 - 边界：本卡做协议转换入口，不改数据库 schema；不新增外部服务；第一版不改渠道模型（上游仍按 OpenAI-compatible Chat Completions 处理），不做 Anthropic `/v1/messages`；Responses 字段只实现 Codex 实际所需子集，未支持字段必须显式返回可诊断错误而非静默丢弃
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-10 计划 用户指令确认：把 Codex 接入加入开发计划。前置事实已核实：Codex 官方配置要求自定义 provider 使用 `wire_api="responses"`；当前 EverGate `POST /v1/responses` 返回 404，现有入口仅 `/v1/chat/completions` 与 `/v1/models`
+  - 2026-11-10 执行 用户指令确认开始 T10；测试切面采用公共 HTTP 边界（gateway `/v1/responses` → mock 上游 `/chat/completions`），先写非流式/SSE/工具调用红色用例，再实现协议转换
+  - 2026-11-10 执行 新增 `internal/relay/responses.go` 与 `responses_stream.go`：请求白名单校验、instructions/input/function_call/function_call_output 转换、namespace 工具扁平化、非流式响应转换、Chat SSE → Responses 语义事件转换；`cmd/evergate/main.go` 挂载 TokenAuth 保护的 `/v1/responses`
+  - 2026-11-10 验证 relay 公共接口测试覆盖非流式、SSE、工具调用多轮回传、流中错误、不支持字段显式 400、无效令牌 401、首个 Responses 事件前故障切换；完整 `go test ./internal/relay` 通过。真实 Codex v0.167.0-alpha.3.2 通过临时 EverGate 调用 mock 上游完成两轮请求：第一轮返回 `exec_command` function_call，第二轮已转换出 assistant tool_calls + tool output，最终输出 `EverGate tool ok`
+  - 2026-11-10 交付 T10 验收标准满足；`gofmt`、`go vet ./...`、`go test ./... -count=1`、`npm --prefix web run build`、`make build` 全部通过
+
+### T11: 首次启动打开管理台与桌面体验优化（P1，用户指令）
+
+- 目标：Windows 用户双击 exe 启动后自动打开后台管理页面，无需记忆或输入 `http://127.0.0.1:8787`
+- 验收标准：`server.open_browser` 可控制是否自动打开，默认 true；服务完成监听并通过 healthz 探活后再调用系统默认浏览器；`127.0.0.1`/局域网地址按 `server.base_path` 生成正确 URL；Windows/macOS/Linux 打开命令有单元覆盖或显式平台分支；启动失败不打开页面；`go test ./...`、`make build` 通过
+- 边界：不新增安装器、服务、快捷方式文件或权限申请；默认开启以匹配本地双击使用场景，服务器/自动化部署可显式设为 false；不做开机自启；打开失败只记录 warning 不影响网关服务
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户指令确认：启动 exe 后自动弹出管理台页面
+  - 2026-11-10 执行 新增 `internal/browser`（AdminURL / healthz 就绪等待 / Windows-macOS-Linux 默认浏览器命令）与 `server.open_browser` 配置（默认 true）；主程序在服务监听后异步探活并打开管理台，失败仅 warning
+  - 2026-11-10 验证 `internal/browser`、`internal/config` 单元测试通过：URL/base_path、三平台命令、默认开关、YAML false 覆盖、healthz 未就绪不打开均覆盖
+  - 2026-11-10 交付 T11 验收标准满足；完整 Go 测试、前端构建与 `make build` 通过
+
+### T12: 管理台界面 refinement 与自动更新检查（P1，用户指令）
+
+- 目标：优化现有五页面管理台的视觉层级、空状态与可读性；增加 GitHub Release 自动更新检查，让用户在管理台内看到当前版本、最新版本与下载入口
+- 验收标准：更新检查走管理台会话鉴权 API，不向前端暴露 GitHub token；请求失败/离线/开发版本显式降级；版本比较有单元测试；UI 在 1280×800 常规桌面与窄屏下不破版；`npm run build`、`go test ./...`、`make build` 通过
+- 边界：第一版做“自动检查 + 明确下载入口”，不做静默替换正在运行的 exe、不做强制升级、不做差量更新、不引入 Electron/安装器；保持现有五页面信息架构不推倒重做
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-10 计划 用户指令确认：优化管理台 UI，并新增自动更新获取能力
+  - 2026-11-10 执行 新增 `internal/update`（版本比较、GitHub Release 查询、403/429 后 Atom 降级、Windows 资产推导）与管理台会话保护接口 `GET /admin/api/system/update`；前端新增自动更新查询、Dashboard 更新横幅/下载按钮、侧边栏版本区，并优化侧边栏窄屏、登录卡片、背景层级、指标卡与表格滚动
+  - 2026-11-10 验证 update/admin 单元测试通过；临时 v0.1.3 实例真实检查到 GitHub v0.1.4 并返回 Windows 下载 URL；无头 Chrome 实测 Dashboard 1280×800 与 390×844 均无横向溢出，且显示 v0.1.4 更新提示与下载入口
+  - 2026-11-10 交付 T12 验收标准满足；完整 Go 测试、前端构建与 `make build` 通过
 
 ## 状态枚举
 
@@ -243,7 +271,7 @@
 | 里程碑 | 内容 | 完成判据 |
 |---|---|---|
 | P0（本次） | T0–T7 全部 done | 下方「验收清单」全部通过 |
-| P1（后续） | T10 Codex 接入；会话亲和、健康探测徽标、用量成本统计、Playground、令牌额度/白名单强制、请求级 config 覆盖、系统设置、OTel 可选导出 | T10 按上方任务卡验收；其余项开工前再拆任务卡 |
+| P1（后续） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；会话亲和、健康探测徽标、用量成本统计、Playground、令牌额度/白名单强制、请求级 config 覆盖、系统设置、OTel 可选导出 | T10–T12 按上方任务卡验收；其余项开工前再拆任务卡 |
 | P2（后续，暂不建卡） | Anthropic 原生入口 `/v1/messages` 协议互转、多用户角色、语义缓存、按预算模型降级、插件钩子 | 开工前再拆任务卡 |
 
 ## 验收清单

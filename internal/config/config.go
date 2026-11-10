@@ -23,8 +23,9 @@ type Config struct {
 
 // Server 是 HTTP 服务引导配置。
 type Server struct {
-	Port     int    `yaml:"port"`
-	BasePath string `yaml:"base_path"`
+	Port        int    `yaml:"port"`
+	BasePath    string `yaml:"base_path"`
+	OpenBrowser *bool  `yaml:"open_browser"`
 }
 
 // Storage 是存储引导配置。
@@ -89,7 +90,7 @@ func (d Duration) MarshalYAML() (any, error) {
 // Default 返回与 evergate.yml 模板一致的默认配置。
 func Default() Config {
 	return Config{
-		Server:  Server{Port: 8787, BasePath: ""},
+		Server:  Server{Port: 8787, BasePath: "", OpenBrowser: boolPtr(true)},
 		Storage: Storage{SQLitePath: "./data/evergate.db", LogRetentionDays: 14},
 		Defaults: Defaults{
 			ConnectTimeout:    Duration{Duration: 10 * time.Second},
@@ -100,6 +101,13 @@ func Default() Config {
 		},
 	}
 }
+
+// ShouldOpenBrowser 默认打开；服务器部署可用 server.open_browser: false 关闭。
+func (s Server) ShouldOpenBrowser() bool {
+	return s.OpenBrowser == nil || *s.OpenBrowser
+}
+
+func boolPtr(v bool) *bool { return &v }
 
 // Load 读取 path 的 YAML 配置。文件不存在时返回默认值与 nil 错误（由调用方提示）；
 // YAML 中缺省的字段保留默认值。

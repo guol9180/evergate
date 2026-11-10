@@ -5,6 +5,23 @@ export interface AdminInfo {
   must_change_password: boolean
 }
 
+export interface UpdateAsset {
+  name: string
+  browser_download_url: string
+  size: number
+}
+
+export interface UpdateStatus {
+  current_version: string
+  latest_version?: string
+  release_url?: string
+  published_at?: string
+  update_available: boolean
+  development?: boolean
+  checked_at: string
+  assets?: UpdateAsset[]
+}
+
 export interface ChannelTimeouts {
   connect_sec?: number | null
   first_token_sec?: number | null

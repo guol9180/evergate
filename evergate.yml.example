@@ -3,6 +3,7 @@
 server:
   port: 8787
   base_path: ""            # 可选挂在子路径下
+  open_browser: true       # 启动后自动打开管理台；服务器部署可改为 false
 storage:
   sqlite_path: ./data/evergate.db
   log_retention_days: 14

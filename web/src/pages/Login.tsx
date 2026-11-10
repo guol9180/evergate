@@ -1,6 +1,5 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TowerControl } from 'lucide-react'
 import { useLogin } from '../api/hooks'
 import { Button, Card, ErrorText, Field, Input } from '../components/ui'
 
@@ -21,10 +20,12 @@ export default function Login() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center bg-slate-50">
-      <Card className="w-96 p-8">
-        <div className="mb-6 flex flex-col items-center gap-2">
-          <TowerControl size={32} className="text-indigo-600" />
+    <div className="flex h-full items-center justify-center p-6">
+      <Card className="w-full max-w-md bg-white/95 p-8 shadow-xl backdrop-blur">
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50">
+            <img src="/logo.svg" alt="" width={28} height={28} />
+          </span>
           <h1 className="text-lg font-bold text-slate-900">EverGate 管理台</h1>
           <p className="text-xs text-slate-400">One gate, every model, zero interruption</p>
         </div>

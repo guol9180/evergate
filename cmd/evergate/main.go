@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"evergate/internal/admin"
+	"evergate/internal/browser"
 	"evergate/internal/config"
 	"evergate/internal/health"
 	"evergate/internal/pool"
@@ -24,6 +25,7 @@ import (
 	"evergate/internal/router"
 	"evergate/internal/server"
 	"evergate/internal/store"
+	"evergate/internal/update"
 	"evergate/web"
 )
 
@@ -128,6 +130,7 @@ func run() error {
 		MasterKey: cfg.Security.MasterKey,
 		Pool:      poolMgr,
 		Session:   admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
+		Update:    update.NewChecker(version, update.DefaultAPIURL, time.Now),
 	})
 
 	engine := server.New(server.Options{
@@ -136,6 +139,7 @@ func run() error {
 		Logger:   logger,
 		SetupRoutes: func(r gin.IRoutes) {
 			r.POST("/v1/chat/completions", relay.TokenAuth(db), relayHandler.HandleChatCompletions)
+			r.POST("/v1/responses", relay.TokenAuth(db), relayHandler.HandleResponses)
 			r.GET("/v1/models", relay.TokenAuth(db), relayHandler.HandleModels)
 			adminAPI.RegisterRoutes(r)
 		},
@@ -162,6 +166,14 @@ func run() error {
 		slog.String("base_path", cfg.Server.BasePath),
 		slog.String("db", cfg.Storage.SQLitePath),
 	)
+	if cfg.Server.ShouldOpenBrowser() {
+		adminURL := browser.AdminURL(cfg.Server.Port, cfg.Server.BasePath)
+		go func() {
+			if err := browser.WaitUntilReady(adminURL, browser.Open, 100*time.Millisecond); err != nil {
+				logger.Warn("open admin UI failed", slog.Any("error", err), slog.String("url", adminURL))
+			}
+		}()
+	}
 
 	// Windows 下以 Ctrl+C（SIGINT）为主，SIGTERM 兜底；最长 30s 排空（任务书 4.9）。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

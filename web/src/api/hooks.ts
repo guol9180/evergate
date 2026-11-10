@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, jsonBody } from './client'
-import type { AdminInfo, Channel, ChannelDetail, LogsPage, TestResult, Token } from './types'
+import type { AdminInfo, Channel, ChannelDetail, LogsPage, TestResult, Token, UpdateStatus } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -21,6 +21,17 @@ export function useLogin() {
 
 export function useLogout() {
   return useMutation({ mutationFn: () => api<{ logout: boolean }>('/admin/api/auth/logout', { method: 'POST' }) })
+}
+
+export function useUpdateStatus(enabled = true) {
+  return useQuery({
+    queryKey: ['system-update'],
+    queryFn: () => api<UpdateStatus>('/admin/api/system/update'),
+    enabled,
+    retry: false,
+    staleTime: 5 * 60_000,
+    refetchInterval: 30 * 60_000,
+  })
 }
 
 export function useChangePassword() {

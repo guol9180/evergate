@@ -1,4 +1,10 @@
 @import "tailwindcss";
 
 html, body, #root { height: 100%; }
-body { @apply bg-slate-50 text-slate-900 antialiased; }
+body {
+  @apply text-slate-900 antialiased;
+  background:
+    radial-gradient(circle at 88% -10%, rgba(79, 70, 229, 0.10), transparent 34%),
+    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  background-attachment: fixed;
+}

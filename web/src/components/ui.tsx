@@ -3,7 +3,7 @@ import { type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, us
 import { X } from 'lucide-react'
 
 export function Button({ variant = 'default', size = 'md', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' }) {
-  const base = 'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none'
+  const base = 'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none'
   const variants = {
     default: 'bg-indigo-600 text-white hover:bg-indigo-700',
     outline: 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50',

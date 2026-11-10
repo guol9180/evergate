@@ -3,6 +3,7 @@
 package admin
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 
 	"evergate/internal/pool"
 	"evergate/internal/store"
+	"evergate/internal/update"
 )
 
 // Options 管理 API 装配依赖。
@@ -27,6 +29,7 @@ type Options struct {
 	MasterKey string        // 解密上游 key 用于连通测试
 	Pool      *pool.Manager // 渠道健康推导 / key 重置
 	Session   *SessionManager
+	Update    *update.Checker
 }
 
 // API 管理台接口集合。
@@ -46,6 +49,7 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	// 会话保护区（sessionMiddleware 放行 me/password 以强制首登改密）
 	r.GET("/admin/api/auth/me", a.sessionMiddleware(), a.me)
 	r.PUT("/admin/api/auth/password", a.sessionMiddleware(), a.changePassword)
+	r.GET("/admin/api/system/update", a.sessionMiddleware(), a.systemUpdate)
 	r.GET("/admin/api/channels", a.sessionMiddleware(), a.listChannels)
 	r.POST("/admin/api/channels", a.sessionMiddleware(), a.createChannel)
 	r.GET("/admin/api/channels/:id", a.sessionMiddleware(), a.getChannel)
@@ -124,6 +128,21 @@ func (a *API) changePassword(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{"changed": true})
+}
+
+func (a *API) systemUpdate(c *gin.Context) {
+	if a.opt.Update == nil {
+		fail(c, http.StatusServiceUnavailable, "更新检查未配置")
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	status, err := a.opt.Update.Check(ctx)
+	if err != nil {
+		fail(c, http.StatusBadGateway, "更新检查失败："+err.Error())
+		return
+	}
+	ok(c, status)
 }
 
 // sessionMiddleware 校验会话 Cookie；首登未改密前仅放行 me/password（强制改密）。

@@ -67,6 +67,7 @@ func newEnv(t *testing.T) *testEnv {
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	e.POST("/v1/chat/completions", rel.HandleChatCompletions)
+	e.POST("/v1/responses", rel.HandleResponses)
 	e.GET("/v1/models", rel.HandleModels)
 	gw := httptest.NewServer(e)
 	t.Cleanup(gw.Close)
@@ -107,6 +108,17 @@ func (e *testEnv) chat(t *testing.T, body string) (*http.Response, string) {
 	return resp, string(data)
 }
 
+func (e *testEnv) responses(t *testing.T, body string) (*http.Response, string) {
+	t.Helper()
+	resp, err := http.Post(e.gateway.URL+"/v1/responses", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("post responses: %v", err)
+	}
+	data, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	return resp, string(data)
+}
+
 // countingUpstream 记录命中次数与收到的 Authorization / body。
 type countingUpstream struct {
 	server  *httptest.Server
@@ -140,6 +152,281 @@ func (u *countingUpstream) snapshot() (int64, []string, []string) {
 }
 
 // ---------- 验收 #2：非流式故障切换 ----------
+
+func TestResponsesNonStreamConvertsToChatCompletions(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Errorf("unmarshal upstream request: %v", err)
+		}
+		if req["stream"] != false {
+			t.Errorf("upstream stream = %v, want false", req["stream"])
+		}
+		if req["model"] != "upstream-model" {
+			t.Errorf("upstream model = %v, want upstream-model", req["model"])
+		}
+		msgs, _ := req["messages"].([]any)
+		if len(msgs) != 2 || msgs[0].(map[string]any)["role"] != "system" || msgs[1].(map[string]any)["role"] != "user" {
+			t.Errorf("upstream messages = %#v, want instructions + input message", req["messages"])
+		}
+		tools, _ := req["tools"].([]any)
+		if len(tools) != 1 || tools[0].(map[string]any)["type"] != "function" {
+			t.Errorf("upstream tools = %#v, want converted Responses function tool", req["tools"])
+		}
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-upstream","object":"chat.completion","created":123,"model":"upstream-model","choices":[{"index":0,"message":{"role":"assistant","content":"gateway ok","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{\"city\":\"Shanghai\"}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`))
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, map[string]string{"gateway-model": "upstream-model"}, "sk-good")
+
+	resp, body := env.responses(t, `{
+		"model":"gateway-model",
+		"instructions":"You are concise.",
+		"input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}],
+		"tools":[{"type":"function","name":"get_weather","description":"Get weather","parameters":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}],
+		"stream":false
+	}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+	var out struct {
+		ID     string `json:"id"`
+		Object string `json:"object"`
+		Status string `json:"status"`
+		Model  string `json:"model"`
+		Output []struct {
+			Type    string `json:"type"`
+			Role    string `json:"role"`
+			Status  string `json:"status"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			CallID    string `json:"call_id"`
+			Name      string `json:"name"`
+			Arguments string `json:"arguments"`
+		} `json:"output"`
+		Usage struct {
+			InputTokens  int64 `json:"input_tokens"`
+			OutputTokens int64 `json:"output_tokens"`
+			TotalTokens  int64 `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal([]byte(body), &out); err != nil {
+		t.Fatalf("unmarshal response: %v\n%s", err, body)
+	}
+	if !strings.HasPrefix(out.ID, "resp_") || out.Object != "response" || out.Status != "completed" || out.Model != "gateway-model" {
+		t.Fatalf("unexpected response envelope: %+v", out)
+	}
+	if len(out.Output) != 2 || out.Output[0].Type != "message" || out.Output[0].Content[0].Text != "gateway ok" ||
+		out.Output[1].Type != "function_call" || out.Output[1].CallID != "call_1" || out.Output[1].Name != "get_weather" {
+		t.Fatalf("unexpected output: %#v", out.Output)
+	}
+	if out.Usage.InputTokens != 3 || out.Usage.OutputTokens != 4 || out.Usage.TotalTokens != 7 {
+		t.Fatalf("unexpected usage: %+v", out.Usage)
+	}
+}
+
+func TestResponsesStreamConvertsChatSSE(t *testing.T) {
+	env := newEnv(t)
+	payload := strings.Join([]string{
+		`data: {"id":"chatcmpl-stream","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","content":"Hel"}}]}`,
+		`data: {"id":"chatcmpl-stream","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"lo"}}]}`,
+		`data: {"id":"chatcmpl-stream","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+		`data: [DONE]`,
+		"",
+	}, "\n\n")
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"hello","stream":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+	got := sseEventTypes(body)
+	want := []string{
+		"response.created",
+		"response.output_item.added",
+		"response.content_part.added",
+		"response.output_text.delta",
+		"response.output_text.delta",
+		"response.output_text.done",
+		"response.content_part.done",
+		"response.output_item.done",
+		"response.completed",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("event types = %v\nwant %v\nbody:\n%s", got, want, body)
+	}
+	if !strings.Contains(body, `"delta":"Hel"`) || !strings.Contains(body, `"delta":"lo"`) ||
+		!strings.Contains(body, `"text":"Hello"`) {
+		t.Fatalf("stream did not preserve and aggregate text: %s", body)
+	}
+	if strings.Contains(body, "[DONE]") || strings.Contains(body, "chat.completion.chunk") {
+		t.Fatalf("Responses stream must not leak Chat Completions framing: %s", body)
+	}
+}
+
+func TestResponsesStreamToolCallRoundTrip(t *testing.T) {
+	env := newEnv(t)
+	var phase atomic.Int64
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		var payload string
+		if phase.Add(1) == 1 {
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-tool","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"exec_command","arguments":"{\"cmd\":\"echo ok\"}"}}]},"finish_reason":"tool_calls"}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		} else {
+			var req struct {
+				Messages []struct {
+					Role       string          `json:"role"`
+					ToolCallID string          `json:"tool_call_id"`
+					ToolCalls  []chatToolCall  `json:"tool_calls"`
+					Content    json.RawMessage `json:"content"`
+				} `json:"messages"`
+			}
+			if err := json.Unmarshal([]byte(body), &req); err != nil {
+				t.Errorf("unmarshal second upstream request: %v", err)
+			}
+			if len(req.Messages) != 2 || req.Messages[0].Role != "assistant" || len(req.Messages[0].ToolCalls) != 1 ||
+				req.Messages[0].ToolCalls[0].ID != "call_1" || req.Messages[0].ToolCalls[0].Function.Name != "exec_command" {
+				t.Errorf("function_call was not replayed as assistant tool_calls: %#v", req.Messages)
+			}
+			if len(req.Messages) != 2 || req.Messages[1].Role != "tool" || req.Messages[1].ToolCallID != "call_1" {
+				t.Errorf("function_call_output was not replayed as tool message: %#v", req.Messages)
+			}
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-after-tool","object":"chat.completion.chunk","created":124,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"tool ok"}}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		}
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	_, first := env.responses(t, `{"model":"gateway-model","input":"run tool","stream":true}`)
+	wantFirst := []string{
+		"response.created", "response.output_item.added", "response.function_call_arguments.delta",
+		"response.function_call_arguments.done", "response.output_item.done", "response.completed",
+	}
+	got := sseEventTypes(first)
+	if len(got) != len(wantFirst) {
+		t.Fatalf("tool event types = %#v\nwant %#v\nbody:\n%s", got, wantFirst, first)
+	}
+	for i := range wantFirst {
+		if got[i] != wantFirst[i] {
+			t.Fatalf("tool event[%d] = %q, want %q\nbody:\n%s", i, got[i], wantFirst[i], first)
+		}
+	}
+	if !strings.Contains(first, `"call_id":"call_1"`) || !strings.Contains(first, `"name":"exec_command"`) ||
+		!strings.Contains(first, `"arguments":"{\"cmd\":\"echo ok\"}"`) {
+		t.Fatalf("tool output item is incomplete: %s", first)
+	}
+
+	_, second := env.responses(t, `{
+		"model":"gateway-model","stream":true,
+		"input":[
+			{"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec_command","arguments":"{\"cmd\":\"echo ok\"}","status":"completed"},
+			{"type":"function_call_output","id":"fco_1","call_id":"call_1","output":"command output"}
+		]
+	}`)
+	if !strings.Contains(second, `"delta":"tool ok"`) {
+		t.Fatalf("second Responses turn did not return final text: %s", second)
+	}
+}
+
+func TestResponsesStreamMidstreamErrorEmitsResponseFailed(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n"))
+		w.(http.Flusher).Flush()
+		_, _ = w.Write([]byte("data: {\"error\":{\"message\":\"upstream exploded\",\"type\":\"server_error\"}}\n\n"))
+		w.(http.Flusher).Flush()
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"hello","stream":true}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "event: response.failed") || !strings.Contains(body, "upstream exploded") {
+		t.Fatalf("midstream error should become response.failed: %s", body)
+	}
+	if strings.Contains(body, "event: response.completed") {
+		t.Fatalf("failed stream must not emit completed: %s", body)
+	}
+}
+
+func TestResponsesRejectsUnsupportedRequestField(t *testing.T) {
+	env := newEnv(t)
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"hello","future_feature":true}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "unsupported Responses request field") || !strings.Contains(body, "future_feature") {
+		t.Fatalf("unsupported field should be explicitly diagnosable: %s", body)
+	}
+}
+
+func TestResponsesRejectsInvalidToken(t *testing.T) {
+	env := newEnv(t)
+	gin.SetMode(gin.TestMode)
+	e := gin.New()
+	e.POST("/v1/responses", TokenAuth(env.db), env.HandleResponses)
+	gw := httptest.NewServer(e)
+	defer gw.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, gw.URL+"/v1/responses", strings.NewReader(`{"model":"m"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer eg-wrong")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+}
+
+func TestResponsesStreamFailsOverBeforeFirstEvent(t *testing.T) {
+	env := newEnv(t)
+	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":{"message":"upstream boom"}}`))
+	})
+	secondary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"chatcmpl-recovered\",\"choices\":[{\"delta\":{\"content\":\"recovered\"}}]}\n\ndata: [DONE]\n\n"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "primary", primary.server.URL, 0, []string{"gateway-model"}, nil, "sk-p")
+	env.addChannel(t, "secondary", secondary.server.URL, 1, []string{"gateway-model"}, nil, "sk-s")
+
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"hello","stream":true}`)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"delta":"recovered"`) {
+		t.Fatalf("Responses stream should fail over before first event: %d %s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "upstream boom") {
+		t.Fatalf("primary error must not leak after retry: %s", body)
+	}
+}
 
 func TestAcceptance2NonStreamFailover(t *testing.T) {
 	env := newEnv(t)
@@ -492,6 +779,16 @@ func lookupKeyID(t *testing.T, env *testEnv, plainKey string) int64 {
 	}
 	t.Fatalf("key %s not found", plainKey)
 	return 0
+}
+
+func sseEventTypes(body string) []string {
+	types := make([]string, 0, 8)
+	for _, line := range strings.Split(body, "\n") {
+		if after, ok := strings.CutPrefix(line, "event: "); ok {
+			types = append(types, strings.TrimSpace(after))
+		}
+	}
+	return types
 }
 
 var _ = bytes.NewBuffer // 保留 imports 一致性

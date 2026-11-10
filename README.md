@@ -12,12 +12,12 @@
 
 P0（第一版交付范围）：
 
-- **统一入口**：OpenAI 兼容 `/v1/chat/completions`（含 SSE 流式与 tool calls 透传）+ `/v1/models`
+- **统一入口**：OpenAI 兼容 `/v1/chat/completions`（含 SSE 流式与 tool calls 透传）、Codex 兼容 `/v1/responses` + `/v1/models`
 - **不中断**（本项目存在的第一理由）：key 池调度 + cooldown 状态机 + 错误分类重试（重试 → 换 key → 换渠道）；SSE 场景下「首个 chunk 写给客户端之前」可无感切换，之后绝不重试
 - **渠道与 key 池管理**：增删改查、多行批量导入 key、单渠道连通测试
 - **下游令牌**：发放给客户端的 key，SHA-256 哈希校验
 - **请求日志**：每请求一条（含重试轨迹 retry_trace），异步批量落库，不阻塞请求路径
-- **Web 管理台**：登录 / Dashboard / 渠道管理 / 令牌管理 / 请求日志（重试轨迹可视化）；浏览器角标与 Windows exe 使用同一 EverGate logo
+- **Web 管理台**：登录 / Dashboard / 渠道管理 / 令牌管理 / 请求日志（重试轨迹可视化），自动检查 GitHub 新版本并提供 Windows 下载入口；浏览器角标与 Windows exe 使用同一 EverGate logo
 - **安全**：上游 key AES-GCM 加密落库；管理台密码 bcrypt；任何接口不回显明文
 - **交付形态**：`1 个可执行文件 + 1 个 SQLite 数据文件`，运行 `./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 任何外部依赖
 
@@ -49,6 +49,31 @@ go run ./cmd/evergate   # 开发态直接运行
 
 - API 基址：`http://localhost:8787/v1`（客户端只需改 base_url + 用下游令牌）
 - 管理台：`http://localhost:8787/`（首次启动自动创建 admin/admin123，首登强制改密）
+- 桌面体验：默认启动后自动打开管理台；服务器部署可在 `evergate.yml` 设置 `server.open_browser: false`
+
+### 接入 Codex
+
+在 `C:\Users\<用户名>\.codex\config.toml` 中添加：
+
+```toml
+model = "你在EverGate渠道里配置的模型名"
+model_provider = "evergate"
+
+[model_providers.evergate]
+name = "EverGate"
+base_url = "http://127.0.0.1:8787/v1"
+env_key = "EVERGATE_API_KEY"
+wire_api = "responses"
+supports_websockets = false
+```
+
+然后设置下游令牌并重启 Codex：
+
+```powershell
+setx EVERGATE_API_KEY "eg-你的EverGate令牌"
+```
+
+EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat Completions 请求，并保留路由、key 池、重试、cooldown 与请求日志链路。
 
 > 端口约定：默认 `8787`，避开本地 Java 项目常用的 8080；如需修改只改 `evergate.yml` 的 `server.port`，无需改代码。
 - 存活检查：`GET /healthz`；指标：`GET /metrics`（仅允许 loopback 访问）
