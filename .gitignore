@@ -2,7 +2,6 @@
 bin/
 /evergate
 /evergate.exe
-web/dist/
 web/node_modules/
 
 # 运行时数据

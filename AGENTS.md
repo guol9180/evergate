@@ -28,6 +28,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 ```
 
 - 业务数据（渠道/密钥/令牌）一律存 DB，不进 YAML；YAML 仅做引导。
+- `web/dist` 随仓库提交（约 400KB），保证后端开发者无 Node 环境也能 `go build`；改前端后必须 `make build-web` 并提交更新后的 dist。
 - Go 文件与包名小写；测试文件与被测文件同包（白盒）或 `_test` 包（黑盒）。
 - React 组件文件 PascalCase，放 `web/src/` 下按页面/组件分目录。
 

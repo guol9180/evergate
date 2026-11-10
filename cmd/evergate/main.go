@@ -24,10 +24,11 @@ import (
 	"evergate/internal/router"
 	"evergate/internal/server"
 	"evergate/internal/store"
+	"evergate/web"
 )
 
-// version 由构建注入（T7 用 -ldflags 覆盖），开发态为 dev。
-const version = "dev"
+// version 由构建注入（make build 用 -ldflags 覆盖），开发态为 dev。
+var version = "dev"
 
 func main() {
 	if err := run(); err != nil {
@@ -138,6 +139,7 @@ func run() error {
 			r.GET("/v1/models", relay.TokenAuth(db), relayHandler.HandleModels)
 			adminAPI.RegisterRoutes(r)
 		},
+		WebFS: web.DistFS,
 	})
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)

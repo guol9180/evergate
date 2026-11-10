@@ -27,18 +27,20 @@ P1/P2 方向（会话亲和、Playground、用量报表、Anthropic 原生入口
 | 依赖 | 要求 | 当前机器状态 |
 |---|---|---|
 | Go | 1.24+ | ✅ go1.27.3 已安装（`D:\dev\environment\go`） |
-| Node.js / npm | 20+ / 10+ | ✅ v22.23.2 / 10.9.8 |
+| Node.js / npm | 20+ / 10+ | ✅ v22.23.2 / 10.9.8（仅改前端时需要；`web/dist` 已入库，后端构建免 Node） |
+| GNU Make | 4.x | ✅ 4.4.1 |
 | git | 任意新版 | ✅ 2.55.0 |
 | 其他 | 无 | 不需要 Docker / Redis / 消息队列 |
 
 ## 快速开始
 
-> `go run` 自 T1 起可用；单二进制交付（含前端嵌入与三平台交叉编译）在 T7 完成。
+单命令交付：`make build` 自动构建前端并编译单二进制（版本号取自 git describe）。
 
 ```bash
-go run ./cmd/evergate                     # 开发态直接运行
-go build -o bin/evergate ./cmd/evergate   # 构建本机二进制（make build 需系统安装 make）
-./bin/evergate                            # 启动：API 与管理台同端口 :8787（可配，见 evergate.yml）
+make build              # → bin/evergate(.exe)，React 管理台已嵌入（约 27MB）
+make build-all          # 三平台：windows/amd64、linux/amd64、darwin/arm64
+./bin/evergate          # 启动：API 与管理台同端口 :8787（可配，见 evergate.yml）
+go run ./cmd/evergate   # 开发态直接运行
 ```
 
 - API 基址：`http://localhost:8787/v1`（客户端只需改 base_url + 用下游令牌）

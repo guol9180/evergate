@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"time"
@@ -18,6 +19,8 @@ type Options struct {
 	Logger   *slog.Logger
 	// SetupRoutes 业务路由注册钩子（relay / admin 等），入参为挂载在 BasePath 下的路由组。
 	SetupRoutes func(r gin.IRoutes)
+	// WebFS 嵌入的前端构建产物（nil 表示不服务管理台）。
+	WebFS fs.FS
 }
 
 // New 构建带 recovery 与请求日志的 Gin 引擎。
@@ -38,6 +41,9 @@ func New(opts Options) *gin.Engine {
 	root.GET("/healthz", healthz(opts.DB))
 	if opts.SetupRoutes != nil {
 		opts.SetupRoutes(root)
+	}
+	if opts.WebFS != nil {
+		r.NoRoute(spaHandler(opts.WebFS))
 	}
 	return r
 }
