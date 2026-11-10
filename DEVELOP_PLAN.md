@@ -173,9 +173,15 @@
 - 目标：公开仓库前全历史敏感信息扫描与清理；仓库转 public；手动发布 v0.1.0（三平台二进制）；配置 GitHub Actions tag 触发自动构建发布并以 v0.1.1 验证
 - 验收标准：历史中无有效密钥类字符串残留（已知泄漏项已重写并验证）；Release v0.1.0 含 3 个平台二进制可下载；Actions 工作流在 v0.1.1 tag 上自动构建并挂载资产成功
 - 边界：不引入 goreleaser（手写 workflow）；本卡不改业务代码
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-10 计划 用户指令确认：安全检查 → public → 发版 → 后续自动化
+  - 2026-11-10 执行 安全审计：全历史高危模式扫描（API key/私钥/token）——唯一真实泄漏=T2 事故的 537d5ff:evergate.yml 旧 master_key/session_secret（已轮换失效，且当时 DB 无加密数据，实际风险为零）；admin_test.go 命中为假 key 测试夹具（无害）；当前树无敏感文件（evergate.yml 未跟踪、data/ 与 bin/ 未入库）
+  - 2026-11-10 执行 历史重写：git filter-branch 移除 evergate.yml 全历史 → refs/original/reflog 清理 + gc --prune=now --aggressive → 本地零残留验证 → 强推远程（全历史哈希改变：本文件早期进度行中的旧哈希 d168d99/537d5ff/7de81d4/018c586/b776276/f4204ca 等自此仅为历史标签，不再对应仓库对象）
+  - 2026-11-10 执行 gh repo edit --visibility public；tag v0.1.0 → 干净重建（ldflags 版本串 v0.1.0 实测注入）→ gh release create v0.1.0 手动上传三平台二进制（附 SHA256 摘要）
+  - 2026-11-10 执行 新增 .github/workflows/release.yml（tag v* 触发：npm ci+build → setup-go(go.mod 版本) → CGO_ENABLED=0 三平台构建 → sha256 checksums → softprops/gh-release 挂载）；推 v0.1.1 验证：Actions 全绿，自动产出 4 资产（3 二进制+checksums.txt）
+  - 2026-11-10 验证 Release 页面：v0.1.0（手动）+ v0.1.1（自动）均可下载；仓库 PUBLIC；历史 grep 旧密钥值零命中
+  - 2026-11-10 交付 T7b 验收标准全部满足：公开仓库安全、v0.1.0 可下载、后续发版=推 tag 即自动打包
 
 ## 状态枚举
 

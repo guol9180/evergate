@@ -5,6 +5,8 @@
 > **当前状态**：后端骨架已可运行（T1 完成，`/healthz` + SQLite WAL + 优雅停机）；调度内核与管理台按 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md) 推进中。
 > 完整需求与技术设计见 [docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)。
 
+**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供三平台单二进制（Windows x64 / Linux x64 / macOS Apple Silicon），推 `v*` tag 自动构建。
+
 ## 功能
 
 P0（第一版交付范围）：
