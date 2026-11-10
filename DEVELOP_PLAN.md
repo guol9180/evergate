@@ -289,6 +289,7 @@
   - 2026-11-10 执行 `responsesToChat` 支持 custom tool / custom_tool_call / custom_tool_call_output：custom tool 降级为上游 function schema `{input:string}`，回传输出转 tool message；响应侧按请求声明恢复 `custom_tool_call`，SSE 发送官方 `response.custom_tool_call_input.done` 后再 `output_item.done`；同时转换 custom tool_choice 并显式拒绝 async/grammar 变体
   - 2026-11-10 验证 红测转绿；新增非流式 custom tool 测试与两轮 custom tool 流式回传测试。`go test ./... -count=1` 与 `go vet ./...` 通过，`npm --prefix web run build` 与 `make build` 在沙箱外完成并通过（本沙箱内 esbuild spawn EPERM）
   - 2026-11-10 交付 T14 验收标准满足。已用 OpenAI 官方 Create Response / streaming events 参考核对字段；未声明支持 grammar、异步 custom tool 或 WebSocket，相关输入会显式报错或在 README 标注不支持
+  - 2026-11-10 发版 准备发布 v0.1.6：将修复送入 GitHub Actions 自动打包，供已安装用户通过更新入口下载
 
 ## 状态枚举
 
