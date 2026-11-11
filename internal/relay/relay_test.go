@@ -43,6 +43,8 @@ type fakeClock struct {
 
 func (f *fakeClock) Now() time.Time { f.mu.Lock(); defer f.mu.Unlock(); return f.t }
 
+func (f *fakeClock) Advance(d time.Duration) { f.mu.Lock(); defer f.mu.Unlock(); f.t = f.t.Add(d) }
+
 func newEnv(t *testing.T) *testEnv {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -63,7 +65,7 @@ func newEnv(t *testing.T) *testEnv {
 	d.OverallTimeout = config.Duration{Duration: 3 * time.Second}
 	d.RetryBudget = config.RetryBudget{Channels: 3, KeysPerChannel: 2, Total: config.Duration{Duration: 60 * time.Second}}
 	pl := pool.NewManager(3, pool.DefaultCooldownSchedule, clock.Now)
-	rel := New(Options{DB: db, Router: router.New(42), Pool: pl, MasterKey: master, Defaults: d})
+	rel := New(Options{DB: db, Router: router.New(42), Pool: pl, MasterKey: master, Defaults: d, Now: clock.Now})
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	e.POST("/v1/chat/completions", rel.HandleChatCompletions)
@@ -992,6 +994,65 @@ func TestAcceptance3StreamFailoverBeforeFirstToken(t *testing.T) {
 	}
 	if ph, _, _ := primary.snapshot(); ph != 1 {
 		t.Fatalf("主渠道应被尝试 1 次, got %d", ph)
+	}
+}
+
+func TestStreamFirstTokenMeasuredFromUpstreamRequestStart(t *testing.T) {
+	for name, responses := range map[string]bool{"chat": false, "responses": true} {
+		t.Run(name, func(t *testing.T) {
+			env := newEnv(t)
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+				close(entered)
+				<-release
+				w.Header().Set("Content-Type", "text/event-stream")
+				payload := strings.Join([]string{
+					`data: {"id":"chatcmpl-first-token","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","content":"ok"}}]}`,
+					`data: [DONE]`,
+					"",
+				}, "\n\n")
+				_, _ = w.Write([]byte(payload))
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+			})
+			env.addChannel(t, "slow-first-token", up.server.URL, 0, []string{"gateway-model"}, nil, "sk-good")
+			go func() {
+				<-entered
+				env.clock.Advance(80 * time.Millisecond)
+				close(release)
+			}()
+
+			var ch store.Channel
+			if err := env.db.First(&ch, "name = ?", "slow-first-token").Error; err != nil {
+				t.Fatalf("find channel: %v", err)
+			}
+			var key store.ChannelKey
+			if err := env.db.First(&key, "channel_id = ?", ch.ID).Error; err != nil {
+				t.Fatalf("find key: %v", err)
+			}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gateway-model","stream":true,"messages":[]}`))
+			if responses {
+				c.Set("evergate.protocol", responsesProtocol)
+			}
+
+			hit := &hitRecord{}
+			trace := make([]store.RetryAttempt, 0, 1)
+			outcome := env.attemptOne(c, router.Candidate{Channel: &ch, UpstreamModel: "upstream-model"}, &key,
+				[]byte(`{"model":"gateway-model","stream":true,"messages":[]}`), "gateway-model", true, &trace, hit)
+			if outcome != outcomeDone {
+				t.Fatalf("outcome = %v, want done", outcome)
+			}
+			if hit.firstTokenMS < 80 {
+				t.Fatalf("first_token_ms = %d, want >= 80 (from upstream request start), trace=%#v", hit.firstTokenMS, trace)
+			}
+			if len(trace) != 1 || trace[0].ElapsedMS < 80 {
+				t.Fatalf("success trace should include time before first token: %#v", trace)
+			}
+		})
 	}
 }
 

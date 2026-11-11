@@ -55,8 +55,8 @@ type responsesStream struct {
 // streamResponsesResponse converts an upstream Chat Completions SSE stream to
 // Responses semantic events. As with the native path, nothing is written before
 // the first upstream chunk, preserving the pre-first-token retry window.
-func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key *store.ChannelKey, cand router.Candidate, firstToken time.Duration, cancel context.CancelFunc, trace *[]store.RetryAttempt, hit *hitRecord, model string) attemptOutcome {
-	start := r.opt.Now()
+func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key *store.ChannelKey, cand router.Candidate, firstToken time.Duration, cancel context.CancelFunc, trace *[]store.RetryAttempt, hit *hitRecord, model string, attemptStart time.Time) attemptOutcome {
+	start := attemptStart
 	appendTrace := func(errType, errMsg string) {
 		*trace = append(*trace, store.RetryAttempt{
 			ChannelID: cand.Channel.ID, ChannelName: cand.Channel.Name, KeyID: key.ID,

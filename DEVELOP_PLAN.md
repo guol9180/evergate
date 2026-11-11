@@ -336,6 +336,23 @@
   - 2026-11-11 发版 v0.1.8：Release Action 42941863047 成功（2m27s）；Release 正文正确提取三项修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,000,768 bytes），本地 SHA256 `ea40729d…cf959` 与 checksums.txt 一致；启动显示 version=v0.1.8，`/healthz` 返回 200，未带令牌访问 `/v1/responses` 返回 401
   - 2026-11-11 交付 T16 验收标准满足：Codex 同名 namespace 工具由红测转绿；ZAI 503 定位为 Base URL 配置错误并在隔离副本验证正确 Coding 端点可用；耗尽诊断与管理台展示增强；未修改用户安装目录数据，待用户在管理台更新 ZAI 渠道 Base URL 并重置 key
 
+### T17: 流式请求首 token 计时口径修复（P0，用户反馈缺陷）
+
+- 目标：修复 ZAI 等上游流式请求成功但请求日志 `first_token_ms=0` 的问题，使首 token 统一从 EverGate 发起上游请求开始计算，而不是从收到上游响应头后重新开始
+- 验收标准：
+  1. 公共/真实调用链测试先复现“上游等待一段时间后返回首条 SSE data，但 `hit.firstTokenMS` / retry trace elapsed 记为 0”的错误；
+  2. Chat Completions 与 Responses 两条流式路径均从上游请求发起时间计算首 token；
+  3. 保留 SSE 零缓冲透传与首 chunk 后禁止重试红线；
+  4. `gofmt`、`go test ./... -count=1`、`go vet ./...`、涉及前端时 `npm --prefix web run build`、`make build` 全部通过。
+- 边界：不改变客户端响应格式、不整段缓冲上游响应、不修改数据库 schema；非流式响应的现有 first token 口径不在本卡扩大调整
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 用户确认 ZAI 已通，但日志没有像 DeepSeek 一样记录首 token。只读检查安装库：成功日志 #15 为 `stream=true status=200 total_ms=14832 first_token_ms=0`；DeepSeek #8 为 `first_token_ms=4`。直连 ZAI 原始 SSE 抓包显示请求到第一条 data 实际 5053ms，证明不是 ZAI 未返回首 token，而是 EverGate 计时口径错误
+  - 2026-11-11 执行 红测 `TestStreamFirstTokenMeasuredFromUpstreamRequestStart` 在 chat / responses 两个子用例均复现 `first_token_ms=0`（期望 >=80ms）。根因是 `attemptOne` 在 `client.Do` 前已有计时点，但 `streamResponse` / `streamResponsesResponse` 进入后重新以收到响应头之后的时间作为 start；ZAI 首条 data 已随响应头进入传输缓冲，因此读到首行耗时取整为 0
+  - 2026-11-11 执行 将上游请求开始时间传入 Chat Completions 与 Responses 流式转换路径，`recordHit` 与成功 retry trace 均沿用该时间；测试环境同步把 fake clock 注入 Relay，保证计时断言确定性
+  - 2026-11-11 验证 红测修复后 chat / responses 两个子用例通过；`gofmt` 无 diff；`go test ./... -count=1` 通过；`go vet ./...` 通过；`make build` 通过（沙箱内 esbuild spawn EPERM，按既有例外在沙箱外执行）
+  - 2026-11-11 验证 使用安装库 SQLite 快照 + 当前源码构建（18909 隔离实例）真实调用 ZAI `glm-5.3-flash`：客户端 `time_starttransfer=1.003s`，请求日志记录 `first_token_ms=985 total_ms=3803`；同库旧日志对照仍为 #15 `first_token_ms=0`，确认只影响新请求且口径正确
+
 ## 状态枚举
 ## 状态枚举
 

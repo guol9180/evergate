@@ -2,6 +2,11 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.9
+
+- 修复流式请求首 token 计时口径：现在从发起上游请求开始计算，到首条 SSE data 为止；此前 ZAI 这类“响应头与首条 data 几乎同时到达”的渠道会被记录为 `first_token_ms=0`
+- Chat Completions 与 Responses 流式路径统一使用同一首 token 口径，成功尝试的 retry trace 耗时也包含等待首 token 的时间
+
 ## v0.1.8
 
 - 修复 Codex 多个 namespace 下同名工具（如多个 MCP 均暴露 `js`）触发 `Responses flattened tool name "js" maps to multiple declarations` 的问题：上游使用确定性唯一函数名，返回与历史回传恢复原始 namespace/name

@@ -256,7 +256,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 
 	if resp.StatusCode == http.StatusOK {
 		if stream {
-			return r.streamResponse(c, resp, key, cand, firstToken, cancel, trace, hit)
+			return r.streamResponse(c, resp, key, cand, firstToken, cancel, trace, hit, start)
 		}
 		// 非流式：响应到达即首 token，在窗口内读完整体
 		data, rerr := readAllWithFirstTokenTimeout(resp.Body, ctx, cancel, firstToken)

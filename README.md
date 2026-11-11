@@ -16,7 +16,7 @@ P0（第一版交付范围）：
 - **不中断**（本项目存在的第一理由）：key 池调度 + cooldown 状态机 + 错误分类重试（重试 → 换 key → 换渠道）；SSE 场景下「首个 chunk 写给客户端之前」可无感切换，之后绝不重试
 - **渠道与 key 池管理**：增删改查、多行批量导入 key、单渠道连通测试
 - **下游令牌**：发放给客户端的 key，SHA-256 哈希校验
-- **请求日志**：每请求一条（含重试轨迹 retry_trace），异步批量落库，不阻塞请求路径
+- **请求日志**：每请求一条（含重试轨迹 retry_trace），异步批量落库，不阻塞请求路径；流式首 token 统一按“发起上游请求 → 收到首条 SSE data”计时，Chat Completions / Responses 一致
 - **Web 管理台**：登录 / Dashboard / 渠道管理 / 令牌管理 / 请求日志（重试轨迹可视化），自动检查 GitHub 新版本并提供 Windows 下载入口；浏览器角标与 Windows exe 使用同一 EverGate logo
 - **安全**：上游 key AES-GCM 加密落库；管理台密码 bcrypt；任何接口不回显明文
 - **交付形态**：`1 个可执行文件 + 1 个 SQLite 数据文件`，运行 `./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 任何外部依赖

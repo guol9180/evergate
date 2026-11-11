@@ -47,6 +47,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 - 管理台 API 返回统一 JSON 结构；任何接口不得回显上游 key 明文。
 - 前端路由守卫依赖的服务端状态（如 `['me']`）被 mutation 改变时，必须在成功回调同步更新 TanStack Query 缓存；仅重新导航不得依赖旧缓存判断。
 - 运行日志（slog JSON 到 stdout）与请求日志（入库供管理台查询）分离。
+- 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）
 
