@@ -378,6 +378,7 @@
   - 2026-11-11 验证 公共 HTTP 边界测试覆盖 CC→CC 透传、R→R 非流式/SSE/function tool/状态字段保真、R→R 首事件失败切换、R→CC 既有桥接、状态字段全桥接 400、CC/Responses usage 归一化与请求日志；`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web run build` 通过
   - 2026-11-11 验证 使用安装库 SQLite 快照 + 当前源码构建（18910 隔离实例）真实调用 DeepSeek Responses `deepseek-flash`：R→R SSE 返回 200，保留 `response.created` / `response.reasoning_text.delta` / `response.completed` 与 reasoning item，无 `[DONE]`，最终文本 `pong`；请求日志记录 `first_token_ms=170 total_ms=802 tokens=34/35/69 cached=0 reasoning=32`
   - 2026-11-11 交付 `make build` 通过并产出当前源码单二进制；T18 验收标准满足，未实现 Anthropic `/v1/messages`、Responses 子路径/background、CC→R 转换或 Anthropic/Gemini 原生上游
+  - 2026-11-11 发版 v0.1.10：Release Action 42971414495 成功（2m24s）；Release 正文正确提取 Responses 原生透传说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,026,880 bytes），本地 SHA256 `31dab2bf…ccdfb` 与 checksums.txt 一致；启动显示 version=v0.1.10，`/healthz` 返回 200，未带令牌访问 `/v1/responses` 返回 401
 
 ### T19: 系统设置与运行时配置热更新（P1）
 
