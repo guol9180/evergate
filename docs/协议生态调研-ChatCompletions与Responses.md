@@ -4,7 +4,7 @@
 - 调研方法：逐家抓取官方文档/README 核对支持矩阵与默认行为；OpenAI 官方 guide 页面（platform.openai.com / developers.openai.com）对脚本访问返回 403，官方定位改用 openai-python 官方 SDK README 原文佐证。
 - 局限：无公开的各端点调用量份额数据，"市面在用"的判断基于**支持矩阵 + 官方默认值走向**，非流量统计。
 
-> T15 补记（2026-11-10）：后续通过官方 Markdown 端点成功核对了 OpenAI Responses Create Response / streaming events schema，前文“官方 guide 脚本访问 403”只代表当时的 HTML 抓取路径，不代表官方文档不可用。本文件是生态与长期路线输入；不改变项目已确认的三协议接入矩阵，Anthropic Messages 仍按 T13 计划保留。
+> T15 补记（2026-11-10）：后续通过官方 Markdown 端点成功核对了 OpenAI Responses Create Response / streaming events schema，前文“官方 guide 脚本访问 403”只代表当时的 HTML 抓取路径，不代表官方文档不可用。该补记发生时项目仍保留三协议矩阵；随后同日决策记录已将 Anthropic Messages 延后，最新范围以下方决策记录为准。
 
 ## TL;DR
 
@@ -46,7 +46,7 @@
   - Responses→Chat 转换有损（reasoning items、内置工具事件、`previous_response_id` 服务端状态无法表达）；
   - 原生支持 Responses 的渠道已足够多（OpenAI/DeepSeek/Kimi/智谱/OpenRouter），透传可保真并规避各家字段差异；
   - 仅当候选渠道无 Responses 能力时回落转换——与 LiteLLM 模式一致，风险已被验证。
-- **Anthropic Messages 继续独立入口**：DeepSeek/Kimi 也提供 Messages API，佐证本项目三协议矩阵的合理性。
+- **Anthropic Messages 继续独立入口**（调研阶段建议）：DeepSeek/Kimi 也提供 Messages API，佐证三协议矩阵的长期合理性；最终 v1 范围以决策记录为准，当前延后。
 - **用自家数据闭环验证**：请求日志按入口协议统计流量占比，上线后以真实分布复核本决策（这比任何外部调研都可靠）。
 
 ## 风险与不确定项
@@ -57,4 +57,4 @@
 
 ## 决策记录（2026-11-10）
 
-用户确认 v1 协议范围：**上游与下游均支持 OpenAI Chat Completions 与 OpenAI Responses**；同协议优先原生透传（仅改写鉴权/base_url/模型映射），Responses→Chat Completions 桥接兜底；Anthropic Messages 下游入口延后（T13），重启条件为渠道池出现真实需求（如 Anthropic 官方上游或 Claude 系客户端）。落地任务卡：DEVELOP_PLAN.md **T16**。
+用户确认 v1 协议范围：**上游与下游均支持 OpenAI Chat Completions 与 OpenAI Responses**；同协议优先原生透传（仅改写鉴权/base_url/模型映射），Responses→Chat Completions 桥接兜底；Anthropic Messages 下游入口延后（T13），重启条件为渠道池出现真实需求（如 Anthropic 官方上游或 Claude 系客户端）。落地任务卡：DEVELOP_PLAN.md **T18**（2026-11-11 建卡；T16/T17 编号已被缺陷修复卡占用）。

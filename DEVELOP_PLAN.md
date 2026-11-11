@@ -257,7 +257,7 @@
   - 2026-11-10 交付 T12 验收标准满足；完整 Go 测试、前端构建与 `make build` 通过
   - 2026-11-10 发版 v0.1.5：Release Action 2m30s 成功；重新下载 Release Windows exe 后实测 healthz=200、`POST /v1/responses` 未带令牌返回 401、`GET /admin/api/system/update` 未登录返回 401，确认新入口与更新接口已进入远程产物；三平台二进制 + checksums.txt 共 4 资产齐全
 
-### T13: Anthropic Messages 入口与三协议接入矩阵（P1，用户指令）
+### T13: Anthropic Messages 入口与三协议接入矩阵（延后，原 P1 用户指令）
 
 - 目标：确立 EverGate 后续客户端接入的默认协议矩阵——OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses`、Anthropic Messages `/v1/messages` 三种下游 API 协议均可接入同一模型路由、key 池、重试、cooldown 与请求日志链路；补齐缺失的 Anthropic Messages 入口
 - 验收标准：
@@ -267,9 +267,10 @@
   4. 三种协议共同能力的请求/响应/流式/工具调用有对照测试矩阵，能力差异必须在 README 中显式列明；
   5. `go test ./...`、`go vet ./...`、`npm --prefix web run build`、`make build` 全部通过。
 - 边界：第一版 `/v1/messages` 是下游入口协议转换，上游仍统一走 OpenAI-compatible Chat Completions；不做 Anthropic 原生上游适配器、不做数据库 schema 变更、不做超出客户端所需范围的字段全集，未支持字段显式返回可诊断错误
-- 状态：planned
+- 状态：deferred
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-10 计划 用户指令确认：以后客户端接入默认覆盖 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三种 API 协议；当前前两者已由 T0/T10 交付，Anthropic Messages 为本卡待开发项
+  - 2026-11-11 计划 用户决策（2026-11-10 作出，因并发会话还原文档而延迟落盘）延后本卡：v1 协议范围收敛为上游/下游均支持 Chat Completions 与 Responses、同协议透传优先（新增 T18 承接）；决策依据见 docs/协议生态调研-ChatCompletions与Responses.md。重启条件：渠道池出现真实需求（如 Anthropic 官方上游或 Claude 系客户端），重启前先回本卡更新范围
 
 ### T14: Responses custom tool 兼容修复（P1，用户反馈缺陷）
 
@@ -355,7 +356,137 @@
   - 2026-11-11 发版 v0.1.9：Release Action 42946034821 成功（1m47s）；Release 正文正确提取首 token 修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,001,280 bytes），本地 SHA256 `4addf370…c504b7` 与 checksums.txt 一致；启动显示 version=v0.1.9，`/healthz` 返回 200
   - 2026-11-11 交付 T17 验收标准满足：两条流式路径首 token 均从发起上游请求开始计时；SSE 零缓冲与首 chunk 后不重试红线未改变；无数据库 schema 变更
 
-## 状态枚举
+### T18: Responses 原生上游透传与渠道协议能力（P1，用户指令）
+
+- 目标：v1 协议范围定为上游/下游均支持 OpenAI Chat Completions 与 OpenAI Responses 两种协议；渠道模型新增 Responses 能力声明，`/v1/responses` 请求对声明该能力的渠道走原生透传（含 SSE 事件流），未声明渠道回落现有 Responses→Chat Completions 桥接；同协议链路保真，跨协议链路语义损失显式化
+- 动机：Responses→Chat 桥接无法表达 reasoning items、内置工具与 `previous_response_id` 服务端状态；OpenAI / DeepSeek / Kimi / 智谱 / OpenRouter 等渠道已原生支持 Responses，透传可保真（调研见 docs/协议生态调研-ChatCompletions与Responses.md）
+- 验收标准：
+  1. WHEN 管理台创建/编辑渠道并声明 Responses 能力 THEN 字段经 AutoMigrate 增量落库、默认关闭，接口不回显上游 key 明文；
+  2. WHEN `/v1/responses` 请求路由到声明 Responses 能力的渠道 THEN 非流式与 SSE 仅改写鉴权、base_url 与模型映射，请求/响应体原样转发，`store`/`previous_response_id` 等有状态字段保真；
+  3. WHEN Responses 原生上游 SSE 不发送 `data: [DONE]` THEN flush 循环靠连接 EOF 正常终止；首个事件前复用重试/切换，首个事件写给客户端后禁止重试；first_token_ms 沿用 T17 统一口径；
+  4. WHEN `/v1/responses` 请求携带 `previous_response_id`、background 等有状态字段且候选渠道均无 Responses 能力 THEN 显式返回可诊断 400，不静默丢弃；
+  5. 回归矩阵 2×2 公共 HTTP 边界测试：CC→CC 透传、R→R 透传（非流式/SSE/工具）、R→CC 桥接（非流式/SSE/工具）全绿；CC→R 转换不适用需在测试注释与 README 说明理由；
+  6. usage 归一化：CC（prompt/completion）与 Responses（input/output + cached/reasoning 明细）两套口径统一入请求日志；错误分类器识别 Responses 原生错误形状（含流式 `response.failed`）；
+  7. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过；README 协议矩阵与支持差异同步更新。
+- 边界：不做 Anthropic `/v1/messages`（T13 已延后）；不做 `/v1/responses/{id}` 查询/cancel 子路径与 background 模式；不做 CC→R 请求转换（具备 Responses 能力的渠道均支持 CC，如遇仅 Responses 上游再立卡）；不做 Anthropic/Gemini 原生上游适配；调度内核保持协议无关
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 用户确认协议范围决策（决策与调研于 2026-11-10 完成，因并发会话还原文档延迟建卡）：上游/下游均为 CC+Responses、同协议透传优先、R→CC 桥接兜底、Anthropic Messages 延后（T13）
+
+### T19: 系统设置与运行时配置热更新（P1）
+
+- 目标：把可安全运行时调整的网关业务配置从 YAML 引导值升级为 SQLite 唯一事实源，并提供管理台系统设置页；relay、重试、cooldown、日志清理与健康探测读取最新配置且无需重启
+- 验收标准：
+  1. WHEN 首次升级启动 THEN 安全运行时设置由 `evergate.yml` 初始化入库；`master_key`、`session_secret`、端口与 DB 路径仍仅保留在 YAML，不进入管理台 API/UI；
+  2. WHEN 管理员修改默认超时、重试预算、cooldown、日志保留天数、健康探测间隔 THEN 保存后新请求与新后台任务生效，无需重启进程；
+  3. WHEN 提交非法配置（超时 <=0、重试预算为 0、保留天数 <1、探测间隔过短等）THEN 返回 400 且不产生部分更新；
+  4. 设置读写仅限管理台会话鉴权；并发读采用安全快照/缓存，设置更新与请求路径无数据竞争；
+  5. 管理台提供系统设置页，展示当前值、默认值来源、保存结果与校验错误；README 同步说明 YAML 与 DB 设置的边界；
+  6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不迁移安全密钥；不做多管理员/角色权限；不提供任意 YAML 注入；不做请求级覆盖（T24）；不把渠道模型与上游 key 移入设置页
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：作为健康探测、请求覆盖与运行时可观测配置的公共基础，先落地安全设置模型与热更新机制
+
+### T20: 渠道健康自动探测与状态徽标（P1）
+
+- 目标：为启用渠道与凭据提供周期性轻量探测，将探测结果、实时 key 状态与请求失败统计合成渠道健康视图，并在 Dashboard / 渠道列表展示可解释徽标
+- 验收标准：
+  1. WHEN 启用渠道存在可用 key 且到达探测周期 THEN 后台任务使用该 key 发起轻量探测（默认 GET `{base_url}/models`，不发起推理请求），并发受限于设置；
+  2. WHEN 探测成功 THEN half-open/cooldown key 按状态机规则恢复，渠道状态与最后探测时间/延迟入库；WHEN 探测失败 THEN 记录状态码、错误分类、摘要与下次探测时间，不直接删除渠道或明文输出 key；
+  3. WHEN 上游不支持 models 探测或返回 404/405 THEN 标记 inconclusive 而不是 down，避免把“探测路径不支持”误判为渠道故障；
+  4. WHEN 渠道停用、进程退出或修改探测间隔 THEN 探测任务停止/重建，优雅退出不泄漏 goroutine；
+  5. Dashboard 与渠道列表显示 active/degraded/down/inconclusive、可用 key 数、最近探测时间与错误摘要；异常渠道排前并提供手动测试入口；
+  6. 后台任务使用可控时钟测试：成功恢复、失败保持 cooldown、inconclusive 不改变调度状态、停用渠道不探测、并发上限生效；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不调用 chat/completions 或 responses 产生推理费用；不引入 Redis/消息队列/外部监控系统；不做按模型健康分片；不做自动删除渠道
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：当前仅有实时请求驱动的 key 状态与手动连通测试，缺少任务书要求的周期探测与健康徽标闭环
+
+### T21: 下游令牌额度、有效期、模型白名单与 IP 白名单强制（P1）
+
+- 目标：把 tokens 表中已有但未强制的治理字段接入两条公共请求链路，保证令牌在请求前授权、成功后按实际 token 用量原子扣减，并让管理台清晰展示额度状态
+- 验收标准：
+  1. WHEN 令牌 disabled、已过期、请求模型不在 `allowed_models`（空列表表示全部允许）或客户端 IP 不匹配 `allowed_ips`（支持精确 IP 与 CIDR）THEN `/v1/chat/completions` 与 `/v1/responses` 均在调用上游前拒绝，并返回统一 OpenAI 错误体与明确 code；
+  2. WHEN quota=0 THEN 不限额度；WHEN 请求前剩余额度 <=0 THEN 返回 quota_exceeded；WHEN 成功响应携带 usage THEN 按输入+输出 token 数原子累加 `used_quota`，并发请求不得超额；
+  3. WHEN 上游失败、客户端断开或响应无 usage THEN 不扣减额度，且日志可见 usage 缺失原因；两条协议的非流式与流式 usage 提取（含最终 usage chunk / response.completed）均有公共 HTTP 边界测试；
+  4. WHEN 配额被扣减 THEN 管理台令牌列表显示额度、已用、剩余、超限状态，额度变化与请求日志可对账；
+  5. 白名单/额度错误进入请求日志（不泄漏 token 明文），并复用现有统一错误格式；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：quota 单位定义为 token 数，不做货币余额/充值/多租户计费；不做分组路由；不实现每分钟速率限制（可后续独立卡）；不因额度未知而猜测扣减
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：字段与管理端编辑已存在，但公共链路尚未强制，存在越权与超额风险，优先于用量报表实现
+
+### T22: 用量成本统计与每日聚合报表（P1）
+
+- 目标：基于请求日志与可配置模型单价生成渠道/模型/令牌维度的每日用量与成本报表，补齐 `usage_daily` 聚合链路，并在管理台提供可筛选统计页
+- 验收标准：
+  1. 支持全局默认单价与渠道+模型覆盖单价（输入/输出每百万 token，固定小数精度存储），管理台可维护；单价变更不追溯重算历史请求；
+  2. WHEN 成功请求记录 usage THEN 按命中渠道与上游模型计算本请求 cost 并写入 request_logs；无单价或无 usage 时明确显示“未计价/未知”，不伪造 0 成本结论；
+  3. 后台按 UTC 日聚合 requests/success/tokens/cost 到 `usage_daily`，聚合幂等，启动恢复与优雅停机不重复计数、不丢当日数据；
+  4. 管理台统计页支持日期范围（默认近 7 天）、渠道、模型、令牌筛选，展示总请求/成功率/token/成本、日趋势、Top 渠道/模型/令牌；查询超过保留窗口返回 400；
+  5. 报表数据可用 SQLite/管理台 API 对账；历史无单价请求保持原值并说明统计口径；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不做 ClickHouse/外部 OLAP；不引入重量级图表库（优先 CSS/SVG 轻量图表）；不做预算自动降级与告警；不支持多币种账单
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：`usage_daily` 表已预留但未聚合，request_logs 已有 usage/cost 字段，需先由 T18 统一协议 usage，再落地计价与报表
+
+### T23: X-Session-Id 会话亲和调度（P1）
+
+- 目标：为携带 `X-Session-Id` 的请求提供 TTL 粘性调度，优先复用同 token+模型最近成功的渠道与 key，提升上游缓存命中与会话稳定性；故障时仍无感切换
+- 验收标准：
+  1. WHEN 相同启用 token、相同模型与相同非空 `X-Session-Id` 在 TTL 内再次请求，且记录的渠道/key 仍可用 THEN 路由优先命中该渠道/key；
+  2. WHEN 粘性渠道/key cooldown、disabled、渠道删除或请求失败 THEN 按现有路由/重试逻辑切换，成功后更新亲和记录；
+  3. WHEN 未携带 header、session 为空/超长、TTL 过期或容量满 THEN 退回普通调度；LRU 清理有界且不拖垮请求路径；
+  4. 亲和键绑定 token/model，不同下游令牌即使传相同 session ID 也不能复用记录；记录只保存哈希后的 session 指纹，不保存原文；
+  5. 并发相同 session 请求测试不出现锁竞争退化；进程重启后允许亲和丢失并自然重建；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
+- 边界：第一版仅进程内存表，不持久化到 SQLite，不引入 Redis；不做跨实例亲和；不保证流式请求中途重试；T24 请求级覆盖可覆盖亲和策略但不绕过健康状态
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：当前路由每次按优先级/权重随机选择，缺少任务书要求的会话亲和能力
+
+### T24: 请求级路由与重试配置覆盖（P1）
+
+- 目标：参考 Portkey config-driven gateway 思想，为单请求提供严格白名单化的 `X-EverGate-Config` JSON 覆盖，让客户端/管理台可以在不修改全局配置的情况下控制超时、重试预算与候选渠道范围
+- 验收标准：
+  1. WHEN 请求携带合法 `X-EverGate-Config` THEN 仅允许覆盖白名单字段（connect/first_token/overall 超时、retry channels/keys/total、候选 channel id 列表、session 亲和开关），并应用于本次 CC/Responses 调度；
+  2. WHEN JSON 含未知字段、类型错误、channel 不存在/不可用、数值越界或试图覆盖鉴权/密钥/模型白名单 THEN 返回 400 并指出字段路径；合法值必须 clamp 到安全上下限；
+  3. 覆盖不能绕过 TokenAuth、令牌模型白名单、额度、IP 限制或上游 key 加密；无效候选全部耗尽仍返回统一 503；
+  4. request_logs 记录脱敏后的有效覆盖摘要（如超时/渠道范围/亲和开关），不保存原始 header 中的无关大 JSON，日志大小有上限；
+  5. CC 与 Responses 公共 HTTP 边界测试覆盖无 header、合法覆盖、非法覆盖、候选耗尽、与 T21 权限约束叠加；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不做请求配置持久化/命名配置集；不做 provider hooks/插件系统；不允许请求指定上游 key 明文或索引；不做 CC↔R 协议转换策略覆盖
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：将任务书 Portkey config 借鉴收敛为显式白名单，避免任意配置注入与权限绕行
+
+### T25: 管理台 Playground 与命中链路调试（P1）
+
+- 目标：在管理台内置模型调试页，支持选择 CC/Responses 两种协议、流式与非流式请求，并展示实际命中渠道、上游模型、首 token、总耗时与 retry trace，帮助用户验证渠道配置与协议兼容性
+- 验收标准：
+  1. Playground 仅管理台会话可用，不要求用户复制下游 token，不在响应/UI/日志中暴露任何上游或下游 key 明文；
+  2. 支持模型选择、系统/用户消息编辑、stream 开关、协议切换（Chat Completions / Responses），默认请求大小与消息条数有上限；
+  3. 流式输出逐段渲染且不整段等待；中断/失败时显示可读错误，非流式显示完整结果与 usage；
+  4. 请求完成后展示命中渠道、上游模型、first_token_ms、total_ms、状态码、usage 与重试轨迹；请求进入 request_logs 并标记为 Playground 来源；
+  5. 使用 mock 上游覆盖 CC 非流式/流式、Responses 非流式/流式、上游 500 切换、无效模型；前端构建与 1280×800 / 390×844 无横向破版；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不做多模态上传、对话持久化、Prompt 模板库、自动评测或模型广场；不绕过 T20/T21/T24 的调度与健康规则；第一版不做导出
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：补齐任务书“好用”核心管理台体验，同时作为 T18 协议矩阵的真实人工调试入口
+
+### T26: Prometheus 指标与 OpenTelemetry 可选导出（P1）
+
+- 目标：补齐网关运行指标与可选 OTLP 导出，提供本地 Prometheus 抓取端点与标准 OpenTelemetry 接入，帮助定位 QPS、渠道失败率、首 token 延迟与 cooldown 行为
+- 验收标准：
+  1. `GET /metrics` 输出 Prometheus 文本格式，仅允许 loopback 访问，非本机访问返回 403；指标包含 gateway requests/errors/active requests、每渠道模型状态计数、first_token_ms 直方图、上游错误分类计数、key cooldown/active 指标；
+  2. OpenTelemetry 默认关闭；仅当标准 `OTEL_EXPORTER_OTLP_ENDPOINT` 等环境变量存在时启用，不新增 mandatory collector，不影响现有单二进制开箱即用；
+  3. relay 关键路径产生请求/重试/上游调用 span 或 metric，标签不包含 key 明文、下游 token 明文、master key、完整请求体；低基数标签（channel/model/status/error kind）有防滥用上限；
+  4. 关闭 OTel 时无外部网络请求、无导出 goroutine 泄漏；开启时导出失败只记录 warning，不影响请求成功；优雅停机 flush/退出；
+  5. 单元/集成测试覆盖 loopback 限制、核心指标增量、SSE 首 token 指标、OTel 禁用默认值；README 修正 `/metrics` 实际暴露方式；新增依赖理由记录；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
+- 边界：不引入 Jaeger/Collector/监控 SaaS 依赖；不导出请求/响应正文与密钥；不做日志采集管道；Prometheus 与 OTel 配置优先使用标准 env/本地设置，不做多租户隔离
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 P1 建卡：README 当前描述了 `/metrics`，但实现尚未提供该端点；本卡同时补齐任务书 OTel 可选导出，避免继续文档超前
+
 ## 状态枚举
 
 | 状态 | 含义 |
@@ -365,14 +496,23 @@
 | done | 验收标准全部满足且有验证证据 |
 | blocked | 受阻；最新进度行注明原因与可否绕行 |
 | canceled | 放弃；最新进度行注明原因 |
+| deferred | 延后；最新进度行注明重启条件 |
+
+## 卡面约定
+
+- **WHEN/THEN 场景写法**（接口 / 交互类任务可选）：
+  - WHEN <操作或输入>
+  - THEN <可观察的预期结果>
+  - 例：WHEN 查询 32 天范围 THEN 返回 400 并提示超出
+- **done 卡不删**：完成的任务保留在任务清单中——进度即项目史
 
 ## 里程碑
 
 | 里程碑 | 内容 | 完成判据 |
 |---|---|---|
 | P0（本次） | T0–T7 全部 done | 下方「验收清单」全部通过 |
-| P1（后续） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T13 三协议接入矩阵与 Anthropic Messages 入口；会话亲和、健康探测徽标、用量成本统计、Playground、令牌额度/白名单强制、请求级 config 覆盖、系统设置、OTel 可选导出 | T10–T13 按上方任务卡验收；其余项开工前再拆任务卡 |
-| P2（后续，暂不建卡） | Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | 开工前再拆任务卡 |
+| P1（当前阶段） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel | T10–T12、T18–T26 全部按任务卡验收；T13 已延后。默认执行顺序：T18 → T19 → T20 → T21 → T22 → T23 → T24 → T25 → T26，依赖变化时先更新任务卡进度 |
+| P2（后续，暂不建卡） | Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | 开工前再拆任务卡 |
 
 ## 验收清单
 
@@ -390,3 +530,5 @@ P0 完成的唯一定义（全部通过才算 done）：
 10. 调度器（状态机+错误分类）单元测试覆盖 ≥ 90% 分支；提供基于 httptest mock 上游的集成测试
 
 非功能验收项：二进制体积 < 30MB；空闲内存 < 50MB；冷启动 < 1s（到 /healthz 200）；网关自身首 token 额外延迟 < 5ms（与直连对比）；三平台交叉编译通过；优雅停机（SIGINT/SIGTERM 后停止接新请求，在途请求最长 30s 排空）。
+
+（技术背景见 [README.md](./README.md)，改码规则见 [AGENTS.md](./AGENTS.md)，勿在此重复）

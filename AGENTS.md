@@ -3,7 +3,7 @@
 ## 通用规范（必建四条）
 
 1. **复用优先，不过度设计**：同一逻辑或结构出现第二份副本时，立即抽取为公共函数 / 公共样式 / 公共组件；前端页面表现优先组件化；保证代码质量（可读、可测、可维护），不为假想的未来需求预先抽象。
-2. **文档同步**：每次开发结束或提交之前，同步更新 README.md、AGENTS.md、DEVELOP_PLAN.md；文档与代码不同步视为任务未完成。
+2. **文档同步更新**：每次开发结束或提交之前，同步更新三份文档：README.md（结构与用法变化）、AGENTS.md（规范变化）、DEVELOP_PLAN.md（任务状态与验收清单）；**文档与代码不同步视为任务未完成**。
 3. **计划执行分离**：动手前先在 DEVELOP_PLAN.md 建任务卡（目标、验收标准、边界）并确认；执行中不得顺手扩范围，需求或范围变化先回任务卡更新，再改代码。
 4. **诚实终态**：声明完成必须附实际产出文件与验证证据（执行了什么、结果如何）；未运行的测试或验证不得声称通过；受阻时如实标注 blocked 并写明原因与可否绕行。
 
@@ -39,7 +39,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 ## 代码风格
 
 - Go：提交前 `gofmt` 无 diff、`go vet` 通过；错误必须处理或显式 `//nolint` 注明理由。
-- 客户端接入协议矩阵默认包含 OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses`、Anthropic Messages `/v1/messages`；新增接入能力必须说明三种入口的可用性，不能只验证单一协议。
+- 客户端接入协议矩阵当前范围为 OpenAI Chat Completions `/v1/chat/completions` 与 OpenAI Responses `/v1/responses`（上游、下游均为此两种）；Anthropic Messages `/v1/messages` 已明确延后（T13，重启前先回任务卡更新范围）。新增接入能力必须说明两种入口的可用性，不能只验证单一协议。
 - 所有时间以 UTC 存储，仅展示层转本地时区。
 - 对外错误响应统一 OpenAI 格式 `{error:{message,type,code}}`；全部渠道耗尽返回 503。
 - Responses 下游的 `function` / `custom` 工具转换必须保留客户端声明的工具语义，custom grammar 只能降级为提示不能声称硬约束；新增 Responses 工具或事件前先对照 OpenAI 官方 schema 与允许参考项目，并用公共 HTTP 边界写回归测试。

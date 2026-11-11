@@ -12,7 +12,7 @@
 
 P0（第一版交付范围）：
 
-- **统一入口**：OpenAI 兼容 `/v1/chat/completions`（含 SSE 流式与 tool calls 透传）、Codex 兼容 `/v1/responses` + `/v1/models`；Anthropic `/v1/messages` 已列入 T13
+- **统一入口**：OpenAI 兼容 `/v1/chat/completions`（含 SSE 流式与 tool calls 透传）、Codex 兼容 `/v1/responses` + `/v1/models`；Anthropic `/v1/messages` 当前阶段不提供（协议范围决策见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)）
 - **不中断**（本项目存在的第一理由）：key 池调度 + cooldown 状态机 + 错误分类重试（重试 → 换 key → 换渠道）；SSE 场景下「首个 chunk 写给客户端之前」可无感切换，之后绝不重试
 - **渠道与 key 池管理**：增删改查、多行批量导入 key、单渠道连通测试
 - **下游令牌**：发放给客户端的 key，SHA-256 哈希校验
@@ -21,7 +21,7 @@ P0（第一版交付范围）：
 - **安全**：上游 key AES-GCM 加密落库；管理台密码 bcrypt；任何接口不回显明文
 - **交付形态**：`1 个可执行文件 + 1 个 SQLite 数据文件`，运行 `./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 任何外部依赖
 
-P1/P2 方向（三协议接入矩阵：OpenAI Chat Completions / OpenAI Responses / Anthropic Messages，以及会话亲和、Playground、用量报表等）见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)。
+P1/P2 方向与协议范围决策见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)。
 
 **非目标**：多租户 SaaS 计费、K8s 部署、MCP/A2A 协议代理、模型训练/微调、语义缓存（P2 再议）。
 
@@ -106,7 +106,7 @@ EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat
 | React 19 + TypeScript + Vite + TanStack Query/Router/Table + Tailwind 4 + shadcn/ui | 后台现代观感、组件可控、无重型 UI 库锁定；对标项目共同路线 |
 | AES-GCM 加密上游 key，主密钥在 evergate.yml | 本地 DB 文件泄露 ≠ key 泄露 |
 | DB 是唯一事实源，evergate.yml 仅做引导 | 渠道变更经管理台保存即生效，无需重启 |
-| P0 只实现 OpenAI 兼容上游适配器 | anthropic / gemini 等经其官方 OpenAI 兼容端点接入；Anthropic Messages 下游入口属 T13，原生上游适配属 P2 |
+| P0 只实现 OpenAI 兼容上游适配器 | anthropic / gemini 等经其官方 OpenAI 兼容端点接入；Anthropic Messages 下游入口延后、原生上游适配属 P2（范围见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)） |
 | Windows 优雅停机以 SIGINT（Ctrl+C）为准 | SIGTERM 在 Windows 语义不可靠；Interrupt 触发后最长 30s 排空在途请求 |
 
 参考项目与许可证边界：gpt-load（MIT，调度内核可直接借鉴）、bifrost（Apache-2.0，性能与错误分类）、litellm（MIT 核心，Router 语义）；**new-api 为 AGPL-3.0，仅学产品设计，严禁复制任何代码**。详见 [AGENTS.md · 禁止事项](./AGENTS.md#禁止事项)。
