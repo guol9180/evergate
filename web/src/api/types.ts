@@ -89,6 +89,7 @@ export interface RetryAttempt {
   channel_name: string
   key_id: number
   attempt: number
+  status_code?: number
   error_type: string
   error_message: string
   elapsed_ms: number

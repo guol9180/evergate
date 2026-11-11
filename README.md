@@ -51,6 +51,17 @@ go run ./cmd/evergate   # 开发态直接运行
 - 管理台：`http://localhost:8787/`（首次启动自动创建 admin/admin123，首登强制改密）
 - 桌面体验：默认启动后自动打开管理台；服务器部署可在 `evergate.yml` 设置 `server.open_browser: false`
 
+常见上游渠道基址（EverGate 会在其后拼接 `/chat/completions`）：
+
+| 上游 / 套餐 | 管理台 Base URL |
+|---|---|
+| DeepSeek | `https://api.deepseek.com` |
+| 智谱 / Z.ai Coding 国际版 | `https://api.z.ai/api/coding/paas/v4` |
+| 智谱 BigModel Coding 中国版 | `https://open.bigmodel.cn/api/coding/paas/v4` |
+| 智谱 BigModel 常规 API | `https://open.bigmodel.cn/api/paas/v4` |
+
+> 智谱 / Z.ai Coding 套餐不要把 Base URL 配成 `https://open.bigmodel.cn/api/v1`。实测该地址会让 Coding key 收到空 body 的 HTTP 500，EverGate 最终汇总为 `503 all_channels_exhausted`；请按上表修改渠道 Base URL 并重置 cooldown 中的 key。
+
 ### 接入 Codex
 
 在 `C:\Users\<用户名>\.codex\config.toml` 中添加：
@@ -73,7 +84,7 @@ supports_websockets = false
 setx EVERGATE_API_KEY "eg-你的EverGate令牌"
 ```
 
-EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat Completions 请求，并保留路由、key 池、重试、cooldown 与请求日志链路。当前支持 `function`、自由文本 `custom`、`lark`/`regex` grammar custom tool、namespace 工具、Responses Lite `additional_tools`、`configuration_update.reasoning.effort` 与 `text.verbosity`；custom tool 会在上游降级为单字段 `input` 的 function schema，grammar 会写入参数描述（Chat 上游无法硬约束），返回时恢复为 `custom_tool_call` / `custom_tool_call_output` 并补回 namespace。异步/deferred custom tool、programmatic allowed_callers、图片输入、加密 compaction 与 Responses WebSocket 不在本阶段支持范围内。
+EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat Completions 请求，并保留路由、key 池、重试、cooldown 与请求日志链路。当前支持 `function`、自由文本 `custom`、`lark`/`regex` grammar custom tool、namespace 工具、Responses Lite `additional_tools`、`configuration_update.reasoning.effort` 与 `text.verbosity`；custom tool 会在上游降级为单字段 `input` 的 function schema，grammar 会写入参数描述（Chat 上游无法硬约束），返回时恢复为 `custom_tool_call` / `custom_tool_call_output` 并补回 namespace。不同 namespace 下同名工具（例如多个 MCP server 都暴露 `js`）会映射为 `<namespace>__<tool>` 的上游唯一函数名，响应与历史回传再恢复原始 namespace/name。异步/deferred custom tool、programmatic allowed_callers、图片输入、加密 compaction 与 Responses WebSocket 不在本阶段支持范围内。
 
 > 端口约定：默认 `8787`，避开本地 Java 项目常用的 8080；如需修改只改 `evergate.yml` 的 `server.port`，无需改代码。
 - 存活检查：`GET /healthz`；指标：`GET /metrics`（仅允许 loopback 访问）

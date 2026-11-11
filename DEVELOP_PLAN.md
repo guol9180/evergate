@@ -316,6 +316,25 @@
   - 2026-11-10 发版 准备发布 v0.1.7：将 apply_patch grammar 修复与 Responses 兼容补齐送入 GitHub Actions 自动打包
   - 2026-11-10 发版 v0.1.7：Release Action 42793297209 成功；Release 正文正确提取修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（27,991,040 bytes，启动显示 version=v0.1.7）后，用真实 Codex 0.167.0-alpha.3.2 + 18905/18906 隔离实例 + mock 上游复验：上游 function schema 保留 `grammar syntax: lark`，`text.verbosity=low` 与 reasoning effort 正确转换；Codex 执行 apply_patch 创建 `v017-real.txt`，第二轮 custom output 回传成功，最终输出 `v0.1.7 apply patch ok`
 
+### T16: v0.1.7 Responses namespace 重名与 ZAI 渠道 503 回归修复（P0，用户反馈缺陷）
+
+- 目标：修复 Codex 在不同 Responses namespace 下声明同名工具（如两个 MCP 均暴露 `js`）时被 EverGate 400 拒绝的问题；定位 DeepSeek Harness 访问 ZAI 模型得到 `503 all_channels_exhausted` 的真实原因，并给出代码修复或明确配置结论
+- 验收标准：
+  1. 公共 HTTP 边界红测先复现 `Responses flattened tool name "js" maps to multiple declarations`；
+  2. 多 namespace 同名 function/custom 工具可同时发送给 Chat 上游，且上游工具名唯一、合法、可往返；Responses 输出恢复原始 `namespace/name`，历史 `function_call` / `custom_tool_call` 回传使用同一上游映射；
+  3. 从本机只读运行数据定位 ZAI 503 的 retry trace / 渠道配置事实，若属 EverGate 缺陷则补回归测试并修复，若属环境/渠道配置则形成可执行结论且不误改业务数据；
+  4. `gofmt`、`go test ./... -count=1`、`go vet ./...`、涉及前端时 `npm --prefix web run build`、`make build` 全部通过。
+- 边界：T13 保持 planned 且不在本卡顺手实现；不读取/输出上游 key 明文；不修改用户安装目录数据；不引入代理配置以外的禁止依赖；若网络代理支持需要改配置结构，先在任务卡更新范围
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-11 计划 用户反馈两个缺陷：Codex 触发 `Responses flattened tool name "js" maps to multiple declarations`；DeepSeek Harness 访问 ZAI 模型触发 `503 {"code":"all_channels_exhausted"}`。暂停 T13，优先做回归修复
+  - 2026-11-11 执行 只读定位安装数据实际在 `D:\software\evergate\data`（用户曾提供的 `C:\Users\PC\Downloads\data` 已不存在）。渠道：ZAI base_url `https://open.bigmodel.cn/api/v1`、模型 `glm-5.3` / `glm-5.3-flash`；相关 503 日志共 7 条，前 3 条 trace 为 ZAI key 网络瞬时错误，后 4 条因 key 连续失败进入 cooldown 后无候选渠道，trace 为空；DeepSeek 渠道当日另有成功请求。继续用隔离副本复现 ZAI 网络错误细节并建 Responses 红测
+  - 2026-11-11 执行 红测 `TestResponsesDuplicateNamespacedToolNamesRoundTrip` 在公共 HTTP 边界复现用户原始 400；随后将 Responses namespace 工具从“仅按局部名去重”改为确定性唯一映射 `<namespace>__<tool>`，响应恢复原始 namespace/name，历史 function/custom 调用不依赖跨请求状态按同一映射回放，超长名称用确定性哈希截断
+  - 2026-11-11 执行 用安装数据 SQLite 快照 + 已知临时下游令牌隔离复现 ZAI：原 `https://open.bigmodel.cn/api/v1` 使用真实 Coding key 返回空 body HTTP 500，连续失败后 key cooldown 导致后续 503；只把快照 Base URL 改为 `https://open.bigmodel.cn/api/coding/paas/v4` 后，同一模型 `glm-5.3-flash` 流式请求返回 200 与 SSE 内容。结论：该问题是渠道 Base URL 配置错误，不是调度器缺陷；未修改用户安装目录数据
+  - 2026-11-11 执行 诊断体验修复：retry_trace 每次尝试记录上游 HTTP status_code；空 error body 的 4xx/5xx 显示 `http <status> (empty error body)`，503 汇总消息携带最后一次真实原因，管理台日志详情展示 HTTP 状态；README 增加智谱 / Z.ai Coding 正确基址表
+  - 2026-11-11 验证 `gofmt` 无 diff；`go test ./... -count=1` 通过；`go vet ./...` 通过；`npm --prefix web run build` 通过（沙箱内 esbuild spawn EPERM，按既有例外在沙箱外执行）；`make build` 通过并产出 `bin/evergate.exe`
+
+## 状态枚举
 ## 状态枚举
 
 | 状态 | 含义 |

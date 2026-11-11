@@ -43,6 +43,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 - 所有时间以 UTC 存储，仅展示层转本地时区。
 - 对外错误响应统一 OpenAI 格式 `{error:{message,type,code}}`；全部渠道耗尽返回 503。
 - Responses 下游的 `function` / `custom` 工具转换必须保留客户端声明的工具语义，custom grammar 只能降级为提示不能声称硬约束；新增 Responses 工具或事件前先对照 OpenAI 官方 schema 与允许参考项目，并用公共 HTTP 边界写回归测试。
+- Responses namespace 工具扁平化必须生成确定性且全局唯一的 Chat 函数名；响应输出与历史回传必须恢复原始 `namespace/name`，不得只按局部工具名去重或依赖跨请求内存状态。
 - 管理台 API 返回统一 JSON 结构；任何接口不得回显上游 key 明文。
 - 前端路由守卫依赖的服务端状态（如 `['me']`）被 mutation 改变时，必须在成功回调同步更新 TanStack Query 缓存；仅重新导航不得依赖旧缓存判断。
 - 运行日志（slog JSON 到 stdout）与请求日志（入库供管理台查询）分离。

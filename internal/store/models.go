@@ -83,6 +83,7 @@ type RetryAttempt struct {
 	ChannelName  string `json:"channel_name"`
 	KeyID        int64  `json:"key_id"`
 	Attempt      int    `json:"attempt"`
+	StatusCode   int    `json:"status_code,omitempty"`
 	ErrorType    string `json:"error_type,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 	ElapsedMS    int64  `json:"elapsed_ms"`

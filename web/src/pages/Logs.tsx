@@ -135,6 +135,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
                         <div className="flex items-center gap-2 text-sm">
                           <span className="font-medium">尝试 {a.attempt}</span>
                           <span className="text-slate-500">→ {a.channel_name} · key #{a.key_id}</span>
+                          {!!a.status_code && <span className="text-xs text-slate-400">HTTP {a.status_code}</span>}
                           <span className="ml-auto text-xs text-slate-400">{a.elapsed_ms}ms</span>
                         </div>
                         {ok ? (

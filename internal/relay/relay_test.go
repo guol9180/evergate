@@ -586,11 +586,11 @@ func TestResponsesNamespaceToolsPreserveCallNamespace(t *testing.T) {
 			if err := json.Unmarshal([]byte(body), &req); err != nil {
 				t.Errorf("unmarshal namespace request: %v", err)
 			}
-			if len(req.Tools) != 2 || req.Tools[0].Function.Name != "spawn_agent" || req.Tools[1].Function.Name != "apply_patch" {
+			if len(req.Tools) != 2 || req.Tools[0].Function.Name != "multi_agent_v1__spawn_agent" || req.Tools[1].Function.Name != "multi_agent_v1__apply_patch" {
 				t.Fatalf("namespace tools were not flattened safely: %#v", req.Tools)
 			}
 			payload = strings.Join([]string{
-				`data: {"id":"chatcmpl-namespace","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_function","type":"function","function":{"name":"spawn_agent","arguments":"{\"agent\":\"a\"}"}},{"index":1,"id":"call_patch","type":"function","function":{"name":"apply_patch","arguments":"{\"input\":\"patch\"}"}}]},"finish_reason":"tool_calls"}]}`,
+				`data: {"id":"chatcmpl-namespace","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_function","type":"function","function":{"name":"multi_agent_v1__spawn_agent","arguments":"{\"agent\":\"a\"}"}},{"index":1,"id":"call_patch","type":"function","function":{"name":"multi_agent_v1__apply_patch","arguments":"{\"input\":\"patch\"}"}}]},"finish_reason":"tool_calls"}]}`,
 				`data: [DONE]`,
 				"",
 			}, "\n\n")
@@ -602,9 +602,9 @@ func TestResponsesNamespaceToolsPreserveCallNamespace(t *testing.T) {
 				t.Errorf("unmarshal namespace continuation: %v", err)
 			}
 			if len(req.Messages) != 4 ||
-				req.Messages[0].ToolCalls[0].Function.Name != "spawn_agent" ||
+				req.Messages[0].ToolCalls[0].Function.Name != "multi_agent_v1__spawn_agent" ||
 				req.Messages[1].Role != "tool" ||
-				req.Messages[2].ToolCalls[0].Function.Name != "apply_patch" ||
+				req.Messages[2].ToolCalls[0].Function.Name != "multi_agent_v1__apply_patch" ||
 				req.Messages[3].Role != "tool" {
 				t.Fatalf("namespace continuation was not replayed: %#v", req.Messages)
 			}
@@ -645,6 +645,89 @@ func TestResponsesNamespaceToolsPreserveCallNamespace(t *testing.T) {
 	}`)
 	if !strings.Contains(second, `"delta":"namespace ok"`) {
 		t.Fatalf("namespace continuation did not finish: %s", second)
+	}
+}
+
+func TestResponsesDuplicateNamespacedToolNamesRoundTrip(t *testing.T) {
+	env := newEnv(t)
+	var phase atomic.Int64
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		var payload string
+		if phase.Add(1) == 1 {
+			var req struct {
+				Tools []chatTool `json:"tools"`
+			}
+			if err := json.Unmarshal([]byte(body), &req); err != nil {
+				t.Errorf("unmarshal duplicate-name request: %v", err)
+			}
+			if len(req.Tools) != 2 ||
+				req.Tools[0].Function.Name != "mcp__node_repl__js" ||
+				req.Tools[1].Function.Name != "mcp__cua_repl__js" {
+				t.Fatalf("duplicate namespaced tools were not made unique: %#v", req.Tools)
+			}
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-duplicate","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_fn","type":"function","function":{"name":"mcp__node_repl__js","arguments":"{\"code\":\"1+1\"}"}},{"index":1,"id":"call_custom","type":"function","function":{"name":"mcp__cua_repl__js","arguments":"{\"input\":\"state\"}"}}]},"finish_reason":"tool_calls"}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		} else {
+			var req struct {
+				Messages []chatMessage `json:"messages"`
+			}
+			if err := json.Unmarshal([]byte(body), &req); err != nil {
+				t.Errorf("unmarshal duplicate-name continuation: %v", err)
+			}
+			if len(req.Messages) != 4 ||
+				req.Messages[0].ToolCalls[0].Function.Name != "mcp__node_repl__js" ||
+				req.Messages[1].Role != "tool" ||
+				req.Messages[2].ToolCalls[0].Function.Name != "mcp__cua_repl__js" ||
+				req.Messages[3].Role != "tool" {
+				t.Fatalf("duplicate-name continuation was not replayed with upstream aliases: %#v", req.Messages)
+			}
+			payload = strings.Join([]string{
+				`data: {"id":"chatcmpl-duplicate-final","object":"chat.completion.chunk","created":124,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"duplicate namespace ok"}}]}`,
+				`data: [DONE]`,
+				"",
+			}, "\n\n")
+		}
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "openai", up.server.URL, 1, []string{"gateway-model"}, nil, "sk-good")
+
+	tools := `[
+		{"type":"namespace","name":"mcp__node_repl","description":"Node","tools":[
+			{"type":"function","name":"js","description":"Run JS","parameters":{"type":"object","properties":{"code":{"type":"string"}},"required":["code"]}}
+		]},
+		{"type":"namespace","name":"mcp__cua_repl","description":"CUA","tools":[
+			{"type":"custom","name":"js","description":"Control UI"}
+		]}
+	]`
+	resp, first := env.responses(t, `{"model":"gateway-model","input":"use both","stream":true,"tools":`+tools+`}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("duplicate namespaced tools status = %d, body = %s", resp.StatusCode, first)
+	}
+	if !strings.Contains(first, `"namespace":"mcp__node_repl"`) ||
+		!strings.Contains(first, `"namespace":"mcp__cua_repl"`) ||
+		!strings.Contains(first, `"type":"function_call"`) ||
+		!strings.Contains(first, `"type":"custom_tool_call"`) {
+		t.Fatalf("duplicate namespaced tools were not restored: %s", first)
+	}
+
+	_, second := env.responses(t, `{
+		"model":"gateway-model","stream":true,
+		"input":[
+			{"type":"function_call","call_id":"call_fn","name":"js","namespace":"mcp__node_repl","arguments":"{\"code\":\"1+1\"}"},
+			{"type":"function_call_output","call_id":"call_fn","output":"2"},
+			{"type":"custom_tool_call","call_id":"call_custom","name":"js","namespace":"mcp__cua_repl","input":"state"},
+			{"type":"custom_tool_call_output","call_id":"call_custom","output":"ok"}
+		]
+	}`)
+	if !strings.Contains(second, `"delta":"duplicate namespace ok"`) {
+		t.Fatalf("duplicate-name continuation did not finish: %s", second)
 	}
 }
 
@@ -1078,6 +1161,9 @@ func TestAcceptance7AllChannelsExhausted(t *testing.T) {
 	}
 	if !strings.Contains(errResp.Error.Message, "exhausted") {
 		t.Fatalf("message 应说明耗尽: %+v", errResp)
+	}
+	if !strings.Contains(errResp.Error.Message, "http 502") {
+		t.Fatalf("message 应携带最后一次上游状态而非只有耗尽: %+v", errResp)
 	}
 	// 连打 3 次后两 key 均进入 cooldown，第 4 次直接无可用 key（不再打上游）
 	for i := 0; i < 2; i++ {

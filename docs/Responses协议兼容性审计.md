@@ -11,6 +11,7 @@
 3. **流式 custom tool 参数不能把 JSON 增量直接透出**。Bifrost 会先累积 function arguments，完成后解出原始文本，先发一次完整 `response.custom_tool_call_input.delta`，再发 `.done`，保证序列号递增且客户端可见完整输入。
 4. **模型未按 schema 返回 `{"input":"..."}` 时不应丢弃结果**。Bifrost 在 arguments 没有 `input` 字段时把原始 arguments 作为 custom input 返回；这比直接报 conversion error 更符合“不丢模型输出”的网关原则。
 5. **原生 Responses 透传是长期解**。在渠道不支持 Responses 或需要跨协议调度时，仍应保留 Chat Completions 枢轴与降级转换。
+6. **namespace 只保工具作用域，不保证扁平化后的局部名字全局唯一**。Codex 可同时挂载多个 MCP server，它们都可能暴露 `js` 这类短名；转换到 Chat 上游时必须生成确定性的唯一函数名，并在响应与历史回传时恢复原始 `namespace/name`。
 
 ## 官方 schema 与 Codex 事实
 
@@ -51,7 +52,7 @@ OpenAI Codex 0.167.0-alpha.3.2 源码事实：
 |---|---|---|
 | Codex 顶层请求字段 | 支持（T15 修复后） | fallback 模型捕获的 11 个字段原本已在白名单；已知模型另发送 `text.verbosity`，本卡补齐 |
 | function tool | 支持 | 直转 Chat function |
-| namespace tool | 支持（T15 修复语义） | 递归扁平化；输出恢复原 `namespace`，历史继续按扁平名回传 |
+| namespace tool | 支持（T16 修复同名冲突） | 递归扁平化为 `<namespace>__<tool>`；不同 namespace 的同名工具可共存，输出恢复原 `namespace/name`，历史按同一确定性映射回传 |
 | Responses Lite `additional_tools` input item | 支持（T15 修复） | hoist 到 Chat 上游 `tools`，原 item 不进入 messages |
 | `configuration_update` input item | 支持（T15 修复） | 不进入 Chat messages；最新 `reasoning.effort` 覆盖上游 `reasoning_effort` |
 | `text.verbosity` | 支持（T15 修复） | 转为 Chat Completions `verbosity` |
@@ -91,3 +92,18 @@ OpenAI Codex 0.167.0-alpha.3.2 源码事实：
 ```text
 real apply_patch ok
 ```
+
+## T16 同名 namespace 工具回归
+
+2026-11-11 用户在 Codex 中触发：
+
+```text
+Responses flattened tool name "js" maps to multiple declarations
+```
+
+红测复现了两个 namespace（`mcp__node_repl` / `mcp__cua_repl`）同时声明 `js` 的场景。修复后：
+
+1. 上游 Chat tools 收到 `mcp__node_repl__js` 与 `mcp__cua_repl__js` 两个唯一函数名；
+2. 流式 Responses 输出分别恢复 `namespace + name`，其中一个保持 function call，另一个恢复 custom tool call；
+3. 下一轮历史回传再次映射到同一批上游函数名，不依赖跨请求内存状态；
+4. 超过 Chat 函数名长度时使用确定性哈希截断，保证历史可重放；清洗后仍发生不同工具映射同名的情况显式返回 400，避免静默串工具。

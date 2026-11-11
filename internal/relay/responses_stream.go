@@ -49,7 +49,7 @@ type responsesStream struct {
 	finishRS bool
 	usage    map[string]any
 
-	toolIdentities map[string]responsesToolIdentity
+	toolRegistry *responsesToolRegistry
 }
 
 // streamResponsesResponse converts an upstream Chat Completions SSE stream to
@@ -94,7 +94,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 	state := &responsesStream{
 		w: newSSEWriter(c.Writer), model: model, now: r.opt.Now(),
-		tools: map[int]*responsesStreamTool{}, toolIdentities: responsesToolIdentities(c),
+		tools: map[int]*responsesStreamTool{}, toolRegistry: responsesToolIdentities(c),
 	}
 	state.w.header()
 	stopKeepalive := state.w.startKeepalive()
@@ -200,14 +200,14 @@ func (s *responsesStream) consume(data string) {
 			name = tool.name
 		}
 		if tool == nil {
-			identity := toolIdentity(s.toolIdentities, name)
+			identity := toolIdentity(s.toolRegistry, name)
 			idPrefix := "fc"
 			if identity.Custom {
 				idPrefix = "ctc"
 			}
 			tool = &responsesStreamTool{
 				id: responseItemID(idPrefix, chunk.ID+"-"+call.ID+"-"+name), outputIndex: -1,
-				name: name, callID: call.ID, custom: identity.Custom, namespace: identity.Namespace,
+				name: identity.Name, callID: call.ID, custom: identity.Custom, namespace: identity.Namespace,
 			}
 			s.tools[call.Index] = tool
 		}
@@ -215,11 +215,11 @@ func (s *responsesStream) consume(data string) {
 			tool.callID = call.ID
 		}
 		if call.Function.Name != "" {
-			tool.name = call.Function.Name
 			if tool.outputIndex < 0 {
-				identity := toolIdentity(s.toolIdentities, tool.name)
+				identity := toolIdentity(s.toolRegistry, call.Function.Name)
 				tool.custom = identity.Custom
 				tool.namespace = identity.Namespace
+				tool.name = identity.Name
 			}
 		}
 		if tool.outputIndex < 0 {

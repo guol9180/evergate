@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -297,10 +298,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	switch cls.Kind {
 	case retry.KindRateLimited, retry.KindAuth:
 		r.opt.Pool.ReportFailure(key.ID, cls)
-		msg := string(errBody)
-		if len(msg) > 200 {
-			msg = msg[:200]
-		}
+		msg := upstreamErrorMessage(resp.StatusCode, errBody)
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		return outcomeNextKey
 	case retry.KindTransient, retry.KindModelUnavailable:
@@ -308,10 +306,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		if cls.Kind == retry.KindTransient {
 			r.opt.Pool.ReportFailure(key.ID, cls)
 		}
-		msg := string(errBody)
-		if len(msg) > 200 {
-			msg = msg[:200]
-		}
+		msg := upstreamErrorMessage(resp.StatusCode, errBody)
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		return outcomeNextChannel
 	default:
@@ -324,6 +319,17 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		c.Data(resp.StatusCode, ct, errBody)
 		return outcomeDone
 	}
+}
+
+func upstreamErrorMessage(status int, body []byte) string {
+	msg := strings.TrimSpace(string(body))
+	if msg == "" {
+		msg = fmt.Sprintf("http %d (empty error body)", status)
+	}
+	if len(msg) > 200 {
+		msg = msg[:200]
+	}
+	return msg
 }
 
 // recordHit 记录成功命中的渠道/key（供请求日志）。

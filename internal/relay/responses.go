@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,15 +19,22 @@ const responsesProtocol = "responses"
 const responsesToolIdentitiesKey = "evergate.responses_tool_identities"
 
 type responsesToolIdentity struct {
-	Name      string
-	Namespace string
-	Custom    bool
+	Name         string
+	Namespace    string
+	Custom       bool
+	UpstreamName string
 }
 
-type responsesInputConversion struct {
-	Messages        []chatMessage
+type responsesParsedInput struct {
+	Items           []responsesInputItem
 	AdditionalTools []responsesTool
 	ReasoningEffort string
+}
+
+type responsesToolRegistry struct {
+	byUpstream         map[string]responsesToolIdentity
+	upstreamByOriginal map[string]string
+	used               map[string]bool
 }
 
 type responsesInputItem struct {
@@ -138,7 +146,7 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "读取请求体失败")
 		return
 	}
-	converted, toolIdentities, err := responsesToChat(body)
+	converted, toolRegistry, err := responsesToChat(body)
 	if err != nil {
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", err.Error())
 		return
@@ -146,7 +154,7 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 	_ = c.Request.Body.Close()
 	c.Request.Body = io.NopCloser(strings.NewReader(string(converted)))
 	c.Set("evergate.protocol", responsesProtocol)
-	c.Set(responsesToolIdentitiesKey, toolIdentities)
+	c.Set(responsesToolIdentitiesKey, toolRegistry)
 
 	trace, status, errType, errMsg := r.dispatch(c, hit)
 	if r.opt.LogWriter != nil {
@@ -164,7 +172,7 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 	}
 }
 
-func responsesToChat(body []byte) ([]byte, map[string]responsesToolIdentity, error) {
+func responsesToChat(body []byte) ([]byte, *responsesToolRegistry, error) {
 	var wire map[string]json.RawMessage
 	if err := json.Unmarshal(body, &wire); err != nil {
 		return nil, nil, fmt.Errorf("请求体必须是合法 JSON: %w", err)
@@ -186,34 +194,39 @@ func responsesToChat(body []byte) ([]byte, map[string]responsesToolIdentity, err
 		return nil, nil, fmt.Errorf("model 不能为空")
 	}
 	out := chatRequest{
-		Model: req.Model, ToolChoice: responsesToolChoiceToChat(req.ToolChoice),
+		Model:             req.Model,
 		ParallelToolCalls: req.ParallelToolCalls, MaxTokens: req.MaxOutputTokens,
 		Temperature: req.Temperature, TopP: req.TopP, Stream: req.Stream,
 	}
 	if req.Instructions != "" {
 		out.Messages = append(out.Messages, chatMessage{Role: "system", Content: req.Instructions})
 	}
-	input, err := responsesInputToMessages(req.Input)
+	parsedInput, err := parseResponsesInput(req.Input)
 	if err != nil {
 		return nil, nil, err
 	}
-	out.Messages = append(out.Messages, input.Messages...)
-	allTools := make([]responsesTool, 0, len(req.Tools)+len(input.AdditionalTools))
+	allTools := make([]responsesTool, 0, len(req.Tools)+len(parsedInput.AdditionalTools))
 	allTools = append(allTools, req.Tools...)
-	allTools = append(allTools, input.AdditionalTools...)
-	tools, toolIdentities, err := responsesToolsToChat(allTools, "")
+	allTools = append(allTools, parsedInput.AdditionalTools...)
+	tools, toolRegistry, err := responsesToolsToChat(allTools, "")
 	if err != nil {
 		return nil, nil, err
 	}
 	out.Tools = tools
+	inputMessages, merr := responsesItemsToMessages(parsedInput.Items, toolRegistry)
+	if merr != nil {
+		return nil, nil, merr
+	}
+	out.Messages = append(out.Messages, inputMessages...)
+	out.ToolChoice = responsesToolChoiceToChat(req.ToolChoice, toolRegistry)
 	if raw, ok := req.Reasoning["effort"]; ok {
 		var effort string
 		if json.Unmarshal(raw, &effort) == nil && effort != "" {
 			out.ReasoningEffort = effort
 		}
 	}
-	if input.ReasoningEffort != "" {
-		out.ReasoningEffort = input.ReasoningEffort
+	if parsedInput.ReasoningEffort != "" {
+		out.ReasoningEffort = parsedInput.ReasoningEffort
 	}
 	if req.Text != nil && req.Text.Verbosity != "" {
 		out.Verbosity = req.Text.Verbosity
@@ -222,22 +235,44 @@ func responsesToChat(body []byte) ([]byte, map[string]responsesToolIdentity, err
 	if err != nil {
 		return nil, nil, err
 	}
-	return converted, toolIdentities, nil
+	return converted, toolRegistry, nil
 }
 
-func responsesInputToMessages(raw json.RawMessage) (responsesInputConversion, error) {
+func parseResponsesInput(raw json.RawMessage) (responsesParsedInput, error) {
 	if len(raw) == 0 {
-		return responsesInputConversion{}, nil
+		return responsesParsedInput{}, nil
 	}
 	var text string
 	if json.Unmarshal(raw, &text) == nil && text != "" {
-		return responsesInputConversion{Messages: []chatMessage{{Role: "user", Content: text}}}, nil
+		content, err := json.Marshal(text)
+		if err != nil {
+			return responsesParsedInput{}, err
+		}
+		return responsesParsedInput{Items: []responsesInputItem{{Type: "message", Role: "user", Content: content}}}, nil
 	}
 	var items []responsesInputItem
 	if err := json.Unmarshal(raw, &items); err != nil {
-		return responsesInputConversion{}, fmt.Errorf("input 必须是字符串或 item 数组: %w", err)
+		return responsesParsedInput{}, fmt.Errorf("input 必须是字符串或 item 数组: %w", err)
 	}
-	result := responsesInputConversion{Messages: make([]chatMessage, 0, len(items))}
+	result := responsesParsedInput{Items: items}
+	for _, item := range items {
+		switch item.Type {
+		case "additional_tools":
+			result.AdditionalTools = append(result.AdditionalTools, item.Tools...)
+		case "configuration_update":
+			if raw, ok := item.Reasoning["effort"]; ok {
+				var effort string
+				if json.Unmarshal(raw, &effort) == nil && effort != "" {
+					result.ReasoningEffort = effort
+				}
+			}
+		}
+	}
+	return result, nil
+}
+
+func responsesItemsToMessages(items []responsesInputItem, registry *responsesToolRegistry) ([]chatMessage, error) {
+	messages := make([]chatMessage, 0, len(items))
 	assistantWithTools := -1
 	for _, item := range items {
 		switch item.Type {
@@ -248,49 +283,44 @@ func responsesInputToMessages(raw json.RawMessage) (responsesInputConversion, er
 			}
 			content, cerr := contentText(item.Content)
 			if cerr != nil {
-				return responsesInputConversion{}, cerr
+				return nil, cerr
 			}
 			msg := chatMessage{Role: role, Content: content}
-			result.Messages = append(result.Messages, msg)
+			messages = append(messages, msg)
 			assistantWithTools = -1
-		case "additional_tools":
-			result.AdditionalTools = append(result.AdditionalTools, item.Tools...)
-		case "configuration_update":
-			if raw, ok := item.Reasoning["effort"]; ok {
-				var effort string
-				if json.Unmarshal(raw, &effort) == nil && effort != "" {
-					result.ReasoningEffort = effort
-				}
-			}
+		case "additional_tools", "configuration_update":
+			// 已在 parseResponsesInput / tools registry 阶段处理。
 		case "function_call":
-			appendToolCall(&result.Messages, &assistantWithTools, item.CallID, item.Name, item.Arguments)
+			name := registry.UpstreamName(item.Namespace, item.Name, false)
+			appendToolCall(&messages, &assistantWithTools, item.CallID, name, item.Arguments)
 		case "custom_tool_call":
 			arguments, err := json.Marshal(map[string]string{"input": item.Input})
 			if err != nil {
-				return responsesInputConversion{}, err
+				return nil, err
 			}
-			appendToolCall(&result.Messages, &assistantWithTools, item.CallID, item.Name, string(arguments))
+			name := registry.UpstreamName(item.Namespace, item.Name, true)
+			appendToolCall(&messages, &assistantWithTools, item.CallID, name, string(arguments))
 		case "function_call_output":
 			output, oerr := outputText(item.Output)
 			if oerr != nil {
-				return responsesInputConversion{}, oerr
+				return nil, oerr
 			}
-			result.Messages = append(result.Messages, chatMessage{Role: "tool", ToolCallID: item.CallID, Content: output})
+			messages = append(messages, chatMessage{Role: "tool", ToolCallID: item.CallID, Content: output})
 			assistantWithTools = -1
 		case "custom_tool_call_output":
 			output, oerr := outputText(item.Output)
 			if oerr != nil {
-				return responsesInputConversion{}, oerr
+				return nil, oerr
 			}
-			result.Messages = append(result.Messages, chatMessage{Role: "tool", ToolCallID: item.CallID, Content: output})
+			messages = append(messages, chatMessage{Role: "tool", ToolCallID: item.CallID, Content: output})
 			assistantWithTools = -1
 		case "reasoning":
 			// EverGate 不生成 encrypted reasoning，因此正常不会收到该项。
 		default:
-			return responsesInputConversion{}, fmt.Errorf("unsupported Responses input item type %q", item.Type)
+			return nil, fmt.Errorf("unsupported Responses input item type %q", item.Type)
 		}
 	}
-	return result, nil
+	return messages, nil
 }
 
 func appendToolCall(msgs *[]chatMessage, assistantWithTools *int, callID, name, arguments string) {
@@ -304,60 +334,158 @@ func appendToolCall(msgs *[]chatMessage, assistantWithTools *int, callID, name, 
 	})
 }
 
-func responsesToolsToChat(tools []responsesTool, namespace string) ([]chatTool, map[string]responsesToolIdentity, error) {
+func newResponsesToolRegistry() *responsesToolRegistry {
+	return &responsesToolRegistry{
+		byUpstream:         make(map[string]responsesToolIdentity),
+		upstreamByOriginal: make(map[string]string),
+		used:               make(map[string]bool),
+	}
+}
+
+func responsesToolOriginalKey(namespace, name string, custom bool) string {
+	return normalizeResponsesNamespace(namespace) + "\x00" + name + "\x00" + strconv.FormatBool(custom)
+}
+
+func normalizeResponsesNamespace(namespace string) string {
+	if namespace == "functions" {
+		return ""
+	}
+	return namespace
+}
+
+func (r *responsesToolRegistry) Register(name, namespace string, custom bool) (string, error) {
+	identity := responsesToolIdentity{Name: name, Namespace: normalizeResponsesNamespace(namespace), Custom: custom}
+	originalKey := responsesToolOriginalKey(identity.Namespace, name, custom)
+	if existing, ok := r.upstreamByOriginal[originalKey]; ok {
+		if previous := r.byUpstream[existing]; previous != identity {
+			return "", fmt.Errorf("Responses tool %q in namespace %q has conflicting declarations", name, identity.Namespace)
+		}
+		return existing, nil
+	}
+
+	candidate := chatToolUpstreamName(identity.Namespace, name, custom)
+	if len(candidate) > 64 {
+		return "", fmt.Errorf("Responses tool %q in namespace %q cannot map to a valid Chat tool name", name, identity.Namespace)
+	}
+	if r.used[candidate] {
+		return "", fmt.Errorf("Responses tool %q in namespace %q maps to an already used Chat tool name %q", name, identity.Namespace, candidate)
+	}
+	identity.UpstreamName = candidate
+	r.used[candidate] = true
+	r.upstreamByOriginal[originalKey] = candidate
+	r.byUpstream[candidate] = identity
+	return candidate, nil
+}
+
+func (r *responsesToolRegistry) Identity(upstreamName string) responsesToolIdentity {
+	if identity, ok := r.byUpstream[upstreamName]; ok {
+		return identity
+	}
+	return responsesToolIdentity{Name: upstreamName, UpstreamName: upstreamName}
+}
+
+func (r *responsesToolRegistry) UpstreamName(namespace, name string, custom bool) string {
+	normalized := normalizeResponsesNamespace(namespace)
+	if upstreamName, ok := r.upstreamByOriginal[responsesToolOriginalKey(normalized, name, custom)]; ok {
+		return upstreamName
+	}
+	return chatToolUpstreamName(normalized, name, custom)
+}
+
+func sanitizeChatToolName(value string) string {
+	var sb strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+			sb.WriteRune(r)
+		default:
+			sb.WriteByte('_')
+		}
+	}
+	if sb.Len() == 0 {
+		return "_"
+	}
+	return sb.String()
+}
+
+func chatToolUpstreamName(namespace, name string, custom bool) string {
+	segments := make([]string, 0, 2)
+	if namespace != "" {
+		segments = append(segments, sanitizeChatToolName(namespace))
+	}
+	segments = append(segments, sanitizeChatToolName(name))
+	base := strings.Join(segments, "__")
+	if len(base) <= 64 {
+		return base
+	}
+	suffix := "_" + responseItemID("t", responsesToolOriginalKey(namespace, name, custom))[2:]
+	if len(suffix) >= 64 {
+		return suffix[:64]
+	}
+	return base[:64-len(suffix)] + suffix
+}
+
+func responsesToolsToChat(tools []responsesTool, namespace string) ([]chatTool, *responsesToolRegistry, error) {
 	out := make([]chatTool, 0, len(tools))
-	identities := make(map[string]responsesToolIdentity)
+	registry := newResponsesToolRegistry()
+	if err := appendResponsesToolsToChat(&out, tools, namespace, registry); err != nil {
+		return nil, nil, err
+	}
+	return out, registry, nil
+}
+
+func appendResponsesToolsToChat(out *[]chatTool, tools []responsesTool, namespace string, registry *responsesToolRegistry) error {
 	for _, tool := range tools {
 		switch tool.Type {
 		case "function":
-			out = append(out, chatTool{Type: "function", Function: chatFunction{
-				Name: tool.Name, Description: tool.Description, Strict: tool.Strict, Parameters: tool.Parameters,
-			}})
-			if err := mergeToolIdentity(identities, tool.Name, namespace, false); err != nil {
-				return nil, nil, err
+			upstreamName, err := registry.Register(tool.Name, namespace, false)
+			if err != nil {
+				return err
+			}
+			if !containsChatTool(*out, upstreamName) {
+				*out = append(*out, chatTool{Type: "function", Function: chatFunction{
+					Name: upstreamName, Description: tool.Description, Strict: tool.Strict, Parameters: tool.Parameters,
+				}})
 			}
 		case "namespace":
 			nestedNamespace := tool.Name
 			if nestedNamespace == "functions" {
 				nestedNamespace = ""
 			}
-			nested, nestedIdentities, err := responsesToolsToChat(tool.Tools, nestedNamespace)
-			if err != nil {
-				return nil, nil, err
+			if err := appendResponsesToolsToChat(out, tool.Tools, nestedNamespace, registry); err != nil {
+				return err
 			}
-			for name, identity := range nestedIdentities {
-				if err := mergeToolIdentity(identities, name, identity.Namespace, identity.Custom); err != nil {
-					return nil, nil, err
-				}
-			}
-			out = append(out, nested...)
 		case "web_search":
 			if tool.External != nil && *tool.External {
-				return nil, nil, fmt.Errorf("Responses web_search tool is not supported by Chat Completions upstreams")
+				return fmt.Errorf("Responses web_search tool is not supported by Chat Completions upstreams")
 			}
 		case "custom":
 			function, err := customToolChatFunction(tool)
 			if err != nil {
-				return nil, nil, err
+				return err
 			}
-			if err := mergeToolIdentity(identities, tool.Name, namespace, true); err != nil {
-				return nil, nil, err
+			upstreamName, err := registry.Register(tool.Name, namespace, true)
+			if err != nil {
+				return err
 			}
-			out = append(out, chatTool{Type: "function", Function: function})
+			function.Name = upstreamName
+			if !containsChatTool(*out, upstreamName) {
+				*out = append(*out, chatTool{Type: "function", Function: function})
+			}
 		default:
-			return nil, nil, fmt.Errorf("unsupported Responses tool type %q", tool.Type)
+			return fmt.Errorf("unsupported Responses tool type %q", tool.Type)
 		}
 	}
-	return out, identities, nil
+	return nil
 }
 
-func mergeToolIdentity(identities map[string]responsesToolIdentity, name, namespace string, custom bool) error {
-	identity := responsesToolIdentity{Name: name, Namespace: namespace, Custom: custom}
-	if existing, exists := identities[name]; exists && existing != identity {
-		return fmt.Errorf("Responses flattened tool name %q maps to multiple declarations", name)
+func containsChatTool(tools []chatTool, name string) bool {
+	for _, tool := range tools {
+		if tool.Function.Name == name {
+			return true
+		}
 	}
-	identities[name] = identity
-	return nil
+	return false
 }
 
 func customToolChatFunction(tool responsesTool) (chatFunction, error) {
@@ -418,15 +546,29 @@ func customToolChatFunction(tool responsesTool) (chatFunction, error) {
 	}, nil
 }
 
-func responsesToolChoiceToChat(choice any) any {
+func responsesToolChoiceToChat(choice any, registry *responsesToolRegistry) any {
 	choiceMap, ok := choice.(map[string]any)
-	if !ok || choiceMap["type"] != "custom" {
+	if !ok {
 		return choice
 	}
-	return map[string]any{
-		"type":     "function",
-		"function": map[string]any{"name": choiceMap["name"]},
+	name, _ := choiceMap["name"].(string)
+	if name == "" {
+		return choice
 	}
+	namespace, _ := choiceMap["namespace"].(string)
+	if choiceMap["type"] == "custom" {
+		return map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": registry.UpstreamName(namespace, name, true)},
+		}
+	}
+	if choiceMap["type"] == "function" {
+		return map[string]any{
+			"type":     "function",
+			"function": map[string]any{"name": registry.UpstreamName(namespace, name, false)},
+		}
+	}
+	return choice
 }
 
 func contentText(raw json.RawMessage) (any, error) {
@@ -466,17 +608,17 @@ func isResponsesRequest(c *gin.Context) bool {
 	return s == responsesProtocol
 }
 
-func responsesToolIdentities(c *gin.Context) map[string]responsesToolIdentity {
+func responsesToolIdentities(c *gin.Context) *responsesToolRegistry {
 	value, _ := c.Get(responsesToolIdentitiesKey)
-	identities, _ := value.(map[string]responsesToolIdentity)
-	return identities
+	registry, _ := value.(*responsesToolRegistry)
+	if registry == nil {
+		return newResponsesToolRegistry()
+	}
+	return registry
 }
 
-func toolIdentity(identities map[string]responsesToolIdentity, name string) responsesToolIdentity {
-	if identity, ok := identities[name]; ok {
-		return identity
-	}
-	return responsesToolIdentity{Name: name}
+func toolIdentity(registry *responsesToolRegistry, name string) responsesToolIdentity {
+	return registry.Identity(name)
 }
 
 func customToolInput(arguments string) string {
@@ -489,7 +631,7 @@ func customToolInput(arguments string) string {
 	return arguments
 }
 
-func convertChatCompletionToResponses(body []byte, model string, now time.Time, identities map[string]responsesToolIdentity) ([]byte, error) {
+func convertChatCompletionToResponses(body []byte, model string, now time.Time, registry *responsesToolRegistry) ([]byte, error) {
 	var src struct {
 		ID      string `json:"id"`
 		Created int64  `json:"created"`
@@ -519,7 +661,7 @@ func convertChatCompletionToResponses(body []byte, model string, now time.Time, 
 			})
 		}
 		for _, call := range msg.ToolCalls {
-			identity := toolIdentity(identities, call.Function.Name)
+			identity := toolIdentity(registry, call.Function.Name)
 			responseItem := map[string]any{
 				"call_id": call.ID, "name": identity.Name, "status": "completed",
 			}
