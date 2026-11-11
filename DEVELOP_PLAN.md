@@ -352,6 +352,8 @@
   - 2026-11-11 执行 将上游请求开始时间传入 Chat Completions 与 Responses 流式转换路径，`recordHit` 与成功 retry trace 均沿用该时间；测试环境同步把 fake clock 注入 Relay，保证计时断言确定性
   - 2026-11-11 验证 红测修复后 chat / responses 两个子用例通过；`gofmt` 无 diff；`go test ./... -count=1` 通过；`go vet ./...` 通过；`make build` 通过（沙箱内 esbuild spawn EPERM，按既有例外在沙箱外执行）
   - 2026-11-11 验证 使用安装库 SQLite 快照 + 当前源码构建（18909 隔离实例）真实调用 ZAI `glm-5.3-flash`：客户端 `time_starttransfer=1.003s`，请求日志记录 `first_token_ms=985 total_ms=3803`；同库旧日志对照仍为 #15 `first_token_ms=0`，确认只影响新请求且口径正确
+  - 2026-11-11 发版 v0.1.9：Release Action 42946034821 成功（1m47s）；Release 正文正确提取首 token 修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,001,280 bytes），本地 SHA256 `4addf370…c504b7` 与 checksums.txt 一致；启动显示 version=v0.1.9，`/healthz` 返回 200
+  - 2026-11-11 交付 T17 验收标准满足：两条流式路径首 token 均从发起上游请求开始计时；SSE 零缓冲与首 chunk 后不重试红线未改变；无数据库 schema 变更
 
 ## 状态枚举
 ## 状态枚举
