@@ -325,7 +325,7 @@
   3. 从本机只读运行数据定位 ZAI 503 的 retry trace / 渠道配置事实，若属 EverGate 缺陷则补回归测试并修复，若属环境/渠道配置则形成可执行结论且不误改业务数据；
   4. `gofmt`、`go test ./... -count=1`、`go vet ./...`、涉及前端时 `npm --prefix web run build`、`make build` 全部通过。
 - 边界：T13 保持 planned 且不在本卡顺手实现；不读取/输出上游 key 明文；不修改用户安装目录数据；不引入代理配置以外的禁止依赖；若网络代理支持需要改配置结构，先在任务卡更新范围
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 用户反馈两个缺陷：Codex 触发 `Responses flattened tool name "js" maps to multiple declarations`；DeepSeek Harness 访问 ZAI 模型触发 `503 {"code":"all_channels_exhausted"}`。暂停 T13，优先做回归修复
   - 2026-11-11 执行 只读定位安装数据实际在 `D:\software\evergate\data`（用户曾提供的 `C:\Users\PC\Downloads\data` 已不存在）。渠道：ZAI base_url `https://open.bigmodel.cn/api/v1`、模型 `glm-5.3` / `glm-5.3-flash`；相关 503 日志共 7 条，前 3 条 trace 为 ZAI key 网络瞬时错误，后 4 条因 key 连续失败进入 cooldown 后无候选渠道，trace 为空；DeepSeek 渠道当日另有成功请求。继续用隔离副本复现 ZAI 网络错误细节并建 Responses 红测
