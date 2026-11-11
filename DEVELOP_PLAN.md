@@ -333,6 +333,8 @@
   - 2026-11-11 执行 用安装数据 SQLite 快照 + 已知临时下游令牌隔离复现 ZAI：原 `https://open.bigmodel.cn/api/v1` 使用真实 Coding key 返回空 body HTTP 500，连续失败后 key cooldown 导致后续 503；只把快照 Base URL 改为 `https://open.bigmodel.cn/api/coding/paas/v4` 后，同一模型 `glm-5.3-flash` 流式请求返回 200 与 SSE 内容。结论：该问题是渠道 Base URL 配置错误，不是调度器缺陷；未修改用户安装目录数据
   - 2026-11-11 执行 诊断体验修复：retry_trace 每次尝试记录上游 HTTP status_code；空 error body 的 4xx/5xx 显示 `http <status> (empty error body)`，503 汇总消息携带最后一次真实原因，管理台日志详情展示 HTTP 状态；README 增加智谱 / Z.ai Coding 正确基址表
   - 2026-11-11 验证 `gofmt` 无 diff；`go test ./... -count=1` 通过；`go vet ./...` 通过；`npm --prefix web run build` 通过（沙箱内 esbuild spawn EPERM，按既有例外在沙箱外执行）；`make build` 通过并产出 `bin/evergate.exe`
+  - 2026-11-11 发版 v0.1.8：Release Action 42941863047 成功（2m27s）；Release 正文正确提取三项修复说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,000,768 bytes），本地 SHA256 `ea40729d…cf959` 与 checksums.txt 一致；启动显示 version=v0.1.8，`/healthz` 返回 200，未带令牌访问 `/v1/responses` 返回 401
+  - 2026-11-11 交付 T16 验收标准满足：Codex 同名 namespace 工具由红测转绿；ZAI 503 定位为 Base URL 配置错误并在隔离副本验证正确 Coding 端点可用；耗尽诊断与管理台展示增强；未修改用户安装目录数据，待用户在管理台更新 ZAI 渠道 Base URL 并重置 key
 
 ## 状态枚举
 ## 状态枚举
