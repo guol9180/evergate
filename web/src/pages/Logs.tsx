@@ -99,6 +99,9 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
               ['总耗时', fmtMs(log.total_ms || undefined)],
               ['prompt tokens', fmtInt(log.prompt_tokens)],
               ['completion tokens', fmtInt(log.completion_tokens)],
+              ['total tokens', fmtInt(log.total_tokens || 0)],
+              ['cached tokens', fmtInt(log.cached_tokens || 0)],
+              ['reasoning tokens', fmtInt(log.reasoning_tokens || 0)],
               ['令牌', log.token_name || '—'],
               ['客户端 IP', log.ip || '—'],
             ].map(([k, v]) => (

@@ -40,6 +40,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 
 - Go：提交前 `gofmt` 无 diff、`go vet` 通过；错误必须处理或显式 `//nolint` 注明理由。
 - 客户端接入协议矩阵当前范围为 OpenAI Chat Completions `/v1/chat/completions` 与 OpenAI Responses `/v1/responses`（上游、下游均为此两种）；Anthropic Messages `/v1/messages` 已明确延后（T13，重启前先回任务卡更新范围）。新增接入能力必须说明两种入口的可用性，不能只验证单一协议。
+- Responses 原生能力是渠道级声明：声明渠道的 `/v1/responses` 必须仅改写鉴权、base_url 与模型映射并原样转发 JSON/SSE；未声明渠道才允许 R→CC 桥接。不可桥接的状态字段必须显式 400，不得静默丢弃。
 - 所有时间以 UTC 存储，仅展示层转本地时区。
 - 对外错误响应统一 OpenAI 格式 `{error:{message,type,code}}`；全部渠道耗尽返回 503。
 - Responses 下游的 `function` / `custom` 工具转换必须保留客户端声明的工具语义，custom grammar 只能降级为提示不能声称硬约束；新增 Responses 工具或事件前先对照 OpenAI 官方 schema 与允许参考项目，并用公共 HTTP 边界写回归测试。

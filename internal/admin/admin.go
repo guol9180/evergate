@@ -180,27 +180,29 @@ func (a *API) sessionMiddleware() gin.HandlerFunc {
 // ---------- 渠道 ----------
 
 type channelDTO struct {
-	ID           int64                 `json:"id"`
-	Name         string                `json:"name"`
-	Type         string                `json:"type"`
-	BaseURL      string                `json:"base_url"`
-	Priority     int                   `json:"priority"`
-	Weight       int                   `json:"weight"`
-	Models       []string              `json:"models"`
-	ModelMapping map[string]string     `json:"model_mapping"`
-	Enabled      bool                  `json:"enabled"`
-	Status       string                `json:"status"`
-	Timeouts     store.ChannelTimeouts `json:"timeout_config"`
-	KeyCount     int64                 `json:"key_count"`
-	CreatedAt    time.Time             `json:"created_at"`
-	UpdatedAt    time.Time             `json:"updated_at"`
+	ID                int64                 `json:"id"`
+	Name              string                `json:"name"`
+	Type              string                `json:"type"`
+	BaseURL           string                `json:"base_url"`
+	Priority          int                   `json:"priority"`
+	Weight            int                   `json:"weight"`
+	Models            []string              `json:"models"`
+	ModelMapping      map[string]string     `json:"model_mapping"`
+	Enabled           bool                  `json:"enabled"`
+	Status            string                `json:"status"`
+	SupportsResponses bool                  `json:"supports_responses"`
+	Timeouts          store.ChannelTimeouts `json:"timeout_config"`
+	KeyCount          int64                 `json:"key_count"`
+	CreatedAt         time.Time             `json:"created_at"`
+	UpdatedAt         time.Time             `json:"updated_at"`
 }
 
 func (a *API) toChannelDTO(ch *store.Channel, keyCount int64) channelDTO {
 	return channelDTO{
 		ID: ch.ID, Name: ch.Name, Type: ch.Type, BaseURL: ch.BaseURL,
 		Priority: ch.Priority, Weight: ch.Weight, Models: ch.Models, ModelMapping: ch.ModelMapping,
-		Enabled: ch.Enabled, Status: ch.Status, Timeouts: ch.Timeouts, KeyCount: keyCount,
+		Enabled: ch.Enabled, Status: ch.Status, SupportsResponses: ch.SupportsResponses,
+		Timeouts: ch.Timeouts, KeyCount: keyCount,
 		CreatedAt: ch.CreatedAt, UpdatedAt: ch.UpdatedAt,
 	}
 }
@@ -224,14 +226,15 @@ func (a *API) listChannels(c *gin.Context) {
 }
 
 type channelReq struct {
-	Name         string                `json:"name" binding:"required"`
-	Type         string                `json:"type" binding:"required"`
-	BaseURL      string                `json:"base_url" binding:"required,url"`
-	Priority     *int                  `json:"priority"`
-	Weight       *int                  `json:"weight"`
-	Models       []string              `json:"models" binding:"required,min=1"`
-	ModelMapping map[string]string     `json:"model_mapping"`
-	Timeouts     store.ChannelTimeouts `json:"timeout_config"`
+	Name              string                `json:"name" binding:"required"`
+	Type              string                `json:"type" binding:"required"`
+	BaseURL           string                `json:"base_url" binding:"required,url"`
+	Priority          *int                  `json:"priority"`
+	Weight            *int                  `json:"weight"`
+	Models            []string              `json:"models" binding:"required,min=1"`
+	ModelMapping      map[string]string     `json:"model_mapping"`
+	SupportsResponses *bool                 `json:"supports_responses"`
+	Timeouts          store.ChannelTimeouts `json:"timeout_config"`
 }
 
 func (a *API) createChannel(c *gin.Context) {
@@ -244,7 +247,8 @@ func (a *API) createChannel(c *gin.Context) {
 		Name: req.Name, Type: req.Type, BaseURL: strings.TrimSuffix(req.BaseURL, "/"),
 		Priority: derefInt(req.Priority, 0), Weight: derefInt(req.Weight, 1),
 		Models: req.Models, ModelMapping: req.ModelMapping,
-		Enabled: true, Status: store.ChannelStatusActive, Timeouts: req.Timeouts,
+		Enabled: true, Status: store.ChannelStatusActive, SupportsResponses: derefBool(req.SupportsResponses, false),
+		Timeouts: req.Timeouts,
 	}
 	if err := a.opt.DB.Create(ch).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "创建失败（名称重复？）")
@@ -288,6 +292,7 @@ func (a *API) updateChannel(c *gin.Context) {
 	ch.Name, ch.Type, ch.BaseURL = req.Name, req.Type, strings.TrimSuffix(req.BaseURL, "/")
 	ch.Priority, ch.Weight = derefInt(req.Priority, ch.Priority), derefInt(req.Weight, ch.Weight)
 	ch.Models, ch.ModelMapping, ch.Timeouts = req.Models, req.ModelMapping, req.Timeouts
+	ch.SupportsResponses = derefBool(req.SupportsResponses, ch.SupportsResponses)
 	if err := a.opt.DB.Save(ch).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "更新失败")
 		return

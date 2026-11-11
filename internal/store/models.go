@@ -29,9 +29,11 @@ type Channel struct {
 	ModelMapping map[string]string `gorm:"serializer:json" json:"model_mapping"` // {请求模型: 上游模型}
 	Enabled      bool              `gorm:"not null;default:true" json:"enabled"`
 	Status       string            `gorm:"size:16;not null;default:'active'" json:"status"`
-	Timeouts     ChannelTimeouts   `gorm:"column:timeout_config;serializer:json" json:"timeout_config"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
+	// SupportsResponses 表示该渠道可原生接收 /responses；否则 /v1/responses 走 CC 桥接。
+	SupportsResponses bool            `gorm:"not null;default:false" json:"supports_responses"`
+	Timeouts          ChannelTimeouts `gorm:"column:timeout_config;serializer:json" json:"timeout_config"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 // ChannelTimeouts 渠道级超时覆盖（秒；nil 表示跟随全局默认）。
@@ -109,6 +111,9 @@ type RequestLog struct {
 	TotalMS          int64          `json:"total_ms"`
 	PromptTokens     int64          `json:"prompt_tokens"`
 	CompletionTokens int64          `json:"completion_tokens"`
+	TotalTokens      int64          `json:"total_tokens"`
+	CachedTokens     int64          `json:"cached_tokens"`
+	ReasoningTokens  int64          `json:"reasoning_tokens"`
 	Cost             float64        `json:"cost"`
 	IP               string         `gorm:"size:45" json:"ip"`
 	UserAgent        string         `json:"user_agent"`

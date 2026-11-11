@@ -74,6 +74,9 @@ type hitRecord struct {
 	firstTokenMS     int64
 	promptTokens     int64
 	completionTokens int64
+	totalTokens      int64
+	cachedTokens     int64
+	reasoningTokens  int64
 }
 
 // HandleChatCompletions 处理 POST /v1/chat/completions（含 stream:true SSE）。
@@ -94,6 +97,7 @@ func (r *Relay) HandleChatCompletions(c *gin.Context) {
 			RetryTrace:   trace,
 			FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
 			PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
+			TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, ReasoningTokens: hit.reasoningTokens,
 			IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 		})
 	}
@@ -120,6 +124,26 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 		return nil, http.StatusInternalServerError, "server_error", err.Error()
 	}
 	candidates := r.opt.Router.Route(model, channels)
+	if isResponsesRequest(c) {
+		candidates = preferResponsesNative(candidates)
+		if !anyResponsesNative(candidates) {
+			if responsesNeedsNativeBridge(body) {
+				writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "responses_native_required",
+					"请求携带 previous_response_id/background/store 等 Responses 原生状态字段，但候选渠道均未声明 Responses 能力")
+				return nil, http.StatusBadRequest, "invalid_request_error", "responses_native_required"
+			}
+			converted, toolRegistry, cerr := responsesToChat(body)
+			if cerr != nil {
+				writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", cerr.Error())
+				return nil, http.StatusBadRequest, "invalid_request_error", cerr.Error()
+			}
+			body = converted
+			c.Set(responsesToolIdentitiesKey, toolRegistry)
+			setResponsesBridgeBody(c, converted)
+		} else {
+			setResponsesOriginalBody(c, body)
+		}
+	}
 
 	d := r.opt.Defaults
 	budget := retry.NewBudget(d.RetryBudget.Channels, d.RetryBudget.KeysPerChannel, d.RetryBudget.Total.Duration, r.opt.Now())
@@ -141,7 +165,34 @@ loop:
 				continue loop // 渠道无可用 key（或只剩已试过的 key）→ 换下一候选渠道
 			}
 			usedKeys[key.ID] = true
-			out := r.attemptOne(c, cand, key, body, model, stream, &trace, hit)
+			attemptBody := body
+			if isResponsesRequest(c) {
+				if cand.Channel.SupportsResponses {
+					attemptBody = responsesOriginalBody(c)
+					c.Set(responsesNativeKey, true)
+				} else {
+					converted, cached := responsesBridgeBody(c)
+					if !cached {
+						var cerr error
+						var registry *responsesToolRegistry
+						converted, registry, cerr = responsesToChat(responsesOriginalBody(c))
+						if cerr != nil {
+							start := r.opt.Now()
+							trace = append(trace, store.RetryAttempt{
+								ChannelID: cand.Channel.ID, ChannelName: cand.Channel.Name, KeyID: key.ID,
+								Attempt: len(trace) + 1, ErrorType: "responses_bridge", ErrorMessage: cerr.Error(),
+								ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
+							})
+							continue loop
+						}
+						c.Set(responsesToolIdentitiesKey, registry)
+						setResponsesBridgeBody(c, converted)
+					}
+					attemptBody = converted
+					c.Set(responsesNativeKey, false)
+				}
+			}
+			out := r.attemptOne(c, cand, key, attemptBody, model, stream, &trace, hit)
 			switch out {
 			case outcomeDone:
 				return trace, c.Writer.Status(), "", ""
@@ -199,6 +250,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 // attemptOne 执行一次上游尝试并分类处置。
 func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord) attemptOutcome {
 	ch := cand.Channel
+	nativeResponses := isResponsesRequest(c) && isResponsesNative(c)
 	connect, firstToken, overall := resolveTimeouts(ch, r.opt.Defaults)
 	appendTrace := func(status int, errType, errMsg string, attemptStart time.Time) {
 		*trace = append(*trace, store.RetryAttempt{
@@ -226,7 +278,11 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	ctx, cancel := context.WithTimeout(c.Request.Context(), overall)
 	defer cancel()
 
-	url := strings.TrimSuffix(ch.BaseURL, "/") + "/chat/completions"
+	upstreamPath := "/chat/completions"
+	if nativeResponses {
+		upstreamPath = "/responses"
+	}
+	url := strings.TrimSuffix(ch.BaseURL, "/") + upstreamPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(upBody))
 	if err != nil {
 		start := r.opt.Now()
@@ -256,6 +312,9 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 
 	if resp.StatusCode == http.StatusOK {
 		if stream {
+			if nativeResponses {
+				return r.streamNativeResponsesResponse(c, resp, key, cand, firstToken, cancel, trace, hit, start)
+			}
 			return r.streamResponse(c, resp, key, cand, firstToken, cancel, trace, hit, start)
 		}
 		// 非流式：响应到达即首 token，在窗口内读完整体
@@ -274,7 +333,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		if ct == "" {
 			ct = "application/json"
 		}
-		if isResponsesRequest(c) {
+		if isResponsesRequest(c) && !nativeResponses {
 			converted, cerr := convertChatCompletionToResponses(data, model, r.opt.Now(), responsesToolIdentities(c))
 			if cerr != nil {
 				appendTrace(0, "internal", "转换 Responses 响应失败: "+cerr.Error(), start)
@@ -339,21 +398,6 @@ func recordHit(hit *hitRecord, ch *store.Channel, key *store.ChannelKey, upstrea
 	hit.keyID = key.ID
 	hit.upstreamModel = upstreamModel
 	hit.firstTokenMS = firstTokenLatency.Milliseconds()
-}
-
-// parseUsage 尝试从非流式响应中提取 usage 字段。
-func parseUsage(data []byte, hit *hitRecord) {
-	var out struct {
-		Usage struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-		} `json:"usage"`
-	}
-	if err := json.Unmarshal(data, &out); err != nil {
-		return
-	}
-	hit.promptTokens = out.Usage.PromptTokens
-	hit.completionTokens = out.Usage.CompletionTokens
 }
 
 // transport 按连接超时缓存 Transport（渠道可覆盖 connect 超时）。

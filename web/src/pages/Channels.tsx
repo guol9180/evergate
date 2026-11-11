@@ -67,7 +67,12 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
         </Td>
         <Td className="font-medium">{c.name}</Td>
         <Td><Badge tone={stateTone[c.status] || ''}>{stateLabel[c.status] || c.status}</Badge></Td>
-        <Td className="text-slate-500">{c.type}</Td>
+        <Td>
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="text-slate-500">{c.type}</span>
+            {c.supports_responses && <Badge tone="bg-sky-100 text-sky-700">Responses</Badge>}
+          </div>
+        </Td>
         <Td>{c.priority}</Td>
         <Td>{c.weight}</Td>
         <Td>{(c.models || []).length}</Td>
@@ -182,6 +187,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? '')
   const [priority, setPriority] = useState(String(channel?.priority ?? 0))
   const [weight, setWeight] = useState(String(channel?.weight ?? 1))
+  const [supportsResponses, setSupportsResponses] = useState(channel?.supports_responses ?? false)
   const [models, setModels] = useState((channel?.models || []).join('\n'))
   const [mapping, setMapping] = useState(channel?.model_mapping ? JSON.stringify(channel.model_mapping, null, 2) : '')
 
@@ -206,6 +212,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         weight: Number(weight) || 1,
         models: models.split('\n').map((s) => s.trim()).filter(Boolean),
         model_mapping: modelMapping,
+        supports_responses: supportsResponses,
       },
       { onSuccess: onClose },
     )
@@ -223,9 +230,17 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             </select>
           </Field>
         </div>
-        <Field label="Base URL" hint="上游 API 根地址（一般以 /v1 结尾），网关会拼接 /chat/completions">
+        <Field label="Base URL" hint={`上游 API 根地址（一般以 /v1 结尾），网关会拼接 ${supportsResponses ? '/responses（Responses 请求）与 /chat/completions（Chat 请求）' : '/chat/completions'}`}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
         </Field>
+        <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-700">
+          <input type="checkbox" checked={supportsResponses} onChange={(e) => setSupportsResponses(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 text-slate-900" />
+          <span>
+            原生支持 Responses API
+            <span className="block text-xs text-slate-400">开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions</span>
+          </span>
+        </label>
         <div className="grid grid-cols-2 gap-4">
           <Field label="优先级" hint="越小越优先"><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
           <Field label="权重" hint="同优先级内加权随机"><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>

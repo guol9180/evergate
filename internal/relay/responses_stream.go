@@ -48,6 +48,7 @@ type responsesStream struct {
 	tools    map[int]*responsesStreamTool
 	finishRS bool
 	usage    map[string]any
+	hit      *hitRecord
 
 	toolRegistry *responsesToolRegistry
 }
@@ -94,7 +95,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 	state := &responsesStream{
 		w: newSSEWriter(c.Writer), model: model, now: r.opt.Now(),
-		tools: map[int]*responsesStreamTool{}, toolRegistry: responsesToolIdentities(c),
+		tools: map[int]*responsesStreamTool{}, toolRegistry: responsesToolIdentities(c), hit: hit,
 	}
 	state.w.header()
 	stopKeepalive := state.w.startKeepalive()
@@ -174,6 +175,7 @@ func (s *responsesStream) consume(data string) {
 		s.created = chunk.Created
 	}
 	if chunk.Usage != nil {
+		parseUsage([]byte(data), s.hit)
 		s.usage = map[string]any{
 			"input_tokens": chunk.Usage.PromptTokens, "output_tokens": chunk.Usage.CompletionTokens,
 			"total_tokens": chunk.Usage.TotalTokens,

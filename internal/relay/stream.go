@@ -84,6 +84,9 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 		line, rerr := br.ReadBytes('\n')
 		if len(line) > 0 {
 			w.writeFlush(line)
+			if data, ok := sseData(line); ok {
+				parseUsage([]byte(data), hit)
+			}
 			// 流中途的错误事件：透传给客户端（红线：不重试），解析语义仅用于日志
 			if cls, isErr := parseSSEErrorEvent(line); isErr {
 				r.opt.Logger.Error("upstream sse error event",
@@ -143,12 +146,16 @@ func parseSSEErrorEvent(line []byte) (retry.Classification, bool) {
 	}
 	_ = json.Unmarshal(errRaw, &errObj)
 	status := retry.StreamErrorStatus(errObj.Type, errObj.Code)
+	return classifyStreamError(status, payload), true
+}
+
+func classifyStreamError(status int, payload string) retry.Classification {
 	cls := retry.Classify(retry.Result{StatusCode: status, BodySnippet: payload})
 	// SSE 错误事件没有 Retry-After 头可言：推断为限流时给默认冷却（LiteLLM cooldown 语义）
 	if status == 429 && cls.Kind == retry.KindRateLimited && cls.RetryAfter == 0 {
 		cls.RetryAfter = 60 * time.Second
 	}
-	return cls, true
+	return cls
 }
 
 // readAllWithFirstTokenTimeout 非流式读取：在首 token 窗口内读完整个响应体。

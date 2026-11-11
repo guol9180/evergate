@@ -39,6 +39,7 @@ export interface Channel {
   model_mapping: Record<string, string> | null
   enabled: boolean
   status: string
+  supports_responses: boolean
   timeout_config: ChannelTimeouts | null
   key_count: number
   created_at: string
@@ -114,6 +115,9 @@ export interface RequestLog {
   total_ms: number
   prompt_tokens: number
   completion_tokens: number
+  total_tokens?: number
+  cached_tokens?: number
+  reasoning_tokens?: number
   cost: number
   ip: string
   user_agent: string

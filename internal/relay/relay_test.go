@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -82,8 +83,16 @@ func newEnv(t *testing.T) *testEnv {
 }
 
 func (e *testEnv) addChannel(t *testing.T, name, baseURL string, priority int, models []string, mapping map[string]string, keys ...string) {
+	e.addProtocolChannel(t, name, baseURL, priority, false, models, mapping, keys...)
+}
+
+func (e *testEnv) addResponsesChannel(t *testing.T, name, baseURL string, priority int, models []string, mapping map[string]string, keys ...string) {
+	e.addProtocolChannel(t, name, baseURL, priority, true, models, mapping, keys...)
+}
+
+func (e *testEnv) addProtocolChannel(t *testing.T, name, baseURL string, priority int, supportsResponses bool, models []string, mapping map[string]string, keys ...string) {
 	t.Helper()
-	ch := &store.Channel{Name: name, Type: "openai-compatible", BaseURL: baseURL, Priority: priority, Weight: 1, Models: models, ModelMapping: mapping, Enabled: true, Status: store.ChannelStatusActive}
+	ch := &store.Channel{Name: name, Type: "openai-compatible", BaseURL: baseURL, Priority: priority, Weight: 1, Models: models, ModelMapping: mapping, Enabled: true, Status: store.ChannelStatusActive, SupportsResponses: supportsResponses}
 	if err := e.db.Create(ch).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}
@@ -450,6 +459,228 @@ func TestResponsesStreamToolCallRoundTrip(t *testing.T) {
 	}`)
 	if !strings.Contains(second, `"delta":"tool ok"`) {
 		t.Fatalf("second Responses turn did not return final text: %s", second)
+	}
+}
+
+func TestResponsesNativeUpstreamPassthrough(t *testing.T) {
+	env := newEnv(t)
+	var streamRequest atomic.Bool
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/responses") {
+			t.Errorf("native Responses request path = %q, want /responses", r.URL.Path)
+		}
+		if auth != "Bearer sk-native" {
+			t.Errorf("native Responses auth = %q", auth)
+		}
+		var req map[string]any
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Errorf("unmarshal native Responses request: %v", err)
+		}
+		tools, _ := req["tools"].([]any)
+		if req["model"] != "upstream-model" || req["previous_response_id"] != "resp_previous" || len(tools) != 1 ||
+			req["background"] != true || req["store"] != true || req["vendor_state"] != "must-preserve" {
+			t.Fatalf("native Responses request was not preserved: %s", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if req["stream"] == true {
+			streamRequest.Store(true)
+			w.Header().Set("Content-Type", "text/event-stream")
+			payload := strings.Join([]string{
+				`event: response.created`,
+				`data: {"type":"response.created","response":{"id":"resp_native_stream"}}`,
+				``,
+				`event: response.output_text.delta`,
+				`data: {"type":"response.output_text.delta","delta":"native ok"}`,
+				``,
+				`event: response.completed`,
+				`data: {"type":"response.completed","response":{"id":"resp_native_stream","usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18,"input_tokens_details":{"cached_tokens":3},"output_tokens_details":{"reasoning_tokens":4}}}}`,
+				``,
+			}, "\n")
+			_, _ = w.Write([]byte(payload))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"resp_native","object":"response","model":"upstream-model","vendor_state":"must-preserve","output":[{"type":"message","role":"assistant"},{"type":"function_call","call_id":"call_lookup","name":"lookup","arguments":"{\"q\":\"evergate\"}"}],"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18,"input_tokens_details":{"cached_tokens":3},"output_tokens_details":{"reasoning_tokens":4}}}`))
+	})
+	bridge := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Responses-capable channel must be preferred over higher-priority bridge channel")
+	})
+	env.addChannel(t, "bridge-first", bridge.server.URL, 0, []string{"gateway-model"}, nil, "sk-bridge")
+	env.addResponsesChannel(t, "responses-native", up.server.URL, 9, []string{"gateway-model"}, map[string]string{"gateway-model": "upstream-model"}, "sk-native")
+
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"native","stream":false,"previous_response_id":"resp_previous","background":true,"store":true,"vendor_state":"must-preserve","tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("native Responses non-stream status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"id":"resp_native"`) || !strings.Contains(body, `"vendor_state":"must-preserve"`) ||
+		!strings.Contains(body, `"input_tokens_details"`) || !strings.Contains(body, `"type":"function_call"`) {
+		t.Fatalf("native Responses non-stream response was not preserved: %s", body)
+	}
+
+	resp, body = env.responses(t, `{"model":"gateway-model","input":"native","stream":true,"previous_response_id":"resp_previous","background":true,"store":true,"vendor_state":"must-preserve","tools":[{"type":"function","name":"lookup","parameters":{"type":"object","properties":{"q":{"type":"string"}},"required":["q"]}}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("native Responses stream status = %d, body = %s", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		"event: response.created", `"delta":"native ok"`, "event: response.completed",
+		`"cached_tokens":3`, `"reasoning_tokens":4`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("native Responses SSE missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "chat.completion") || strings.Contains(body, "[DONE]") {
+		t.Fatalf("native Responses SSE leaked Chat Completions framing:\n%s", body)
+	}
+	if !streamRequest.Load() {
+		t.Fatal("native stream request did not reach upstream")
+	}
+}
+
+func TestResponsesNativeFirstEventFailureFailsOver(t *testing.T) {
+	env := newEnv(t)
+	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"rate_limit_error\",\"type\":\"rate_limit_error\"}}}\n\n"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	secondary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.created\ndata: {\"type\":\"response.created\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addResponsesChannel(t, "native-failed", primary.server.URL, 0, []string{"gateway-model"}, nil, "sk-primary")
+	env.addResponsesChannel(t, "native-ok", secondary.server.URL, 1, []string{"gateway-model"}, nil, "sk-secondary")
+
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"failover","stream":true}`)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "response.completed") {
+		t.Fatalf("native first-event failover failed: status=%d body=%s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "response.failed") {
+		t.Fatalf("first-event failure must stay in retry window and not leak to client: %s", body)
+	}
+	if ph, _, _ := primary.snapshot(); ph != 1 {
+		t.Fatalf("primary hits = %d, want 1", ph)
+	}
+	if sh, _, _ := secondary.snapshot(); sh != 1 {
+		t.Fatalf("secondary hits = %d, want 1", sh)
+	}
+}
+
+func TestResponsesStatefulFieldsRequireNativeCapableChannel(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		t.Error("stateful Responses request must be rejected before upstream bridge dispatch")
+	})
+	env.addChannel(t, "chat-only", up.server.URL, 0, []string{"gateway-model"}, nil, "sk-good")
+
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"stateful","previous_response_id":"resp_prev","background":true,"store":true}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("stateful Responses bridge status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"code":"responses_native_required"`) ||
+		!strings.Contains(body, "候选渠道均未声明 Responses 能力") {
+		t.Fatalf("stateful Responses bridge diagnostic is insufficient: %s", body)
+	}
+	if hits, _, _ := up.snapshot(); hits != 0 {
+		t.Fatalf("bridge upstream hits = %d, want 0", hits)
+	}
+}
+
+func TestProtocolUsageNormalizationInRequestLogs(t *testing.T) {
+	env := newEnv(t)
+	logWriter := NewLogWriter(env.db, 64, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	env.opt.LogWriter = logWriter
+
+	chatUp := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		payload := strings.Join([]string{
+			`data: {"id":"chatcmpl-usage","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{"content":"ok"}}]}`,
+			`data: {"id":"chatcmpl-usage","object":"chat.completion.chunk","created":123,"model":"upstream-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":9,"total_tokens":14,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":6}}}`,
+			`data: [DONE]`,
+			"",
+		}, "\n\n")
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	responsesUp := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		payload := strings.Join([]string{
+			`event: response.created`,
+			`data: {"type":"response.created","response":{"id":"resp_usage"}}`,
+			``,
+			`event: response.completed`,
+			`data: {"type":"response.completed","response":{"id":"resp_usage","usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18,"input_tokens_details":{"cached_tokens":3},"output_tokens_details":{"reasoning_tokens":4}}}}`,
+			``,
+		}, "\n")
+		_, _ = w.Write([]byte(payload))
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	})
+	env.addChannel(t, "chat", chatUp.server.URL, 0, []string{"gateway-model"}, nil, "sk-chat")
+	env.addResponsesChannel(t, "responses", responsesUp.server.URL, 1, []string{"gateway-model"}, nil, "sk-responses")
+
+	if resp, body := env.chat(t, `{"model":"gateway-model","stream":true,"messages":[{"role":"user","content":"usage"}],"vendor_state":"cc"}`); resp.StatusCode != http.StatusOK {
+		t.Fatalf("CC stream status = %d, body = %s", resp.StatusCode, body)
+	}
+	if resp, body := env.responses(t, `{"model":"gateway-model","input":"usage","stream":true}`); resp.StatusCode != http.StatusOK {
+		t.Fatalf("Responses stream status = %d, body = %s", resp.StatusCode, body)
+	}
+	logWriter.Close()
+
+	var logs []*store.RequestLog
+	if err := env.db.Order("id asc").Find(&logs).Error; err != nil {
+		t.Fatalf("find logs: %v", err)
+	}
+	if len(logs) != 2 {
+		t.Fatalf("request logs = %d, want 2", len(logs))
+	}
+	want := []store.RequestLog{
+		{ChannelName: "chat", PromptTokens: 5, CompletionTokens: 9, TotalTokens: 14, CachedTokens: 2, ReasoningTokens: 6},
+		{ChannelName: "responses", PromptTokens: 11, CompletionTokens: 7, TotalTokens: 18, CachedTokens: 3, ReasoningTokens: 4},
+	}
+	for i, log := range logs {
+		if log.ChannelName != want[i].ChannelName || log.PromptTokens != want[i].PromptTokens ||
+			log.CompletionTokens != want[i].CompletionTokens || log.TotalTokens != want[i].TotalTokens ||
+			log.CachedTokens != want[i].CachedTokens || log.ReasoningTokens != want[i].ReasoningTokens {
+			t.Fatalf("usage log[%d] = channel=%s prompt=%d completion=%d total=%d cached=%d reasoning=%d", i,
+				log.ChannelName, log.PromptTokens, log.CompletionTokens, log.TotalTokens, log.CachedTokens, log.ReasoningTokens)
+		}
+	}
+}
+
+func TestChatCompletionsNativePassthrough(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			t.Errorf("CC upstream path = %q", r.URL.Path)
+		}
+		var req map[string]any
+		if err := json.Unmarshal([]byte(body), &req); err != nil {
+			t.Errorf("unmarshal CC request: %v", err)
+		}
+		if req["model"] != "upstream-model" || req["vendor_state"] != "cc-preserve" || req["tools"] == nil {
+			t.Fatalf("CC request was not preserved: %s", body)
+		}
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-native","object":"chat.completion","vendor_state":"response-preserve","choices":[{"message":{"role":"assistant","content":"cc ok"}}]}`))
+	})
+	env.addResponsesChannel(t, "cc-native", up.server.URL, 0, []string{"gateway-model"}, map[string]string{"gateway-model": "upstream-model"}, "sk-good")
+
+	resp, body := env.chat(t, `{"model":"gateway-model","messages":[{"role":"user","content":"cc"}],"vendor_state":"cc-preserve","tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CC status = %d, body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `"id":"chatcmpl-native"`) || !strings.Contains(body, `"vendor_state":"response-preserve"`) {
+		t.Fatalf("CC response was not passed through: %s", body)
 	}
 }
 

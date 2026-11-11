@@ -12,7 +12,7 @@
 
 P0（第一版交付范围）：
 
-- **统一入口**：OpenAI 兼容 `/v1/chat/completions`（含 SSE 流式与 tool calls 透传）、Codex 兼容 `/v1/responses` + `/v1/models`；Anthropic `/v1/messages` 当前阶段不提供（协议范围决策见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)）
+- **统一入口**：OpenAI 兼容 `/v1/chat/completions`（含 SSE 流式与 tool calls 透传）、OpenAI Responses `/v1/responses` + `/v1/models`；Anthropic `/v1/messages` 当前阶段不提供（协议范围决策见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)）
 - **不中断**（本项目存在的第一理由）：key 池调度 + cooldown 状态机 + 错误分类重试（重试 → 换 key → 换渠道）；SSE 场景下「首个 chunk 写给客户端之前」可无感切换，之后绝不重试
 - **渠道与 key 池管理**：增删改查、多行批量导入 key、单渠道连通测试
 - **下游令牌**：发放给客户端的 key，SHA-256 哈希校验
@@ -51,7 +51,7 @@ go run ./cmd/evergate   # 开发态直接运行
 - 管理台：`http://localhost:8787/`（首次启动自动创建 admin/admin123，首登强制改密）
 - 桌面体验：默认启动后自动打开管理台；服务器部署可在 `evergate.yml` 设置 `server.open_browser: false`
 
-常见上游渠道基址（EverGate 会在其后拼接 `/chat/completions`）：
+常见上游渠道基址（EverGate 会在其后拼接 `/chat/completions`；声明 Responses 能力的渠道还会拼接 `/responses`）：
 
 | 上游 / 套餐 | 管理台 Base URL |
 |---|---|
@@ -61,6 +61,20 @@ go run ./cmd/evergate   # 开发态直接运行
 | 智谱 BigModel 常规 API | `https://open.bigmodel.cn/api/paas/v4` |
 
 > 智谱 / Z.ai Coding 套餐不要把 Base URL 配成 `https://open.bigmodel.cn/api/v1`。实测该地址会让 Coding key 收到空 body 的 HTTP 500，EverGate 最终汇总为 `503 all_channels_exhausted`；请按上表修改渠道 Base URL 并重置 cooldown 中的 key。
+
+### 协议路由矩阵
+
+| 下游入口 | 上游声明 Responses 能力 | 未声明 Responses 能力 |
+|---|---|---|
+| `POST /v1/chat/completions` | CC→CC 透传 | CC→CC 透传 |
+| `POST /v1/responses` | R→R 原生透传（含非流式、SSE、工具与 usage） | R→CC 桥接转换 |
+
+说明：
+
+- 在渠道编辑页开启“原生支持 Responses API”后，`/v1/responses` 会优先路由到该渠道，仅改写鉴权、base_url 与模型映射；请求/响应 JSON 与 SSE 事件保持上游语义。
+- 未开启能力的渠道仍使用 Responses→Chat Completions 桥接；`previous_response_id`、`background=true`、`store=true` 这类无法安全桥接的状态字段会在候选渠道均无 Responses 能力时返回 400 `responses_native_required`。
+- CC→R 请求转换暂不提供：当前声明 Responses 能力的渠道仍都支持 Chat Completions；若未来出现仅 Responses 上游，再独立建卡。
+- 请求日志统一记录 prompt/completion/total/cached/reasoning token；Chat Completions 与 Responses 的 usage 名称差异在网关内归一化。
 
 ### 接入 Codex
 
@@ -84,7 +98,7 @@ supports_websockets = false
 setx EVERGATE_API_KEY "eg-你的EverGate令牌"
 ```
 
-EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat Completions 请求，并保留路由、key 池、重试、cooldown 与请求日志链路。当前支持 `function`、自由文本 `custom`、`lark`/`regex` grammar custom tool、namespace 工具、Responses Lite `additional_tools`、`configuration_update.reasoning.effort` 与 `text.verbosity`；custom tool 会在上游降级为单字段 `input` 的 function schema，grammar 会写入参数描述（Chat 上游无法硬约束），返回时恢复为 `custom_tool_call` / `custom_tool_call_output` 并补回 namespace。不同 namespace 下同名工具（例如多个 MCP server 都暴露 `js`）会映射为 `<namespace>__<tool>` 的上游唯一函数名，响应与历史回传再恢复原始 namespace/name。异步/deferred custom tool、programmatic allowed_callers、图片输入、加密 compaction 与 Responses WebSocket 不在本阶段支持范围内。
+若渠道未声明 Responses 能力，EverGate 会把 Codex 的 Responses 请求转换为上游 OpenAI-compatible Chat Completions 请求，并保留路由、key 池、重试、cooldown 与请求日志链路。桥接模式当前支持 `function`、自由文本 `custom`、`lark`/`regex` grammar custom tool、namespace 工具、Responses Lite `additional_tools`、`configuration_update.reasoning.effort` 与 `text.verbosity`；custom tool 会在上游降级为单字段 `input` 的 function schema，grammar 会写入参数描述（Chat 上游无法硬约束），返回时恢复为 `custom_tool_call` / `custom_tool_call_output` 并补回 namespace。不同 namespace 下同名工具（例如多个 MCP server 都暴露 `js`）会映射为 `<namespace>__<tool>` 的上游唯一函数名，响应与历史回传再恢复原始 namespace/name。异步/deferred custom tool、programmatic allowed_callers、图片输入、加密 compaction 与 Responses WebSocket 不在本阶段支持范围内。
 
 > 端口约定：默认 `8787`，避开本地 Java 项目常用的 8080；如需修改只改 `evergate.yml` 的 `server.port`，无需改代码。
 - 存活检查：`GET /healthz`；指标：`GET /metrics`（仅允许 loopback 访问）

@@ -369,9 +369,15 @@
   6. usage 归一化：CC（prompt/completion）与 Responses（input/output + cached/reasoning 明细）两套口径统一入请求日志；错误分类器识别 Responses 原生错误形状（含流式 `response.failed`）；
   7. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过；README 协议矩阵与支持差异同步更新。
 - 边界：不做 Anthropic `/v1/messages`（T13 已延后）；不做 `/v1/responses/{id}` 查询/cancel 子路径与 background 模式；不做 CC→R 请求转换（具备 Responses 能力的渠道均支持 CC，如遇仅 Responses 上游再立卡）；不做 Anthropic/Gemini 原生上游适配；调度内核保持协议无关
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 用户确认协议范围决策（决策与调研于 2026-11-10 完成，因并发会话还原文档延迟建卡）：上游/下游均为 CC+Responses、同协议透传优先、R→CC 桥接兜底、Anthropic Messages 延后（T13）
+  - 2026-11-11 执行 用户确认开始 T18；先审读 channel/relay/admin/web 当前链路与测试，随后按公共 HTTP 边界建立协议能力与透传红测，不启动 T19
+  - 2026-11-11 执行 红测先复现原生 Responses 请求被旧桥接逻辑拒绝 / 错误事件无法切换；随后新增渠道 `supports_responses` 字段（AutoMigrate，默认关闭）、管理台创建/编辑与列表徽标、Responses 能力候选优先排序、R→R `/responses` 原生透传、chat-only 渠道 R→CC 桥接兜底
+  - 2026-11-11 执行 原生 Responses SSE 改为按完整 event 分组读取：首事件前识别 `response.failed` 并复用 retry/failover，首事件后透传不重试；支持无 `data: [DONE]`、以 EOF 结束；CC/Responses usage 统一写 prompt/completion/total/cached/reasoning；状态字段无原生候选时显式 400 `responses_native_required`
+  - 2026-11-11 验证 公共 HTTP 边界测试覆盖 CC→CC 透传、R→R 非流式/SSE/function tool/状态字段保真、R→R 首事件失败切换、R→CC 既有桥接、状态字段全桥接 400、CC/Responses usage 归一化与请求日志；`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web run build` 通过
+  - 2026-11-11 验证 使用安装库 SQLite 快照 + 当前源码构建（18910 隔离实例）真实调用 DeepSeek Responses `deepseek-flash`：R→R SSE 返回 200，保留 `response.created` / `response.reasoning_text.delta` / `response.completed` 与 reasoning item，无 `[DONE]`，最终文本 `pong`；请求日志记录 `first_token_ms=170 total_ms=802 tokens=34/35/69 cached=0 reasoning=32`
+  - 2026-11-11 交付 `make build` 通过并产出当前源码单二进制；T18 验收标准满足，未实现 Anthropic `/v1/messages`、Responses 子路径/background、CC→R 转换或 Anthropic/Gemini 原生上游
 
 ### T19: 系统设置与运行时配置热更新（P1）
 

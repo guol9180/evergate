@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.10
+
+- 新增渠道级“原生支持 Responses API”能力声明：`/v1/responses` 优先路由到该类渠道并原样透传 JSON/SSE，仅改写鉴权、base_url 与模型映射
+- Responses 原生 SSE 支持无 `data: [DONE]` 的 EOF 结束、`response.failed` 首事件前失败切换、reasoning/内置事件与工具调用保真；chat-only 渠道继续使用 Responses→Chat 桥接
+- `previous_response_id`、`background=true`、`store=true` 等无法安全桥接的状态字段在候选渠道均无 Responses 能力时显式返回 400 `responses_native_required`
+- 请求日志新增 total/cached/reasoning token，并统一 Chat Completions 与 Responses 两套 usage 字段口径
+
 ## v0.1.9
 
 - 修复流式请求首 token 计时口径：现在从发起上游请求开始计算，到首条 SSE data 为止；此前 ZAI 这类“响应头与首条 data 几乎同时到达”的渠道会被记录为 `first_token_ms=0`

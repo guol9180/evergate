@@ -107,3 +107,23 @@ Responses flattened tool name "js" maps to multiple declarations
 2. 流式 Responses 输出分别恢复 `namespace + name`，其中一个保持 function call，另一个恢复 custom tool call；
 3. 下一轮历史回传再次映射到同一批上游函数名，不依赖跨请求内存状态；
 4. 超过 Chat 函数名长度时使用确定性哈希截断，保证历史可重放；清洗后仍发生不同工具映射同名的情况显式返回 400，避免静默串工具。
+
+## T18 原生透传与桥接分层
+
+2026-11-11 实现 v1 协议范围决策：
+
+| 链路 | 行为 |
+|---|---|
+| CC 下游 → CC 上游 | 继续 `/chat/completions` 原生透传 |
+| Responses 下游 → Responses 能力上游 | `/responses` 原生透传；仅替换模型、Authorization 与 base_url，JSON 与 SSE 事件保真 |
+| Responses 下游 → chat-only 上游 | 继续既有 R→CC 桥接 |
+| CC 下游 → Responses-only 上游 | 暂不适用；当前 Responses 渠道均支持 CC，遇到真实仅 Responses 上游再建卡 |
+
+实现约束：
+
+- Responses 能力是渠道字段 `supports_responses`，默认关闭，经 AutoMigrate 增量迁移；
+- 候选排序把 Responses 能力渠道放在桥接渠道之前，但各组内部仍保留原优先级/权重顺序；
+- `previous_response_id`、`background=true`、`store=true` 无法安全桥接；当候选渠道均无 Responses 能力时返回 400 `responses_native_required`；
+- 原生 Responses SSE 按完整 event 分组读取，首事件前可识别 `response.failed` 并复用重试/切换；首事件写给客户端后仍绝不重试；
+- 原生 SSE 不依赖 `data: [DONE]`，以连接 EOF 结束；
+- CC 与 Responses 的 usage 在 request_logs 中统一为 prompt/completion/total/cached/reasoning token。

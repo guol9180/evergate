@@ -11,12 +11,16 @@ import (
 	"strings"
 	"time"
 
+	"evergate/internal/router"
 	"evergate/internal/store"
 	"github.com/gin-gonic/gin"
 )
 
 const responsesProtocol = "responses"
 const responsesToolIdentitiesKey = "evergate.responses_tool_identities"
+const responsesNativeKey = "evergate.responses_native"
+const responsesOriginalBodyKey = "evergate.responses_original_body"
+const responsesBridgeBodyKey = "evergate.responses_bridge_body"
 
 type responsesToolIdentity struct {
 	Name         string
@@ -136,8 +140,8 @@ type chatCallFunc struct {
 	Arguments string `json:"arguments"`
 }
 
-// HandleResponses 处理 Codex 使用的 OpenAI Responses API，并在网关内部
-// 转换为已有 Chat Completions 调度链路。
+// HandleResponses 处理 OpenAI Responses API：Responses 能力渠道原生透传，
+// 其余渠道在 dispatch 阶段回落到 Chat Completions 桥接。
 func (r *Relay) HandleResponses(c *gin.Context) {
 	start := r.opt.Now()
 	hit := &hitRecord{}
@@ -146,15 +150,14 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "读取请求体失败")
 		return
 	}
-	converted, toolRegistry, err := responsesToChat(body)
-	if err != nil {
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", err.Error())
+	if _, _, ok := parseChatRequest(body); !ok {
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
 		return
 	}
 	_ = c.Request.Body.Close()
-	c.Request.Body = io.NopCloser(strings.NewReader(string(converted)))
+	c.Request.Body = io.NopCloser(strings.NewReader(string(body)))
 	c.Set("evergate.protocol", responsesProtocol)
-	c.Set(responsesToolIdentitiesKey, toolRegistry)
+	setResponsesOriginalBody(c, body)
 
 	trace, status, errType, errMsg := r.dispatch(c, hit)
 	if r.opt.LogWriter != nil {
@@ -167,6 +170,7 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 			Stream: isStreamRequest(c), StatusCode: status, ErrorType: errType, ErrorMessage: errMsg,
 			RetryTrace: trace, FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
 			PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
+			TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, ReasoningTokens: hit.reasoningTokens,
 			IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 		})
 	}
@@ -606,6 +610,71 @@ func isResponsesRequest(c *gin.Context) bool {
 	v, _ := c.Get("evergate.protocol")
 	s, _ := v.(string)
 	return s == responsesProtocol
+}
+
+func isResponsesNative(c *gin.Context) bool {
+	value, _ := c.Get(responsesNativeKey)
+	native, _ := value.(bool)
+	return native
+}
+
+func setResponsesOriginalBody(c *gin.Context, body []byte) {
+	c.Set(responsesOriginalBodyKey, append([]byte(nil), body...))
+}
+
+func responsesOriginalBody(c *gin.Context) []byte {
+	value, _ := c.Get(responsesOriginalBodyKey)
+	body, _ := value.([]byte)
+	return body
+}
+
+func setResponsesBridgeBody(c *gin.Context, body []byte) {
+	c.Set(responsesBridgeBodyKey, append([]byte(nil), body...))
+}
+
+func responsesBridgeBody(c *gin.Context) ([]byte, bool) {
+	value, exists := c.Get(responsesBridgeBodyKey)
+	if !exists {
+		return nil, false
+	}
+	body, _ := value.([]byte)
+	return body, true
+}
+
+func anyResponsesNative(candidates []router.Candidate) bool {
+	for _, candidate := range candidates {
+		if candidate.Channel.SupportsResponses {
+			return true
+		}
+	}
+	return false
+}
+
+func preferResponsesNative(candidates []router.Candidate) []router.Candidate {
+	out := append([]router.Candidate(nil), candidates...)
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0; j-- {
+			leftNative, rightNative := out[j-1].Channel.SupportsResponses, out[j].Channel.SupportsResponses
+			if !leftNative && rightNative {
+				out[j-1], out[j] = out[j], out[j-1]
+			}
+		}
+	}
+	return out
+}
+
+func responsesNeedsNativeBridge(body []byte) bool {
+	var wire struct {
+		PreviousResponseID string `json:"previous_response_id"`
+		Background         *bool  `json:"background"`
+		Store              *bool  `json:"store"`
+	}
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return true
+	}
+	return wire.PreviousResponseID != "" ||
+		(wire.Background != nil && *wire.Background) ||
+		(wire.Store != nil && *wire.Store)
 }
 
 func responsesToolIdentities(c *gin.Context) *responsesToolRegistry {
