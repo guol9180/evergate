@@ -624,6 +624,8 @@
   - 2026-11-12 执行 删除 README `### 会话亲和` 详细小节（保留功能亮点一行）；路线图改为引用 DEVELOP_PLAN 里程碑；
     AGENTS 四条恢复 skill 标准文本，provider 目录标注规划中、Makefile 去掉过期 T7 注记
   - 2026-11-12 验证 grep 确认 README 无 `### 会话亲和`/P1 任务清单复制；三文档交叉链接（README↔AGENTS↔DEVELOP_PLAN）均存在
+  - 2026-11-12 交付 提交 995a31b 推送 origin/main 成功，工作区干净；变更 3 文件（README/AGENTS/DEVELOP_PLAN），
+    未改动代码与构建产物
 
 ## 状态枚举
 
