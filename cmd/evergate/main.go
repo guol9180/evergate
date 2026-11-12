@@ -27,6 +27,7 @@ import (
 	"evergate/internal/settings"
 	"evergate/internal/store"
 	"evergate/internal/update"
+	"evergate/internal/usage"
 	"evergate/web"
 )
 
@@ -105,6 +106,10 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load runtime settings: %w", err)
 	}
+	usageMgr, err := usage.Load(db)
+	if err != nil {
+		return fmt.Errorf("load usage pricing: %w", err)
+	}
 	runtimeDefaults := settingsMgr.Snapshot().ConfigDefaults()
 	poolMgr := pool.NewManager(
 		runtimeDefaults.Cooldown.FailThreshold,
@@ -126,6 +131,8 @@ func run() error {
 		Settings: settingsMgr, Logger: logger, Now: nowFn,
 	})
 	defer stopProbes()
+	stopUsageAggregator := usage.StartAggregator(db, logger, time.Minute)
+	defer stopUsageAggregator()
 
 	logWriter := relay.NewLogWriter(db, 256, logger)
 	defer logWriter.Close()
@@ -141,6 +148,7 @@ func run() error {
 		Now:       nowFn,
 		LogWriter: logWriter,
 		Settings:  settingsMgr,
+		Usage:     usageMgr,
 	})
 	adminAPI := admin.New(admin.Options{
 		DB:        db,
@@ -150,6 +158,7 @@ func run() error {
 		Update:    update.NewChecker(version, update.DefaultAPIURL, time.Now),
 		Settings:  settingsMgr,
 		Health:    prober,
+		Usage:     usageMgr,
 	})
 
 	engine := server.New(server.Options{

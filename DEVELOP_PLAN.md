@@ -460,9 +460,17 @@
   4. 管理台统计页支持日期范围（默认近 7 天）、渠道、模型、令牌筛选，展示总请求/成功率/token/成本、日趋势、Top 渠道/模型/令牌；查询超过保留窗口返回 400；
   5. 报表数据可用 SQLite/管理台 API 对账；历史无单价请求保持原值并说明统计口径；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不做 ClickHouse/外部 OLAP；不引入重量级图表库（优先 CSS/SVG 轻量图表）；不做预算自动降级与告警；不支持多币种账单
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：`usage_daily` 表已预留但未聚合，request_logs 已有 usage/cost 字段，需先由 T18 统一协议 usage，再落地计价与报表
+  - 2026-11-12 执行 用户确认继续 T22；现状核查：RequestLog 已有 usage/cost 但成本始终 0，usage_daily 未写入，管理台无统计/价格维护。设计新增 `internal/usage` 公共域：ModelPrice 价格快照与实时计价、request_logs cost_status/cost_micros、usage_daily 幂等按日重建、管理台报表查询与价格维护共用同一口径
+  - 2026-11-12 执行 新增 `model_prices`（全局 channel=0/model="" + 渠道+模型覆盖，micro-USD/百万 token）、RequestLog.cost_micros/cost_status、UsageDaily.cost_micros/priced/unpriced；usage.Manager 原子价格快照，CRUD 后立即重载
+  - 2026-11-12 执行 relay 在请求完成时按当时渠道+上游模型价格快照计算 prompt+completion 成本；成功无 usage 标记 no_usage，有 usage 无价格标记 unpriced。后台聚合启动全量重建、每分钟刷今天/昨天、停机再刷今天；每日事务内先删后插保证幂等
+  - 2026-11-12 执行 新增管理 API：usage report、价格列表/默认价/覆盖 upsert/删除；报表按保留窗口校验日期，返回总览、日趋势、Top 渠道/模型/令牌；管理台新增 `/usage` 页面与侧栏入口
+  - 2026-11-12 验证 usage/relay/admin 测试覆盖：默认价/覆盖价优先级、价格变更不追溯历史、成功 usage 计价、无 usage/unpriced 标记、日聚合先删后插两次结果一致、报表筛选/Top/未计价数量、保留窗口 400、价格 CRUD 与负数/不存在渠道校验
+  - 2026-11-12 验证 隔离实例（18942 + 假上游 18941）：全局价 $1/$2 与渠道模型覆盖 $3/$4；两次请求各 10 输入+5 输出 token，request_logs 均 cost_status=priced、cost_micros=50。停机重启后报表返回 requests=2、success=2、tokens 20/10、cost_micros=100、priced_requests=2，Top 渠道/模型/令牌与日志对账一致
+  - 2026-11-12 验证 无头 Chrome `/usage`：显示近 7 天筛选、请求 2、成功率 100%、Token 30、成本 $0.0001、日趋势与三组 Top、全局价/覆盖价维护；1440×1000 与 390×844 横向溢出均为 0
+  - 2026-11-12 交付 最终源码复验：`gofmt -l` 无输出、`go test -p 1 ./... -count=1` 全部通过、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 成功。`go test -race` 仍受本机缺少 gcc/CGO 限制未执行；日聚合幂等由事务重建与重复执行测试保障
 
 ### T23: X-Session-Id 会话亲和调度（P1）
 

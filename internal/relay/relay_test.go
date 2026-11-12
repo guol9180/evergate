@@ -25,6 +25,7 @@ import (
 	"evergate/internal/router"
 	"evergate/internal/settings"
 	"evergate/internal/store"
+	"evergate/internal/usage"
 )
 
 // ---------- 测试环境 ----------
@@ -38,6 +39,7 @@ type testEnv struct {
 	clock     *fakeClock
 	gateway   *httptest.Server
 	logWriter *LogWriter
+	usage     *usage.Manager
 }
 
 type fakeClock struct {
@@ -69,8 +71,12 @@ func newEnv(t *testing.T) *testEnv {
 	d.OverallTimeout = config.Duration{Duration: 3 * time.Second}
 	d.RetryBudget = config.RetryBudget{Channels: 3, KeysPerChannel: 2, Total: config.Duration{Duration: 60 * time.Second}}
 	pl := pool.NewManager(3, pool.DefaultCooldownSchedule, clock.Now)
+	usageMgr, err := usage.Load(db)
+	if err != nil {
+		t.Fatalf("load usage pricing: %v", err)
+	}
 	logs := NewLogWriter(db, 256, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	rel := New(Options{DB: db, Router: router.New(42), Pool: pl, MasterKey: master, Defaults: d, Now: clock.Now, LogWriter: logs})
+	rel := New(Options{DB: db, Router: router.New(42), Pool: pl, MasterKey: master, Defaults: d, Now: clock.Now, LogWriter: logs, Usage: usageMgr})
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	e.POST("/v1/chat/completions", rel.HandleChatCompletions)
@@ -84,7 +90,7 @@ func newEnv(t *testing.T) *testEnv {
 			_ = sqlDB.Close() // Windows 下未关闭会阻塞 TempDir 清理
 		}
 	})
-	return &testEnv{Relay: rel, db: db, masterKey: master, engine: e, pool: pl, clock: clock, gateway: gw, logWriter: logs}
+	return &testEnv{Relay: rel, db: db, masterKey: master, engine: e, pool: pl, clock: clock, gateway: gw, logWriter: logs, usage: usageMgr}
 }
 
 func (e *testEnv) addChannel(t *testing.T, name, baseURL string, priority int, models []string, mapping map[string]string, keys ...string) {

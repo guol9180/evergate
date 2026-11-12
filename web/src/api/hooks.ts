@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, jsonBody } from './client'
-import type { AdminInfo, Channel, ChannelDetail, LogsPage, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateStatus } from './types'
+import type { AdminInfo, Channel, ChannelDetail, LogsPage, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -219,5 +219,59 @@ export function useLogs(filters: LogFilters) {
     queryKey: ['logs', filters],
     queryFn: () => api<LogsPage>(`/admin/api/logs?${params.toString()}`),
     placeholderData: (prev) => prev,
+  })
+}
+
+// ---------- 用量与价格 ----------
+export interface UsageFilters {
+  start: string
+  end: string
+  channel_id?: string
+  model?: string
+  token_id?: string
+}
+
+export function useUsageReport(filters: UsageFilters) {
+  const params = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') params.set(key, String(value))
+  })
+  return useQuery({
+    queryKey: ['usage-report', filters],
+    queryFn: () => api<UsageReport>(`/admin/api/usage/report?${params.toString()}`),
+  })
+}
+
+export function useUsagePrices() {
+  return useQuery({
+    queryKey: ['usage-prices'],
+    queryFn: () => api<UsagePrices>('/admin/api/usage/prices'),
+  })
+}
+
+export function useSetDefaultPrice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { input_micros_per_million: number; output_micros_per_million: number }) =>
+      api<UsagePrices>('/admin/api/usage/prices/default', { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: (data) => qc.setQueryData(['usage-prices'], data),
+  })
+}
+
+export function useUpsertPriceOverride() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { channel_id: number; model: string; input_micros_per_million: number; output_micros_per_million: number }) =>
+      api<UsagePrices>('/admin/api/usage/prices/overrides', { method: 'POST', body: JSON.stringify(data) }),
+    onSuccess: (data) => qc.setQueryData(['usage-prices'], data),
+  })
+}
+
+export function useDeletePriceOverride() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) =>
+      api<UsagePrices>(`/admin/api/usage/prices/overrides/${id}`, { method: 'DELETE' }),
+    onSuccess: (data) => qc.setQueryData(['usage-prices'], data),
   })
 }

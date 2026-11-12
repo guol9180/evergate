@@ -25,6 +25,7 @@ import (
 	"evergate/internal/settings"
 	"evergate/internal/store"
 	"evergate/internal/update"
+	"evergate/internal/usage"
 )
 
 // Options 管理 API 装配依赖。
@@ -36,6 +37,7 @@ type Options struct {
 	Update    *update.Checker
 	Settings  *settings.Manager
 	Health    *health.Prober
+	Usage     *usage.Manager
 }
 
 // API 管理台接口集合。
@@ -58,6 +60,11 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.GET("/admin/api/system/update", a.sessionMiddleware(), a.systemUpdate)
 	r.GET("/admin/api/system/settings", a.sessionMiddleware(), a.getSystemSettings)
 	r.PUT("/admin/api/system/settings", a.sessionMiddleware(), a.updateSystemSettings)
+	r.GET("/admin/api/usage/report", a.sessionMiddleware(), a.getUsageReport)
+	r.GET("/admin/api/usage/prices", a.sessionMiddleware(), a.listUsagePrices)
+	r.PUT("/admin/api/usage/prices/default", a.sessionMiddleware(), a.setDefaultUsagePrice)
+	r.POST("/admin/api/usage/prices/overrides", a.sessionMiddleware(), a.upsertUsagePriceOverride)
+	r.DELETE("/admin/api/usage/prices/overrides/:id", a.sessionMiddleware(), a.deleteUsagePriceOverride)
 	r.GET("/admin/api/channels", a.sessionMiddleware(), a.listChannels)
 	r.POST("/admin/api/channels", a.sessionMiddleware(), a.createChannel)
 	r.GET("/admin/api/channels/:id", a.sessionMiddleware(), a.getChannel)

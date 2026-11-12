@@ -19,6 +19,7 @@ import (
 	"evergate/internal/pool"
 	"evergate/internal/settings"
 	"evergate/internal/store"
+	"evergate/internal/usage"
 )
 
 type testEnv struct {
@@ -27,6 +28,7 @@ type testEnv struct {
 	gw      *httptest.Server
 	pool    *pool.Manager
 	setting *settings.Manager
+	usage   *usage.Manager
 	master  string
 }
 
@@ -51,7 +53,11 @@ func newEnv(t *testing.T) *testEnv {
 	prober := health.NewProber(health.ProberOptions{
 		DB: db, MasterKey: master, Pool: pl, Now: func() time.Time { return time.Now().UTC() },
 	})
-	api := New(Options{DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour), Settings: settingMgr, Health: prober})
+	usageMgr, err := usage.Load(db)
+	if err != nil {
+		t.Fatalf("load usage: %v", err)
+	}
+	api := New(Options{DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour), Settings: settingMgr, Health: prober, Usage: usageMgr})
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	api.RegisterRoutes(e)
@@ -62,7 +68,7 @@ func newEnv(t *testing.T) *testEnv {
 			_ = sqlDB.Close()
 		}
 	})
-	return &testEnv{engine: e, db: db, gw: gw, pool: pl, setting: settingMgr, master: master}
+	return &testEnv{engine: e, db: db, gw: gw, pool: pl, setting: settingMgr, usage: usageMgr, master: master}
 }
 
 func (e *testEnv) req(t *testing.T, method, path, cookie, body string) (int, string, *http.Response) {

@@ -123,26 +123,43 @@ type RequestLog struct {
 	CachedTokens     int64          `json:"cached_tokens"`
 	ReasoningTokens  int64          `json:"reasoning_tokens"`
 	Cost             float64        `json:"cost"`
+	CostMicros       int64          `gorm:"not null;default:0" json:"cost_micros"`
+	CostStatus       string         `gorm:"size:32;not null;default:''" json:"cost_status"`
 	IP               string         `gorm:"size:45" json:"ip"`
 	UserAgent        string         `json:"user_agent"`
 }
 
-// UsageDaily 是按天用量聚合（任务书 4.3 usage_daily 表；聚合任务 T5 接入）。
+// UsageDaily 是按 UTC 天 + 渠道 + 请求模型 + 令牌的幂等聚合。
 type UsageDaily struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	Date      time.Time `gorm:"not null;uniqueIndex:idx_usage_daily_uq" json:"date"` // UTC 零点
-	ChannelID int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"channel_id"`
-	Model     string    `gorm:"size:100;not null;uniqueIndex:idx_usage_daily_uq" json:"model"`
-	TokenID   int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"token_id"`
-	Requests  int64     `gorm:"not null;default:0" json:"requests"`
-	Success   int64     `gorm:"not null;default:0" json:"success"`
-	TokensIn  int64     `gorm:"not null;default:0" json:"tokens_in"`
-	TokensOut int64     `gorm:"not null;default:0" json:"tokens_out"`
-	Cost      float64   `gorm:"not null;default:0" json:"cost"`
+	ID               int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	Date             time.Time `gorm:"not null;uniqueIndex:idx_usage_daily_uq" json:"date"` // UTC 零点
+	ChannelID        int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"channel_id"`
+	Model            string    `gorm:"size:100;not null;uniqueIndex:idx_usage_daily_uq" json:"model"`
+	TokenID          int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"token_id"`
+	Requests         int64     `gorm:"not null;default:0" json:"requests"`
+	Success          int64     `gorm:"not null;default:0" json:"success"`
+	TokensIn         int64     `gorm:"not null;default:0" json:"tokens_in"`
+	TokensOut        int64     `gorm:"not null;default:0" json:"tokens_out"`
+	Cost             float64   `gorm:"not null;default:0" json:"cost"`
+	CostMicros       int64     `gorm:"not null;default:0" json:"cost_micros"`
+	PricedRequests   int64     `gorm:"not null;default:0" json:"priced_requests"`
+	UnpricedRequests int64     `gorm:"not null;default:0" json:"unpriced_requests"`
 }
 
 // TableName 固定为任务书表名 usage_daily（GORM 默认复数会得到 usage_dailies）。
 func (UsageDaily) TableName() string { return "usage_daily" }
+
+// ModelPrice 是每百万 token 的固定精度价格（micro-USD）。
+// (channel_id=0, model="") 为全局默认；非零 channel_id + 非空 model 为精确覆盖。
+type ModelPrice struct {
+	ID                     int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	ChannelID              int64     `gorm:"not null;default:0;uniqueIndex:idx_model_price_uq" json:"channel_id"`
+	Model                  string    `gorm:"size:100;not null;default:'';uniqueIndex:idx_model_price_uq" json:"model"`
+	InputMicrosPerMillion  int64     `gorm:"not null;default:0" json:"input_micros_per_million"`
+	OutputMicrosPerMillion int64     `gorm:"not null;default:0" json:"output_micros_per_million"`
+	CreatedAt              time.Time `json:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at"`
+}
 
 // RuntimeSetting 是安全运行时配置的 SQLite 单例（ID 固定为 1）。
 // YAML 只在首次初始化该行时提供种子；此后 SQLite 是唯一事实源。

@@ -177,3 +177,60 @@ export interface LogsPage {
   page: number
   page_size: number
 }
+
+export interface UsageTotals {
+  requests: number
+  success: number
+  tokens_in: number
+  tokens_out: number
+  cost_micros: number
+  cost: number
+  priced_requests: number
+  unpriced_requests: number
+}
+
+export interface UsageDailyPoint {
+  date: string
+  requests: number
+  success: number
+  tokens_in: number
+  tokens_out: number
+  cost_micros: number
+  cost: number
+}
+
+export interface UsageDimensionRow {
+  id: number
+  name: string
+  requests: number
+  success: number
+  tokens_in: number
+  tokens_out: number
+  cost_micros: number
+  cost: number
+}
+
+export interface UsageReport {
+  start: string
+  end: string
+  totals: UsageTotals
+  daily: UsageDailyPoint[]
+  top_channels: UsageDimensionRow[]
+  top_models: UsageDimensionRow[]
+  top_tokens: UsageDimensionRow[]
+}
+
+export interface ModelPrice {
+  id: number
+  channel_id: number
+  model: string
+  input_micros_per_million: number
+  output_micros_per_million: number
+  created_at: string
+  updated_at: string
+}
+
+export interface UsagePrices {
+  default: ModelPrice | null
+  overrides: ModelPrice[]
+}

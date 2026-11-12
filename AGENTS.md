@@ -22,6 +22,7 @@ internal/store/        # GORM 模型与数据访问
 internal/admin/        # 管理台 API handlers
 internal/health/       # 周期 /models 轻量探测、key cooldown 持久化与健康状态合成
 internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
+internal/usage/        # 模型价格快照、请求成本、UTC 日幂等聚合与报表查询
 internal/browser/      # 启动后打开管理台的系统浏览器封装
 internal/update/       # GitHub Release 自动更新检查
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）
@@ -52,6 +53,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 - 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
 - 渠道健康探测只能调用 `GET {base_url}/models`，不得触发推理接口；404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
 - 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
+- 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）
 

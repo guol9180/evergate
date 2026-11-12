@@ -25,6 +25,7 @@ import (
 	"evergate/internal/router"
 	"evergate/internal/settings"
 	"evergate/internal/store"
+	"evergate/internal/usage"
 )
 
 // Options 是 relay 装配依赖。
@@ -38,6 +39,7 @@ type Options struct {
 	Now       func() time.Time
 	LogWriter *LogWriter // 可为 nil（测试中不落日志）
 	Settings  *settings.Manager
+	Usage     *usage.Manager
 }
 
 // Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
@@ -256,6 +258,7 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 	}
 	tokenID, tokenName := tokenFromContext(c)
 	total := r.opt.Now().Sub(start)
+	costMicros, costStatus := r.requestCost(status, hit)
 	r.opt.LogWriter.Submit(&store.RequestLog{
 		TokenID: tokenID, TokenName: tokenName,
 		ChannelID: hit.channelID, ChannelName: hit.channelName, KeyID: hit.keyID,
@@ -266,8 +269,26 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
 		PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
 		TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, ReasoningTokens: hit.reasoningTokens,
+		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus,
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 	})
+}
+
+func (r *Relay) requestCost(status int, hit *hitRecord) (int64, string) {
+	if status < http.StatusOK || status >= http.StatusBadRequest || hit == nil {
+		return 0, ""
+	}
+	if !hit.usageSeen || hit.promptTokens+hit.completionTokens <= 0 {
+		return 0, usage.CostStatusNoUsage
+	}
+	if r.opt.Usage == nil {
+		return 0, usage.CostStatusUnpriced
+	}
+	costMicros, priced := r.opt.Usage.Calculate(hit.channelID, hit.upstreamModel, hit.promptTokens, hit.completionTokens)
+	if !priced {
+		return 0, usage.CostStatusUnpriced
+	}
+	return costMicros, usage.CostStatusPriced
 }
 
 // enforceTokenGovernance 在调用上游前执行模型白名单与额度预检。
