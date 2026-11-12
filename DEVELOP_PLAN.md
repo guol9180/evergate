@@ -494,6 +494,11 @@
     仅存指纹、ForgetIfMatches、32 goroutine 并发读写）+ relay 公共 HTTP 边界（CC/Responses 粘渠道与粘 key、
     不同 token 隔离、粘性渠道 500 切换并改写亲和、粘性 key 冷却回退同渠道其他 key、非法 header 不写表、
     TTL 过期、4×5 并发同 session 全部 200）。未运行 `-race`：本机无 gcc/CGO，不主张 race 通过
+  - 2026-11-12 交付 提交 486fec0、tag v0.1.15；Release Action 43193778665 成功（1m56s），正文取自
+    CHANGELOG，`checksums.txt` + 三平台二进制共 4 个 assets 齐全；Windows 产物 SHA256
+    `A29758FAB8569CA978217CB778A5B44BE1AE73BFB382F32322989BD8A0A82D81` 与 checksums 一致
+  - 2026-11-12 冒烟 下载的 Windows 二进制在隔离端口 18915 启动：日志 version=v0.1.15、`/healthz` 200、
+    `/admin/api/auth/me` 401、`/v1/models` 401；进程已停止，未占用 8080
 
 ### T24: 请求级路由与重试配置覆盖（P1）
 
