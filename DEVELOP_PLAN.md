@@ -503,6 +503,22 @@
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：README 当前描述了 `/metrics`，但实现尚未提供该端点；本卡同时补齐任务书 OTel 可选导出，避免继续文档超前
 
+### T27: README 开源优化与仓库公开（P0，用户指令）
+
+- 目标：README 面向公网重写（去个人环境信息、补双语定位/徽章/协议矩阵/安全模型/参与开发/SEO 关键词），添加 MIT LICENSE，GitHub 仓库转 public 并配置描述与 topics 标签
+- 动机：项目已具备公开发布条件（v0.1.11，P1 推进中），开源可获取用户反馈与生态曝光
+- 验收标准：
+  1. 开源安全扫描通过：已跟踪文件无 API key/私钥/密码赋值/个人邮箱/本机路径/IP；`evergate.yml` 与 `data/` 确认被 gitignore；
+  2. README 无个人机器状态（本机安装路径/版本列）与内部任务号耦合，含英文定位、徽章、协议矩阵、快速开始、安全模型、License 与关键词块；
+  3. 仓库含 MIT LICENSE（版权人 guol9180），README 徽章与 License 小节链接有效；
+  4. GitHub 仓库 visibility=public，描述与 ≤20 个 topics 配置成功；
+  5. 变更已提交并推送，远程 main 与本地一致。
+- 边界：不改代码与构建产物；不发新版本；不迁移仓库；GitHub 描述与 topics 一次配置，不做后续运营承诺
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-12 计划 用户指令确认：优化 README、补充 SEO 标签、将仓库开源
+  - 2026-11-12 执行 安全扫描：git grep 密钥模式（sk-/ghp_/gho_/xox/PRIVATE KEY/长密钥赋值）与个人信息（C:\Users、D:\dev、邮箱、IP）均零命中；git ls-files 确认仅 evergate.yml.example 入库；README 重写 + 新增 MIT LICENSE
+
 ## 状态枚举
 
 | 状态 | 含义 |
