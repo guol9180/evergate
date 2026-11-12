@@ -402,6 +402,7 @@
   - 2026-11-11 验证 隔离实例（18912）完成真实启动/登录/改密流程：首次 GET 显示 source=evergate.yml 与 YAML 种子；PUT 后 source=database 且新值立即生效；重启后仍保持 database 新值。最终 make build 产物 + 无头 Chrome 实测设置页 13 个数值输入、保存 46 秒成功，1280×800 与 390×844 均无横向溢出
   - 2026-11-11 交付 `gofmt` 无 diff；`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 全部通过。`go test -race` 因本机缺少 gcc/CGO 编译器无法执行；并发安全由 atomic 快照 + mutex 保存路径与相关单元测试保障
   - 2026-11-12 交付 提交前在最终源码上复验：`gofmt -l .` 无输出、`go vet ./...` 通过、`go test -p 1 ./... -count=1` 全部通过、`make build` 重新生成 web/dist 与 Windows 二进制并通过；`.tmp-t19` 验证目录已按绝对路径核对后删除
+  - 2026-11-12 发版 v0.1.11：Release Action 43138295622 成功（2m35s）；Release 正文正确提取系统设置热更新说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,078,080 bytes），本地 SHA256 `e86e3794…966c` 与 checksums.txt 一致；隔离启动显示 version=v0.1.11，`/healthz` 返回 200，未登录 GET/PUT `/admin/api/system/settings` 均返回 401
 
 ### T20: 渠道健康自动探测与状态徽标（P1）
 
