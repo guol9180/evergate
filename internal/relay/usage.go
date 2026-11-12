@@ -65,6 +65,7 @@ func parseResponsesEventUsage(data []byte, hit *hitRecord) {
 
 func recordUsage(usage usageWire, hit *hitRecord) {
 	prompt, completion, total, cached, reasoning := usage.normalize()
+	hit.usageSeen = true
 	hit.promptTokens = prompt
 	hit.completionTokens = completion
 	hit.totalTokens = total

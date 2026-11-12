@@ -380,6 +380,56 @@ func TestTokenManagement(t *testing.T) {
 	}
 }
 
+func TestTokenGovernanceManagement(t *testing.T) {
+	env := newEnv(t)
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+
+	code, body, _ := env.req(t, "POST", "/admin/api/tokens", cookie,
+		`{"name":"governed","quota":10,"allowed_models":["m","m",""],"allowed_ips":["127.0.0.1","10.0.0.0/8","127.0.0.1"]}`)
+	if code != http.StatusOK {
+		t.Fatalf("create governed token: %d %s", code, body)
+	}
+	for _, want := range []string{
+		`"quota":10`, `"remaining_quota":10`, `"status":"active"`,
+		`"allowed_models":["m"]`, `"allowed_ips":["127.0.0.1","10.0.0.0/8"]`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("governed token response missing %s: %s", want, body)
+		}
+	}
+
+	if err := env.db.Model(&store.Token{}).Where("id = 1").Update("used_quota", 10).Error; err != nil {
+		t.Fatalf("exhaust token: %v", err)
+	}
+	code, body, _ = env.req(t, "GET", "/admin/api/tokens", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"remaining_quota":0`) || !strings.Contains(body, `"status":"exhausted"`) {
+		t.Fatalf("exhausted token view: %d %s", code, body)
+	}
+
+	if code, body, _ = env.req(t, "POST", "/admin/api/tokens", cookie, `{"name":"bad-ip","allowed_ips":["localhost"]}`); code != http.StatusBadRequest || !strings.Contains(body, "CIDR") {
+		t.Fatalf("invalid ip should 400: %d %s", code, body)
+	}
+	if code, body, _ = env.req(t, "PUT", "/admin/api/tokens/1", cookie, `{"quota":-1}`); code != http.StatusBadRequest {
+		t.Fatalf("negative quota should 400: %d %s", code, body)
+	}
+	if code, body, _ = env.req(t, "PUT", "/admin/api/tokens/1", cookie, `{"allowed_ips":["127.0.0.1:8080"]}`); code != http.StatusBadRequest {
+		t.Fatalf("port rule should 400: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "PUT", "/admin/api/tokens/1", cookie, `{"allowed_models":[],"allowed_ips":[]}`)
+	if code != http.StatusOK {
+		t.Fatalf("clear rules: %d %s", code, body)
+	}
+	var token store.Token
+	if err := env.db.First(&token, 1).Error; err != nil {
+		t.Fatalf("read token: %v", err)
+	}
+	if len(token.AllowedModels) != 0 || len(token.AllowedIPs) != 0 {
+		t.Fatalf("rules should be cleared: %#v", token)
+	}
+}
+
 func TestLogPaginationAndFilters(t *testing.T) {
 	env := newEnv(t)
 	cookie, _ := login(t, env, "admin", "admin123")

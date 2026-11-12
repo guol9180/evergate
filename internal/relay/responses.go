@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"evergate/internal/router"
-	"evergate/internal/store"
 	"github.com/gin-gonic/gin"
 )
 
@@ -160,20 +159,7 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 	setResponsesOriginalBody(c, body)
 
 	trace, status, errType, errMsg := r.dispatch(c, hit)
-	if r.opt.LogWriter != nil {
-		tokenID, tokenName := tokenFromContext(c)
-		total := r.opt.Now().Sub(start)
-		r.opt.LogWriter.Submit(&store.RequestLog{
-			TokenID: tokenID, TokenName: tokenName,
-			ChannelID: hit.channelID, ChannelName: hit.channelName, KeyID: hit.keyID,
-			Model: hitLoggedModel(c), UpstreamModel: hit.upstreamModel,
-			Stream: isStreamRequest(c), StatusCode: status, ErrorType: errType, ErrorMessage: errMsg,
-			RetryTrace: trace, FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
-			PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
-			TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, ReasoningTokens: hit.reasoningTokens,
-			IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
-		})
-	}
+	r.finishRequest(c, start, hit, trace, status, errType, errMsg)
 }
 
 func responsesToChat(body []byte) ([]byte, *responsesToolRegistry, error) {

@@ -3,9 +3,11 @@ package relay
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +100,57 @@ func TestTokenAuthExpired(t *testing.T) {
 	}
 	if resp.StatusCode != 401 {
 		t.Fatalf("过期 token 应 401: %d", resp.StatusCode)
+	}
+}
+
+func TestTokenAuthIPWhitelistExactAndCIDR(t *testing.T) {
+	_, db := newAuthEnv(t)
+	plain := "eg-ip-token"
+	sum := sha256.Sum256([]byte(plain))
+	if err := db.Create(&store.Token{
+		Name: "ip", KeyHash: hex.EncodeToString(sum[:]), Enabled: true,
+		AllowedIPs: []string{"127.0.0.1", "192.168.0.0/16"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	gin.SetMode(gin.TestMode)
+	authed := gin.New()
+	logs := NewLogWriter(db, 8, nil)
+	defer logs.Close()
+	authed.GET("/v1/models", TokenAuth(db, logs), func(c *gin.Context) { c.Status(200) })
+	server := httptest.NewServer(authed)
+	defer server.Close()
+
+	req, _ := http.NewRequest("GET", server.URL+"/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+plain)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("exact IP should pass: %d", resp.StatusCode)
+	}
+
+	db.Model(&store.Token{}).Where("id = 1").Update("allowed_ips", `["10.0.0.0/8"]`)
+	req, _ = http.NewRequest("GET", server.URL+"/v1/models", nil)
+	req.Header.Set("Authorization", "Bearer "+plain)
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(data), `"code":"ip_not_allowed"`) {
+		t.Fatalf("CIDR rejection: %d %s", resp.StatusCode, data)
+	}
+	logs.Close()
+	var rows []store.RequestLog
+	if err := db.Where("token_id = 1").Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].ErrorType != "ip_not_allowed" {
+		t.Fatalf("ip rejection logs = %#v", rows)
 	}
 }
 

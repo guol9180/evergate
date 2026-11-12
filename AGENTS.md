@@ -51,6 +51,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 - 运行日志（slog JSON 到 stdout）与请求日志（入库供管理台查询）分离。
 - 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
 - 渠道健康探测只能调用 `GET {base_url}/models`，不得触发推理接口；404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
+- 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）
 

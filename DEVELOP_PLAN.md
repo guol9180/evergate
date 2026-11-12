@@ -438,9 +438,16 @@
   4. WHEN 配额被扣减 THEN 管理台令牌列表显示额度、已用、剩余、超限状态，额度变化与请求日志可对账；
   5. 白名单/额度错误进入请求日志（不泄漏 token 明文），并复用现有统一错误格式；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：quota 单位定义为 token 数，不做货币余额/充值/多租户计费；不做分组路由；不实现每分钟速率限制（可后续独立卡）；不因额度未知而猜测扣减
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：字段与管理端编辑已存在，但公共链路尚未强制，存在越权与超额风险，优先于用量报表实现
+  - 2026-11-12 执行 用户确认继续 T21；现状核查：TokenAuth 仅检查 enabled/expired，allowed_models/allowed_ips/quota 未强制；请求日志已有 usage 字段但无缺因说明，令牌 UI 仅能创建名称。实现采用公共边界：TokenAuth 负责身份/停用/过期/IP，relay 解析 model 后负责模型白名单与额度预检，Chat/Responses 共用 finishRequest 结算与日志
+  - 2026-11-12 执行 TokenAuth 查询改为按 hash 获取完整 token 快照，disabled/expired/ip_not_allowed 均返回 OpenAI 错误体并入请求日志；IP 白名单支持精确 IP 与 IPv4/IPv6 CIDR。server 关闭默认受信代理，IP 判断使用 TCP 直连地址，避免伪造 X-Forwarded-For 绕过
+  - 2026-11-12 执行 relay 在上游调用前强制 allowed_models 与 quota 预检；成功响应按 prompt+completion tokens 条件原子累加 used_quota，并发请求不得越过 quota；上游失败/无 usage/客户端断开不扣减并记录 usage_missing、usage_zero、client_disconnected_no_usage_charge 等原因
+  - 2026-11-12 执行 管理台 token API 返回 remaining/status/allowed_ips 并校验负额度与非法 IP/CIDR；UI 新建/编辑支持额度、过期时间、模型白名单与 IP 白名单，列表显示剩余额度、超限/过期/停用状态
+  - 2026-11-12 验证 单元/HTTP 边界测试覆盖：disabled/expired/IP 精确与 CIDR、伪造 X-Forwarded-For 不受信、两条协议模型白名单均不上游、额度预检 429、Chat 非流式与流式 final usage、Responses 桥接非流式与原生 response.completed、无 usage/上游失败/客户端断开不扣减、24 并发请求条件扣减后 used_quota 恰为 100
+  - 2026-11-12 验证 隔离实例（18932 + 假上游 18931）：quota=10 且模型/IP 白名单生效；denied Chat/Responses 均 403 model_not_allowed 且上游推理次数 0，Allowed Chat/Responses 各消耗 5 tokens 后 token 状态 exhausted/剩余 0，第 3 次请求 429 insufficient_quota；日志 5 条可与两次 403、两次成功 usage、一次 429 对账。无头 Chrome 令牌页显示 governed-token、额度用尽、10/10、剩余 0、allowed-model 与 127.0.0.1，1280×800 横向溢出 0
+  - 2026-11-12 交付 最终源码复验：`gofmt -l` 无输出、`go test -p 1 ./... -count=1` 全部通过、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 成功。`go test -race` 仍受本机缺少 gcc/CGO 限制未执行；额度并发安全由 SQLite 条件原子 UPDATE 与并发 HTTP 测试保障
 
 ### T22: 用量成本统计与每日聚合报表（P1）
 

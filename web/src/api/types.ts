@@ -124,8 +124,11 @@ export interface Token {
   enabled: boolean
   quota: number
   used_quota: number
+  remaining_quota: number
+  status: 'active' | 'disabled' | 'expired' | 'exhausted'
   expired_at: string | null
   allowed_models: string[] | null
+  allowed_ips: string[] | null
   group: string
   created_at: string
 }

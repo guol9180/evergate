@@ -31,6 +31,8 @@ func New(opts Options) *gin.Engine {
 		logger = slog.Default()
 	}
 	r := gin.New()
+	// IP 白名单必须基于直连地址；未提供受信代理配置前不信任 X-Forwarded-For。
+	_ = r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery()) // 红线：每个 handler 必须有 recovery
 	r.Use(requestLogger(logger))
 

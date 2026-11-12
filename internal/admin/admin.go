@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -580,21 +581,42 @@ func (a *API) deleteKey(c *gin.Context) {
 // ---------- 下游令牌 ----------
 
 type tokenDTO struct {
-	ID            int64      `json:"id"`
-	Name          string     `json:"name"`
-	Enabled       bool       `json:"enabled"`
-	Quota         int64      `json:"quota"`
-	UsedQuota     int64      `json:"used_quota"`
-	ExpiredAt     *time.Time `json:"expired_at"`
-	AllowedModels []string   `json:"allowed_models"`
-	Group         string     `json:"group"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID             int64      `json:"id"`
+	Name           string     `json:"name"`
+	Enabled        bool       `json:"enabled"`
+	Quota          int64      `json:"quota"`
+	UsedQuota      int64      `json:"used_quota"`
+	RemainingQuota int64      `json:"remaining_quota"`
+	Status         string     `json:"status"`
+	ExpiredAt      *time.Time `json:"expired_at"`
+	AllowedModels  []string   `json:"allowed_models"`
+	AllowedIPs     []string   `json:"allowed_ips"`
+	Group          string     `json:"group"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 func toTokenDTO(t *store.Token) tokenDTO {
+	remaining := int64(-1)
+	status := "active"
+	switch {
+	case !t.Enabled:
+		status = "disabled"
+	case t.ExpiredAt != nil && time.Now().UTC().After(*t.ExpiredAt):
+		status = "expired"
+	case t.Quota > 0:
+		remaining = t.Quota - t.UsedQuota
+		if remaining < 0 {
+			remaining = 0
+		}
+		if remaining == 0 {
+			status = "exhausted"
+		}
+	}
 	return tokenDTO{
 		ID: t.ID, Name: t.Name, Enabled: t.Enabled, Quota: t.Quota, UsedQuota: t.UsedQuota,
-		ExpiredAt: t.ExpiredAt, AllowedModels: t.AllowedModels, Group: t.Group, CreatedAt: t.CreatedAt,
+		RemainingQuota: remaining, Status: status,
+		ExpiredAt: t.ExpiredAt, AllowedModels: t.AllowedModels, AllowedIPs: t.AllowedIPs,
+		Group: t.Group, CreatedAt: t.CreatedAt,
 	}
 }
 
@@ -611,12 +633,51 @@ func (a *API) listTokens(c *gin.Context) {
 	ok(c, gin.H{"items": items})
 }
 
+func normalizeTokenRules(models, ips []string) ([]string, []string, error) {
+	normalizeModels := make([]string, 0, len(models))
+	seenModels := make(map[string]bool, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if seenModels[model] {
+			continue
+		}
+		seenModels[model] = true
+		normalizeModels = append(normalizeModels, model)
+	}
+
+	normalizedIPs := make([]string, 0, len(ips))
+	seenIPs := make(map[string]bool, len(ips))
+	for _, rule := range ips {
+		rule = strings.TrimSpace(rule)
+		if rule == "" {
+			continue
+		}
+		if ip := net.ParseIP(rule); ip != nil {
+			rule = ip.String()
+		} else if _, network, err := net.ParseCIDR(rule); err == nil {
+			rule = network.String()
+		} else {
+			return nil, nil, errors.New("IP 白名单仅支持精确 IP 或 CIDR")
+		}
+		if seenIPs[rule] {
+			continue
+		}
+		seenIPs[rule] = true
+		normalizedIPs = append(normalizedIPs, rule)
+	}
+	return normalizeModels, normalizedIPs, nil
+}
+
 func (a *API) createToken(c *gin.Context) {
 	var req struct {
 		Name          string     `json:"name" binding:"required"`
 		Quota         *int64     `json:"quota"`
 		ExpiredAt     *time.Time `json:"expired_at" time_format:"2006-01-02T15:04:05Z07:00"`
 		AllowedModels []string   `json:"allowed_models"`
+		AllowedIPs    []string   `json:"allowed_ips"`
 		Group         string     `json:"group"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -635,10 +696,20 @@ func (a *API) createToken(c *gin.Context) {
 	if group == "" {
 		group = "default"
 	}
+	quota := derefInt64(req.Quota, 0)
+	if quota < 0 {
+		fail(c, http.StatusBadRequest, "额度不能为负数")
+		return
+	}
+	allowedModels, allowedIPs, err := normalizeTokenRules(req.AllowedModels, req.AllowedIPs)
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	t := &store.Token{
 		Name: req.Name, KeyHash: hex.EncodeToString(sum[:]), Enabled: true,
-		Quota: derefInt64(req.Quota, 0), ExpiredAt: req.ExpiredAt,
-		AllowedModels: req.AllowedModels, Group: group,
+		Quota: quota, ExpiredAt: req.ExpiredAt,
+		AllowedModels: allowedModels, AllowedIPs: allowedIPs, Group: group,
 	}
 	if err := a.opt.DB.Create(t).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "创建失败")
@@ -660,11 +731,13 @@ func (a *API) updateToken(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name          *string    `json:"name"`
-		Enabled       *bool      `json:"enabled"`
-		Quota         *int64     `json:"quota"`
-		ExpiredAt     *time.Time `json:"expired_at"`
-		AllowedModels []string   `json:"allowed_models"`
+		Name           *string    `json:"name"`
+		Enabled        *bool      `json:"enabled"`
+		Quota          *int64     `json:"quota"`
+		ExpiredAt      *time.Time `json:"expired_at"`
+		ClearExpiredAt bool       `json:"clear_expired_at"`
+		AllowedModels  *[]string  `json:"allowed_models"`
+		AllowedIPs     *[]string  `json:"allowed_ips"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "参数错误")
@@ -678,13 +751,40 @@ func (a *API) updateToken(c *gin.Context) {
 		updates["enabled"] = *req.Enabled
 	}
 	if req.Quota != nil {
+		if *req.Quota < 0 {
+			fail(c, http.StatusBadRequest, "额度不能为负数")
+			return
+		}
 		updates["quota"] = *req.Quota
 	}
 	if req.ExpiredAt != nil {
 		updates["expired_at"] = *req.ExpiredAt
 	}
+	if req.ClearExpiredAt {
+		updates["expired_at"] = nil
+	}
 	if req.AllowedModels != nil {
-		updates["allowed_models"] = req.AllowedModels
+		updates["allowed_models"] = *req.AllowedModels
+	}
+	if req.AllowedIPs != nil {
+		updates["allowed_ips"] = *req.AllowedIPs
+	}
+	if req.AllowedModels != nil || req.AllowedIPs != nil {
+		models := t.AllowedModels
+		if req.AllowedModels != nil {
+			models = *req.AllowedModels
+		}
+		ips := t.AllowedIPs
+		if req.AllowedIPs != nil {
+			ips = *req.AllowedIPs
+		}
+		normalizedModels, normalizedIPs, err := normalizeTokenRules(models, ips)
+		if err != nil {
+			fail(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		updates["allowed_models"] = normalizedModels
+		updates["allowed_ips"] = normalizedIPs
 	}
 	if len(updates) > 0 {
 		if err := a.opt.DB.Model(&t).Updates(updates).Error; err != nil {

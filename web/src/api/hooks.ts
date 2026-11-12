@@ -167,9 +167,17 @@ export function useTokens() {
 export function useCreateToken() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string }) => api<{ token: Token; key: string }>('/admin/api/tokens', jsonBody(data)),
+    mutationFn: (data: TokenGovernanceInput) => api<{ token: Token; key: string }>('/admin/api/tokens', jsonBody(data)),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tokens'] }),
   })
+}
+
+export interface TokenGovernanceInput {
+  name: string
+  quota?: number
+  expired_at?: string | null
+  allowed_models?: string[]
+  allowed_ips?: string[]
 }
 
 export function useUpdateToken() {

@@ -157,9 +157,9 @@ func run() error {
 		DB:       db,
 		Logger:   logger,
 		SetupRoutes: func(r gin.IRoutes) {
-			r.POST("/v1/chat/completions", relay.TokenAuth(db), relayHandler.HandleChatCompletions)
-			r.POST("/v1/responses", relay.TokenAuth(db), relayHandler.HandleResponses)
-			r.GET("/v1/models", relay.TokenAuth(db), relayHandler.HandleModels)
+			r.POST("/v1/chat/completions", relay.TokenAuth(db, logWriter), relayHandler.HandleChatCompletions)
+			r.POST("/v1/responses", relay.TokenAuth(db, logWriter), relayHandler.HandleResponses)
+			r.GET("/v1/models", relay.TokenAuth(db, logWriter), relayHandler.HandleModels)
 			adminAPI.RegisterRoutes(r)
 		},
 		WebFS: web.DistFS,
