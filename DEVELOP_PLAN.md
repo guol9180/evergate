@@ -514,10 +514,12 @@
   4. GitHub 仓库 visibility=public，描述与 ≤20 个 topics 配置成功；
   5. 变更已提交并推送，远程 main 与本地一致。
 - 边界：不改代码与构建产物；不发新版本；不迁移仓库；GitHub 描述与 topics 一次配置，不做后续运营承诺
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-12 计划 用户指令确认：优化 README、补充 SEO 标签、将仓库开源
   - 2026-11-12 执行 安全扫描：git grep 密钥模式（sk-/ghp_/gho_/xox/PRIVATE KEY/长密钥赋值）与个人信息（C:\Users、D:\dev、邮箱、IP）均零命中；git ls-files 确认仅 evergate.yml.example 入库；README 重写 + 新增 MIT LICENSE
+  - 2026-11-12 验证 README 复核：本机路径/当前机器状态/任务号耦合/邮箱/内网端口零残留，本地链接（LICENSE/CHANGELOG/DEVELOP_PLAN/AGENTS/docs×2）全部存在，英文定位与关键词块在位；提交 34ccc8d 推送 origin/main 成功
+  - 2026-11-12 交付 gh repo view 确认 visibility=PUBLIC、双语描述生效、19 个 topics（ai-gateway/llm-gateway/openai-compatible/chat-completions/openai-responses/codex/api-gateway/load-balancer/failover/reverse-proxy/proxy/key-pool/sse/streaming/self-hosted/go/golang/sqlite/react）配置成功；T27 验收标准 1–5 全部满足
 
 ## 状态枚举
 
