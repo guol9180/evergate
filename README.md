@@ -79,7 +79,7 @@ go run ./cmd/evergate   # 开发态直接运行
 
 ## 路线图
 
-P1 进行中：渠道健康自动探测与状态徽标、令牌额度与白名单、用量成本报表、会话亲和调度、请求级配置覆盖、Playground、Prometheus / OTel 指标；Anthropic Messages 入口延后。完整任务卡与验收标准见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)。
+P1 进行中：npm 平台包分发、一键自动更新、渠道健康自动探测与状态徽标、令牌额度与白名单、用量成本报表、会话亲和调度、请求级配置覆盖、Playground、Prometheus / OTel 指标；Anthropic Messages 入口延后。完整任务卡与验收标准见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)。
 
 ## 参与开发
 

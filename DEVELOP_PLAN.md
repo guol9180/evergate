@@ -418,6 +418,7 @@
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：当前仅有实时请求驱动的 key 状态与手动连通测试，缺少任务书要求的周期探测与健康徽标闭环
+  - 2026-11-12 执行 用户确认继续 T20；现状核查：T19 已提供探测间隔/并发/超时的 SQLite 热更新快照，pool 已有 cooldown→half_open 状态机，管理台已有手动 GET `/models` 测试但不更新 key 状态、不落健康结果。本卡将复用 pool.Acquire 作为探测凭据入口，新增可控 HTTP Prober 与周期调度器，并把手动测试改为同一公共探测路径
 
 ### T21: 下游令牌额度、有效期、模型白名单与 IP 白名单强制（P1）
 
@@ -536,6 +537,39 @@
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-12 计划 用户指令确认建卡并明确暂不执行；README「常见上游基址」小节同步删除，该知识待本卡落地时转入产品预设模板
 
+### T29: npm 平台包发布流水线（P1，用户指令）
+
+- 目标：tag 发版时除 GitHub Release 外同步发布 npm 平台包——主包 `evergate`（命令引导）+ `evergate-win32-x64` / `evergate-linux-amd64` / `evergate-darwin-arm64` 三个平台子包，`optionalDependencies` + `os`/`cpu` 字段按平台自动安装，registry 可被 npmmirror 同步
+- 动机：GitHub Releases 在中国网络下载慢/失败；npm registry + 镜像可达，并为一键自动更新（T30）提供内建 integrity 的下载通道。前置实测：npm 包名 `evergate` 未占用、`registry.npmmirror.com` 连通
+- 验收标准：
+  1. WHEN 推送 `v*` tag THEN CI 自动产出并发布 1 主包 + 3 平台子包，版本号与 git tag 一致，无人工发布步骤；
+  2. WHEN 在 Windows / Linux / macOS 分别执行 `npm i -g evergate` THEN 仅安装本平台子包，`evergate` 命令可启动且 `GET /healthz` 返回 200（os/cpu 生效）；
+  3. 主包不含平台二进制（KB 级体积）；各包含 LICENSE 与 README 摘要；
+  4. npm 账号开启 2FA；NPM_TOKEN 仅存 GitHub Secrets，不落仓库与日志；
+  5. 发布后可经 `https://registry.npmmirror.com` 安装（或实测记录同步延迟为可接受）；
+  6. `go test ./...`、`make build`、GitHub Release 三平台产物不受影响。
+- 边界：不改动 GitHub Releases 现有产物与 changelog 事实源；不做 brew/scoop/winget 等其他包管理器；provenance 为可选加分项不设为验收；不宣传 npx 免安装为长期使用方式
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-12 计划 用户指令确认建卡；前置准备（npm 账号注册 + 2FA + 仓库 NPM_TOKEN secret）待开工时配置
+
+### T30: 一键自动更新（P1，用户指令）
+
+- 目标：管理台「一键更新」：从 npm registry（默认官方，可配镜像）拉取目标版本 tarball → 解包 → `dist.integrity`（sha512）校验 → 平台替换引擎（Windows 改名交换 / Unix 原子 rename）→ 重启编排（30s 优雅排空）→ 新版本健康自检；GitHub Releases + checksums.txt SHA256 作为 fallback 通道
+- 动机：消除每次升级手动下载、手动替换文件的操作；npm 通道（T29）同时解决中国网络下载问题
+- 验收标准：
+  1. WHEN 管理台点击一键更新 THEN 下载→校验→替换→重启全流程无手工文件操作，UI 显示各阶段进度与结果；
+  2. WHEN integrity 校验失败或替换任一步失败 THEN 中止更新，原二进制保持可用，返回可诊断错误；
+  3. WHEN Windows 更新 THEN 使用改名交换法（运行中 exe 改名 `.old`，新文件就位，下次启动清理 `.old`），不依赖先停止程序的手工操作；WHEN 重启 THEN 沿用既有 30s 优雅排空；
+  4. WHEN 新版本启动后 `/healthz` 通过 THEN 版本号变更为目标版本且旧版本备份保留；WHEN 新版本启动失败 THEN 备份仍在并提示手动回滚路径；
+  5. WHEN 开发态（`go run`）或安装目录不可写 THEN 拒绝自更新并给出明确指引；
+  6. WHEN npm 通道不可用 THEN 按配置回退 GitHub Releases 下载 + checksums.txt SHA256 校验；
+  7. 公共 HTTP 边界回归测试（mock registry / Release）覆盖成功、校验失败、替换失败、重启编排；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不做强制/后台静默更新（必须用户点击确认）；不做自动回滚 watchdog（仅保留备份与回滚指引）；不做代码签名（已知局限：integrity 防传输损坏与镜像篡改，不防 registry 账号级攻击）；不做差量补丁；不引入 AGPL 实现（禁参考 MinIO selfupdate），替换引擎自研零新增依赖
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-12 计划 用户指令确认建卡；依赖 T29 平台包就绪后开工；评估结论：下载通道层与替换引擎层正交，npm 不消除 Windows 锁文件问题，替换/重启编排仍需自研
+
 ## 状态枚举
 
 | 状态 | 含义 |
@@ -560,7 +594,7 @@
 | 里程碑 | 内容 | 完成判据 |
 |---|---|---|
 | P0（本次） | T0–T7 全部 done | 下方「验收清单」全部通过 |
-| P1（当前阶段） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel | T10–T12、T18–T26 全部按任务卡验收；T13 已延后。默认执行顺序：T18 → T19 → T20 → T21 → T22 → T23 → T24 → T25 → T26，依赖变化时先更新任务卡进度 |
+| P1（当前阶段） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新 | T10–T12、T18–T26、T29–T30 全部按任务卡验收；T13 已延后。默认执行顺序：T18 → T19 → T20 → T21 → T22 → T23 → T24 → T25 → T26 → T29 → T30（T30 依赖 T29），依赖变化时先更新任务卡进度 |
 | P2（后续，暂不建卡） | T28 渠道预设供应商模板（已建卡待排期）；Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | T28 按上方任务卡验收；其余项开工前再拆任务卡 |
 
 ## 验收清单
