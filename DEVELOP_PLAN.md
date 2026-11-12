@@ -448,6 +448,7 @@
   - 2026-11-12 验证 单元/HTTP 边界测试覆盖：disabled/expired/IP 精确与 CIDR、伪造 X-Forwarded-For 不受信、两条协议模型白名单均不上游、额度预检 429、Chat 非流式与流式 final usage、Responses 桥接非流式与原生 response.completed、无 usage/上游失败/客户端断开不扣减、24 并发请求条件扣减后 used_quota 恰为 100
   - 2026-11-12 验证 隔离实例（18932 + 假上游 18931）：quota=10 且模型/IP 白名单生效；denied Chat/Responses 均 403 model_not_allowed 且上游推理次数 0，Allowed Chat/Responses 各消耗 5 tokens 后 token 状态 exhausted/剩余 0，第 3 次请求 429 insufficient_quota；日志 5 条可与两次 403、两次成功 usage、一次 429 对账。无头 Chrome 令牌页显示 governed-token、额度用尽、10/10、剩余 0、allowed-model 与 127.0.0.1，1280×800 横向溢出 0
   - 2026-11-12 交付 最终源码复验：`gofmt -l` 无输出、`go test -p 1 ./... -count=1` 全部通过、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 成功。`go test -race` 仍受本机缺少 gcc/CGO 限制未执行；额度并发安全由 SQLite 条件原子 UPDATE 与并发 HTTP 测试保障
+  - 2026-11-12 发版 v0.1.13：Release Action 43178170787 成功（2m40s）；Release 正文正确提取令牌治理说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,147,712 bytes），本地 SHA256 `1de791c4…5f4c` 与 checksums.txt 一致；隔离启动显示 version=v0.1.13，`/healthz` 返回 200，无效下游 token 调用 Chat 与未登录访问管理台均返回 401
 
 ### T22: 用量成本统计与每日聚合报表（P1）
 
