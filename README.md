@@ -60,17 +60,6 @@ go run ./cmd/evergate   # 开发态直接运行
 
 端口、base path、SQLite 路径、master key、session secret 属启动引导配置，修改需重启。
 
-### 常见上游基址
-
-| 上游 / 套餐 | 管理台 Base URL |
-|---|---|
-| DeepSeek | `https://api.deepseek.com` |
-| 智谱 / Z.ai Coding 国际版 | `https://api.z.ai/api/coding/paas/v4` |
-| 智谱 BigModel Coding 中国版 | `https://open.bigmodel.cn/api/coding/paas/v4` |
-| 智谱 BigModel 常规 API | `https://open.bigmodel.cn/api/paas/v4` |
-
-> 智谱 / Z.ai Coding 套餐不要配成 `https://open.bigmodel.cn/api/v1`：该地址会使 Coding key 收到空 body 的 HTTP 500，并被 EverGate 汇总为 `503 all_channels_exhausted`。
-
 ## 安全模型
 
 - 上游 key 以 AES-GCM 加密存储，主密钥仅在 `evergate.yml`（已 gitignore）；DB 文件泄露 ≠ key 泄露

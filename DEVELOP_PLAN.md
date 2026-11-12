@@ -521,6 +521,21 @@
   - 2026-11-12 验证 README 复核：本机路径/当前机器状态/任务号耦合/邮箱/内网端口零残留，本地链接（LICENSE/CHANGELOG/DEVELOP_PLAN/AGENTS/docs×2）全部存在，英文定位与关键词块在位；提交 34ccc8d 推送 origin/main 成功
   - 2026-11-12 交付 gh repo view 确认 visibility=PUBLIC、双语描述生效、19 个 topics（ai-gateway/llm-gateway/openai-compatible/chat-completions/openai-responses/codex/api-gateway/load-balancer/failover/reverse-proxy/proxy/key-pool/sse/streaming/self-hosted/go/golang/sqlite/react）配置成功；T27 验收标准 1–5 全部满足
 
+### T28: 渠道预设供应商模板（P2，用户指令）
+
+- 目标：管理台新建渠道时提供预设供应商模板（OpenAI / DeepSeek / Kimi / 智谱 BigModel 常规 / BigModel Coding / Z.ai Coding 国际版等），选中后自动填充 Base URL 与推荐默认值，降低接入成本
+- 动机：厂商基址知识（含智谱 Coding 套餐配错地址导致 503 的避坑）原维护在 README，转入产品内随渠道表单直接可用
+- 验收标准：
+  1. WHEN 新建渠道 THEN 可从预设供应商列表选择或选「自定义」；选中预设自动填充 Base URL（如 DeepSeek `https://api.deepseek.com`、Z.ai Coding `https://api.z.ai/api/coding/paas/v4`、BigModel Coding `https://open.bigmodel.cn/api/coding/paas/v4`、BigModel 常规 `https://open.bigmodel.cn/api/paas/v4`）；
+  2. WHEN 选择「自定义」 THEN Base URL 手动填写，现有行为完全不变；
+  3. 预设条目含显示名、Base URL 与说明（Coding 套餐必须显示避坑提示）；不包含任何 key 或账号信息；
+  4. README 不再维护厂商基址清单，知识唯一来源为产品内预设模板；
+  5. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过，`web/dist` 同步提交。
+- 边界：预设清单为内置静态数据，不做在线模板更新与远程模板源；不做预设自动连通探测（沿用现有单渠道连通测试）；不做账号代注册 / OAuth；不涉及 Anthropic/Gemini 原生协议适配
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-12 计划 用户指令确认建卡并明确暂不执行；README「常见上游基址」小节同步删除，该知识待本卡落地时转入产品预设模板
+
 ## 状态枚举
 
 | 状态 | 含义 |
@@ -546,7 +561,7 @@
 |---|---|---|
 | P0（本次） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（当前阶段） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel | T10–T12、T18–T26 全部按任务卡验收；T13 已延后。默认执行顺序：T18 → T19 → T20 → T21 → T22 → T23 → T24 → T25 → T26，依赖变化时先更新任务卡进度 |
-| P2（后续，暂不建卡） | Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | 开工前再拆任务卡 |
+| P2（后续，暂不建卡） | T28 渠道预设供应商模板（已建卡待排期）；Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | T28 按上方任务卡验收；其余项开工前再拆任务卡 |
 
 ## 验收清单
 
