@@ -66,6 +66,16 @@ go run ./cmd/evergate   # 开发态直接运行
 - 下游令牌仅存 SHA-256 哈希；管理台接口永不回显任何 key 明文
 - 面向**本地 / 内网可信环境**设计：管理台与 API 同端口，公网暴露前请自行加反向代理 TLS 与访问控制
 
+## 渠道健康
+
+后台任务按「系统设置」中的间隔、并发与超时，对启用渠道使用可用 key 发起轻量探测：
+
+- 探测路径固定为 `GET {base_url}/models`，不调用 chat/completions / responses，不产生推理费用
+- 探测成功会把 cooldown 到期的 key 恢复为 active；失败按现有错误分类驱动 key 状态机并记录状态码、错误分类、摘要、延迟与下次探测时间
+- 上游返回 404/405 时标记为 `inconclusive`（无法判定），不会把“探测路径不支持”误判为渠道故障
+- Dashboard 与渠道列表展示 active / degraded / down / inconclusive、可用 key 数、最近探测时间与错误摘要；异常渠道优先排序
+- 渠道页的「测试」按钮与后台探测共用同一条公共路径，手动结果同样入库并驱动 key 状态
+
 ## 架构概览
 
 单进程 Go 服务，自上而下：
@@ -79,7 +89,7 @@ go run ./cmd/evergate   # 开发态直接运行
 
 ## 路线图
 
-P1 进行中：npm 平台包分发、一键自动更新、渠道健康自动探测与状态徽标、令牌额度与白名单、用量成本报表、会话亲和调度、请求级配置覆盖、Playground、Prometheus / OTel 指标；Anthropic Messages 入口延后。完整任务卡与验收标准见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)。
+P1 进行中：npm 平台包分发、一键自动更新、令牌额度与白名单、用量成本报表、会话亲和调度、请求级配置覆盖、Playground、Prometheus / OTel 指标；Anthropic Messages 入口延后。完整任务卡与验收标准见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)。
 
 ## 参与开发
 

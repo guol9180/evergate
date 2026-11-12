@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	"evergate/internal/config"
+	"evergate/internal/health"
 	"evergate/internal/pool"
 	"evergate/internal/settings"
 	"evergate/internal/store"
@@ -47,7 +48,10 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatalf("load settings: %v", err)
 	}
 	pl := pool.NewManager(3, pool.DefaultCooldownSchedule, func() time.Time { return time.Now().UTC() })
-	api := New(Options{DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour), Settings: settingMgr})
+	prober := health.NewProber(health.ProberOptions{
+		DB: db, MasterKey: master, Pool: pl, Now: func() time.Time { return time.Now().UTC() },
+	})
+	api := New(Options{DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour), Settings: settingMgr, Health: prober})
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	api.RegisterRoutes(e)
@@ -263,6 +267,84 @@ func TestChannelAndKeyManagement(t *testing.T) {
 	env.db.Model(&store.ChannelKey{}).Count(&keyCount)
 	if keyCount != 0 {
 		t.Fatalf("渠道删除应级联删除 key: %d", keyCount)
+	}
+}
+
+func TestChannelManualProbePersistsHealthView(t *testing.T) {
+	env := newEnv(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" || r.Header.Get("Authorization") != "Bearer sk-probe" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+
+	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie, fmt.Sprintf(`{"name":"probe","type":"openai-compatible","base_url":%q,"models":["test-model"]}`, server.URL))
+	if code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", code, body)
+	}
+	if code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-probe"}`); code != http.StatusOK {
+		t.Fatalf("add key: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/test", cookie, "")
+	if code != http.StatusOK {
+		t.Fatalf("manual probe: %d %s", code, body)
+	}
+	for _, want := range []string{`"ok":true`, `"result":"success"`, `"status":"active"`, `"status_code":200`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("manual probe response missing %s: %s", want, body)
+		}
+	}
+	if strings.Contains(body, "sk-probe") || strings.Contains(body, "key_cipher") {
+		t.Fatalf("manual probe leaked key material: %s", body)
+	}
+
+	code, body, _ = env.req(t, "GET", "/admin/api/channels", cookie, "")
+	if code != http.StatusOK {
+		t.Fatalf("list channels: %d %s", code, body)
+	}
+	for _, want := range []string{`"available_key_count":1`, `"last_probe_result":"success"`, `"next_probe_at":`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("channel health view missing %s: %s", want, body)
+		}
+	}
+	var ch store.Channel
+	if err := env.db.First(&ch, 1).Error; err != nil {
+		t.Fatalf("read channel: %v", err)
+	}
+	if ch.Status != store.ChannelStatusActive || ch.LastProbeStatusCode != http.StatusOK || ch.LastProbeAt == nil || ch.NextProbeAt == nil {
+		t.Fatalf("channel probe row = %#v", ch)
+	}
+
+	cipher, err := store.Encrypt("sk-bad", env.master)
+	if err != nil {
+		t.Fatalf("encrypt bad key: %v", err)
+	}
+	bad := &store.Channel{
+		Name: "bad", Type: "openai-compatible", BaseURL: server.URL,
+		Models: []string{"test-model"}, Enabled: true, Status: store.ChannelStatusActive,
+		LastProbeResult: health.ProbeResultFailure,
+	}
+	if err := env.db.Create(bad).Error; err != nil {
+		t.Fatalf("create bad channel: %v", err)
+	}
+	if err := env.db.Create(&store.ChannelKey{ChannelID: bad.ID, KeyCipher: cipher, Enabled: true, State: store.KeyStateActive}).Error; err != nil {
+		t.Fatalf("create bad key: %v", err)
+	}
+	if err := env.db.Model(bad).Updates(map[string]any{
+		"last_probe_result": health.ProbeResultFailure, "last_probe_error": "upstream unavailable",
+	}).Error; err != nil {
+		t.Fatalf("mark bad channel: %v", err)
+	}
+	code, body, _ = env.req(t, "GET", "/admin/api/channels", cookie, "")
+	if code != http.StatusOK || strings.Index(body, `"name":"bad"`) >= strings.Index(body, `"name":"probe"`) {
+		t.Fatalf("abnormal channel should sort first: %d %s", code, body)
 	}
 }
 

@@ -21,6 +21,7 @@ import (
 
 	"evergate/internal/config"
 	"evergate/internal/pool"
+	"evergate/internal/retry"
 	"evergate/internal/router"
 	"evergate/internal/settings"
 	"evergate/internal/store"
@@ -118,6 +119,30 @@ func (e *testEnv) chat(t *testing.T, body string) (*http.Response, string) {
 	data, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	return resp, string(data)
+}
+
+func TestRelayPersistsKeyAttemptStatistics(t *testing.T) {
+	env := newEnv(t)
+	env.addChannel(t, "stats", "http://127.0.0.1:1", 1, []string{"test"}, nil, "sk-stats")
+	var key store.ChannelKey
+	if err := env.db.First(&key).Error; err != nil {
+		t.Fatalf("read key: %v", err)
+	}
+
+	env.reportKeySuccess(key.ID)
+	env.recordKeyFailure(key.ID, "model unavailable")
+	env.reportKeyFailure(key.ID, retry.Classification{Kind: retry.KindTransient}, "upstream unavailable")
+
+	var row store.ChannelKey
+	if err := env.db.First(&row, key.ID).Error; err != nil {
+		t.Fatalf("reload key: %v", err)
+	}
+	if row.SuccessCount != 1 || row.FailCount != 2 || row.LastError != "upstream unavailable" || row.LastUsedAt == nil {
+		t.Fatalf("key attempt statistics = %#v", row)
+	}
+	if state := env.pool.StateMachine().State(key.ID); state != store.KeyStateActive {
+		t.Fatalf("single transient failure should not cooldown key, state = %s", state)
+	}
 }
 
 func (e *testEnv) responses(t *testing.T, body string) (*http.Response, string) {
@@ -1533,6 +1558,13 @@ func TestNonRetryablePassThrough(t *testing.T) {
 	}
 	if h, _, _ := up.snapshot(); h != 1 {
 		t.Fatalf("不可重试错误只应尝试 1 次, got %d", h)
+	}
+	var key store.ChannelKey
+	if err := env.db.First(&key).Error; err != nil {
+		t.Fatalf("read key: %v", err)
+	}
+	if key.FailCount != 1 || key.State != store.KeyStateActive || key.LastError == "" {
+		t.Fatalf("不可重试失败应只记录统计不惩罚 key: %#v", key)
 	}
 }
 

@@ -69,6 +69,14 @@ export interface Channel {
   model_mapping: Record<string, string> | null
   enabled: boolean
   status: string
+  available_key_count: number
+  last_probe_at: string | null
+  last_probe_result: '' | 'success' | 'failure' | 'inconclusive'
+  last_probe_status_code: number
+  last_probe_latency_ms: number
+  last_probe_error_type: string
+  last_probe_error: string
+  next_probe_at: string | null
   supports_responses: boolean
   timeout_config: ChannelTimeouts | null
   key_count: number
@@ -98,9 +106,16 @@ export interface ChannelDetail {
 
 export interface TestResult {
   ok: boolean
+  channel_id?: number
+  key_id?: number
+  result?: 'success' | 'failure' | 'inconclusive'
+  status?: string
   latency_ms: number
   status_code?: number
+  error_type?: string
   error?: string
+  probed_at?: string
+  next_probe_at?: string
 }
 
 export interface Token {

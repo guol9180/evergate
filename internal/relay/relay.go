@@ -264,7 +264,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 
 	plainKey, err := store.Decrypt(key.KeyCipher, r.opt.MasterKey)
 	if err != nil {
-		r.opt.Pool.ReportFailure(key.ID, retry.Classification{Kind: retry.KindAuth})
+		r.reportKeyFailure(key.ID, retry.Classification{Kind: retry.KindAuth}, "上游 key 解密失败（master_key 不匹配或数据损坏）")
 		start := r.opt.Now()
 		appendTrace(0, "decrypt", "上游 key 解密失败（master_key 不匹配或数据损坏）", start)
 		return outcomeNextKey
@@ -306,7 +306,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			err = errors.New("overall timeout")
 		}
-		r.opt.Pool.ReportFailure(key.ID, retry.Classification{Kind: retry.KindTransient})
+		r.reportKeyFailure(key.ID, retry.Classification{Kind: retry.KindTransient}, err.Error())
 		appendTrace(0, string(retry.KindTransient), err.Error(), start)
 		return outcomeNextChannel
 	}
@@ -323,11 +323,11 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		data, rerr := readAllWithFirstTokenTimeout(resp.Body, ctx, cancel, firstToken)
 		if rerr != nil {
 			cls := retry.Classify(retry.Result{Err: rerr})
-			r.opt.Pool.ReportFailure(key.ID, cls)
+			r.reportKeyFailure(key.ID, cls, rerr.Error())
 			appendTrace(0, string(cls.Kind), rerr.Error(), start)
 			return outcomeNextChannel
 		}
-		r.opt.Pool.ReportSuccess(key.ID)
+		r.reportKeySuccess(key.ID)
 		appendTrace(http.StatusOK, "", "", start)
 		recordHit(hit, ch, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 		parseUsage(data, hit)
@@ -358,21 +358,25 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	})
 	switch cls.Kind {
 	case retry.KindRateLimited, retry.KindAuth:
-		r.opt.Pool.ReportFailure(key.ID, cls)
 		msg := upstreamErrorMessage(resp.StatusCode, errBody)
+		r.reportKeyFailure(key.ID, cls, msg)
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		return outcomeNextKey
 	case retry.KindTransient, retry.KindModelUnavailable:
 		// 服务器故障：计失败但本请求内换渠道；渠道缺模型：不惩罚 key，换渠道
-		if cls.Kind == retry.KindTransient {
-			r.opt.Pool.ReportFailure(key.ID, cls)
-		}
 		msg := upstreamErrorMessage(resp.StatusCode, errBody)
+		if cls.Kind == retry.KindTransient {
+			r.reportKeyFailure(key.ID, cls, msg)
+		} else {
+			r.recordKeyFailure(key.ID, msg)
+		}
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		return outcomeNextChannel
 	default:
 		// 不可重试 / 内容策略：直接透传给客户端
-		appendTrace(resp.StatusCode, string(cls.Kind), "", start)
+		msg := upstreamErrorMessage(resp.StatusCode, errBody)
+		r.recordKeyFailure(key.ID, msg)
+		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		ct := resp.Header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/json"
@@ -398,6 +402,45 @@ func (r *Relay) currentDefaults() config.Defaults {
 		return r.opt.Settings.Snapshot().ConfigDefaults()
 	}
 	return r.opt.Defaults
+}
+
+// reportKeySuccess 同步驱动状态机并持久化请求级成功统计。
+func (r *Relay) reportKeySuccess(keyID int64) {
+	r.opt.Pool.ReportSuccess(keyID)
+	r.persistKeyAttempt(keyID, true, "")
+}
+
+// reportKeyFailure 按分类驱动状态机并持久化请求级失败统计。
+func (r *Relay) reportKeyFailure(keyID int64, class retry.Classification, message string) {
+	r.opt.Pool.ReportFailure(keyID, class)
+	r.persistKeyAttempt(keyID, false, message)
+}
+
+// recordKeyFailure 仅记录失败统计，不惩罚 key（模型不存在/内容策略等 key 无辜场景）。
+func (r *Relay) recordKeyFailure(keyID int64, message string) {
+	r.persistKeyAttempt(keyID, false, message)
+}
+
+func (r *Relay) persistKeyAttempt(keyID int64, success bool, message string) {
+	if r.opt.DB == nil {
+		return
+	}
+	if len(message) > 300 {
+		message = message[:300]
+	}
+	updates := map[string]any{"last_used_at": r.opt.Now().UTC()}
+	if success {
+		updates["success_count"] = gorm.Expr("success_count + 1")
+		updates["last_error"] = ""
+	} else {
+		updates["fail_count"] = gorm.Expr("fail_count + 1")
+		updates["last_error"] = message
+	}
+	if err := r.opt.DB.Model(&store.ChannelKey{}).Where("id = ?", keyID).Updates(updates).Error; err != nil {
+		if r.opt.Logger != nil {
+			r.opt.Logger.Warn("persist key attempt failed", slog.Int64("key_id", keyID), slog.Any("error", err))
+		}
+	}
 }
 
 // recordHit 记录成功命中的渠道/key（供请求日志）。

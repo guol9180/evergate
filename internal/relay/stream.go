@@ -50,7 +50,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 			err = retry.ErrFirstTokenTimeout
 		}
 		cls := retry.Classify(retry.Result{Err: err})
-		r.opt.Pool.ReportFailure(key.ID, cls)
+		r.reportKeyFailure(key.ID, cls, err.Error())
 		appendTrace(string(cls.Kind), err.Error())
 		return outcomeNextChannel
 	}
@@ -61,15 +61,16 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 		appendTrace(string(cls.Kind), "upstream stream error event")
 		switch cls.Kind {
 		case retry.KindRateLimited, retry.KindAuth:
-			r.opt.Pool.ReportFailure(key.ID, cls)
+			r.reportKeyFailure(key.ID, cls, "upstream stream error event")
 			return outcomeNextKey
 		default:
+			r.recordKeyFailure(key.ID, "upstream stream error event")
 			return outcomeNextChannel
 		}
 	}
 
 	// === 红线：首 chunk 即写给客户端，此后不再重试 ===
-	r.opt.Pool.ReportSuccess(key.ID)
+	r.reportKeySuccess(key.ID)
 	appendTrace("", "")
 	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 

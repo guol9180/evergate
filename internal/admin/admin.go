@@ -8,8 +8,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"io"
+	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"evergate/internal/health"
 	"evergate/internal/pool"
 	"evergate/internal/settings"
 	"evergate/internal/store"
@@ -32,6 +34,7 @@ type Options struct {
 	Session   *SessionManager
 	Update    *update.Checker
 	Settings  *settings.Manager
+	Health    *health.Prober
 }
 
 // API 管理台接口集合。
@@ -224,29 +227,42 @@ func (a *API) sessionMiddleware() gin.HandlerFunc {
 // ---------- 渠道 ----------
 
 type channelDTO struct {
-	ID                int64                 `json:"id"`
-	Name              string                `json:"name"`
-	Type              string                `json:"type"`
-	BaseURL           string                `json:"base_url"`
-	Priority          int                   `json:"priority"`
-	Weight            int                   `json:"weight"`
-	Models            []string              `json:"models"`
-	ModelMapping      map[string]string     `json:"model_mapping"`
-	Enabled           bool                  `json:"enabled"`
-	Status            string                `json:"status"`
-	SupportsResponses bool                  `json:"supports_responses"`
-	Timeouts          store.ChannelTimeouts `json:"timeout_config"`
-	KeyCount          int64                 `json:"key_count"`
-	CreatedAt         time.Time             `json:"created_at"`
-	UpdatedAt         time.Time             `json:"updated_at"`
+	ID                  int64                 `json:"id"`
+	Name                string                `json:"name"`
+	Type                string                `json:"type"`
+	BaseURL             string                `json:"base_url"`
+	Priority            int                   `json:"priority"`
+	Weight              int                   `json:"weight"`
+	Models              []string              `json:"models"`
+	ModelMapping        map[string]string     `json:"model_mapping"`
+	Enabled             bool                  `json:"enabled"`
+	Status              string                `json:"status"`
+	AvailableKeyCount   int64                 `json:"available_key_count"`
+	LastProbeAt         *time.Time            `json:"last_probe_at"`
+	LastProbeResult     string                `json:"last_probe_result"`
+	LastProbeStatusCode int                   `json:"last_probe_status_code"`
+	LastProbeLatencyMS  int64                 `json:"last_probe_latency_ms"`
+	LastProbeErrorType  string                `json:"last_probe_error_type"`
+	LastProbeError      string                `json:"last_probe_error"`
+	NextProbeAt         *time.Time            `json:"next_probe_at"`
+	SupportsResponses   bool                  `json:"supports_responses"`
+	Timeouts            store.ChannelTimeouts `json:"timeout_config"`
+	KeyCount            int64                 `json:"key_count"`
+	CreatedAt           time.Time             `json:"created_at"`
+	UpdatedAt           time.Time             `json:"updated_at"`
 }
 
-func (a *API) toChannelDTO(ch *store.Channel, keyCount int64) channelDTO {
+func (a *API) toChannelDTO(ch *store.Channel, keyCount, availableKeyCount int64, status string) channelDTO {
 	return channelDTO{
 		ID: ch.ID, Name: ch.Name, Type: ch.Type, BaseURL: ch.BaseURL,
 		Priority: ch.Priority, Weight: ch.Weight, Models: ch.Models, ModelMapping: ch.ModelMapping,
-		Enabled: ch.Enabled, Status: ch.Status, SupportsResponses: ch.SupportsResponses,
-		Timeouts: ch.Timeouts, KeyCount: keyCount,
+		Enabled: ch.Enabled, Status: status, SupportsResponses: ch.SupportsResponses,
+		AvailableKeyCount: availableKeyCount,
+		LastProbeAt:       ch.LastProbeAt, LastProbeResult: ch.LastProbeResult,
+		LastProbeStatusCode: ch.LastProbeStatusCode, LastProbeLatencyMS: ch.LastProbeLatencyMS,
+		LastProbeErrorType: ch.LastProbeErrorType, LastProbeError: ch.LastProbeError,
+		NextProbeAt: ch.NextProbeAt,
+		Timeouts:    ch.Timeouts, KeyCount: keyCount,
 		CreatedAt: ch.CreatedAt, UpdatedAt: ch.UpdatedAt,
 	}
 }
@@ -257,15 +273,30 @@ func (a *API) listChannels(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "查询失败")
 		return
 	}
+	var keys []*store.ChannelKey
+	if err := a.opt.DB.Order("id asc").Find(&keys).Error; err != nil {
+		fail(c, http.StatusInternalServerError, "查询失败")
+		return
+	}
+	keysByChannel := make(map[int64][]*store.ChannelKey)
+	for _, key := range keys {
+		keysByChannel[key.ChannelID] = append(keysByChannel[key.ChannelID], key)
+	}
 	out := make([]channelDTO, 0, len(channels))
 	for _, ch := range channels {
-		var keys []*store.ChannelKey
-		a.opt.DB.Where("channel_id = ?", ch.ID).Find(&keys)
-		status := pool.DeriveChannelStatus(keys, a.opt.Pool.StateMachine().State)
-		dto := a.toChannelDTO(ch, int64(len(keys)))
-		dto.Status = status
-		out = append(out, dto)
+		channelKeys := keysByChannel[ch.ID]
+		status := health.DeriveStatus(ch, channelKeys, a.opt.Pool.StateMachine().State)
+		out = append(out, a.toChannelDTO(ch, int64(len(channelKeys)), int64(health.AvailableKeyCount(channelKeys, a.opt.Pool.StateMachine().State)), status))
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if health.StatusRank(out[i].Status) != health.StatusRank(out[j].Status) {
+			return health.StatusRank(out[i].Status) < health.StatusRank(out[j].Status)
+		}
+		if out[i].Priority != out[j].Priority {
+			return out[i].Priority < out[j].Priority
+		}
+		return out[i].ID < out[j].ID
+	})
 	ok(c, gin.H{"items": out})
 }
 
@@ -298,7 +329,7 @@ func (a *API) createChannel(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "创建失败（名称重复？）")
 		return
 	}
-	ok(c, a.toChannelDTO(ch, 0))
+	ok(c, a.toChannelDTO(ch, 0, 0, store.ChannelStatusActive))
 }
 
 func (a *API) getChannel(c *gin.Context) {
@@ -319,7 +350,8 @@ func (a *API) getChannel(c *gin.Context) {
 			// 红线：绝不返回 key_cipher / 任何明文（验收 #9）
 		})
 	}
-	dto := a.toChannelDTO(ch, int64(len(keys)))
+	status := health.DeriveStatus(ch, keys, a.opt.Pool.StateMachine().State)
+	dto := a.toChannelDTO(ch, int64(len(keys)), int64(health.AvailableKeyCount(keys, a.opt.Pool.StateMachine().State)), status)
 	ok(c, gin.H{"channel": dto, "keys": keyItems})
 }
 
@@ -341,7 +373,13 @@ func (a *API) updateChannel(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "更新失败")
 		return
 	}
-	ok(c, a.toChannelDTO(ch, -1))
+	var keys []*store.ChannelKey
+	if err := a.opt.DB.Where("channel_id = ?", ch.ID).Find(&keys).Error; err != nil {
+		fail(c, http.StatusInternalServerError, "查询失败")
+		return
+	}
+	status := health.DeriveStatus(ch, keys, a.opt.Pool.StateMachine().State)
+	ok(c, a.toChannelDTO(ch, int64(len(keys)), int64(health.AvailableKeyCount(keys, a.opt.Pool.StateMachine().State)), status))
 }
 
 func (a *API) deleteChannel(c *gin.Context) {
@@ -381,36 +419,54 @@ func (a *API) toggleChannel(c *gin.Context) {
 	ok(c, gin.H{"enabled": ch.Enabled})
 }
 
-// testChannel 连通测试：取一把可用 key 请求 {base_url}/models（轻量、不耗推理额度）。
+// testChannel 手动连通测试：与后台健康探测共用 GET {base_url}/models 路径，
+// 结果同样驱动 half_open/cooldown 状态机并持久化渠道健康摘要。
 func (a *API) testChannel(c *gin.Context) {
 	ch, found := a.loadChannel(c)
 	if !found {
 		return
 	}
-	var key *store.ChannelKey
-	if err := a.opt.DB.Where("channel_id = ? AND enabled = ?", ch.ID, true).Order("id asc").First(&key).Error; err != nil {
-		fail(c, http.StatusBadRequest, "渠道没有启用的 key")
+	if a.opt.Health == nil {
+		fail(c, http.StatusInternalServerError, "健康探测器未初始化")
 		return
 	}
-	plain, err := store.Decrypt(key.KeyCipher, a.opt.MasterKey)
+	var keys []*store.ChannelKey
+	if err := a.opt.DB.Where("channel_id = ? AND enabled = ?", ch.ID, true).Order("id asc").Find(&keys).Error; err != nil {
+		fail(c, http.StatusInternalServerError, "查询失败")
+		return
+	}
+	timeout, nextInterval := 10*time.Second, 5*time.Minute
+	if a.opt.Settings != nil {
+		current := a.opt.Settings.Snapshot()
+		timeout = time.Duration(current.HealthProbeTimeoutMS) * time.Millisecond
+		nextInterval = time.Duration(current.HealthProbeIntervalMS) * time.Millisecond
+	}
+	result, err := a.opt.Health.ProbeChannel(
+		c.Request.Context(), ch, keys, timeout, nextInterval,
+	)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "key 解密失败")
+		if errors.Is(err, health.ErrNoAvailableKey) {
+			fail(c, http.StatusBadRequest, "渠道没有可用 key")
+			return
+		}
+		if errors.Is(err, health.ErrChannelDisabled) {
+			fail(c, http.StatusBadRequest, "渠道已停用")
+			return
+		}
+		if errors.Is(err, context.Canceled) {
+			fail(c, http.StatusRequestTimeout, "测试请求已取消")
+			return
+		}
+		fail(c, http.StatusInternalServerError, "测试失败")
 		return
 	}
-	url := strings.TrimSuffix(ch.BaseURL, "/") + "/models"
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("Authorization", "Bearer "+plain)
-	client := &http.Client{Timeout: 10 * time.Second}
-	start := time.Now()
-	resp, herr := client.Do(req)
-	latency := time.Since(start).Milliseconds()
-	if herr != nil {
-		ok(c, gin.H{"ok": false, "latency_ms": latency, "error": herr.Error()})
-		return
-	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
-	ok(c, gin.H{"ok": resp.StatusCode == http.StatusOK, "status_code": resp.StatusCode, "latency_ms": latency})
+	ok(c, gin.H{
+		"ok": result.Result == health.ProbeResultSuccess, "channel_id": result.ChannelID,
+		"key_id": result.KeyID, "result": result.Result, "status": result.Status,
+		"status_code": result.StatusCode, "latency_ms": result.LatencyMS,
+		"error_type": result.ErrorType, "error": result.Error,
+		"probed_at": result.ProbedAt, "next_probe_at": result.NextProbeAt,
+	})
 }
 
 func (a *API) loadChannel(c *gin.Context) (*store.Channel, bool) {

@@ -20,7 +20,7 @@ internal/retry/        # 错误分类器 + 重试预算
 internal/provider/     # 上游适配器接口 + openai.go / anthropic.go / gemini.go ...
 internal/store/        # GORM 模型与数据访问
 internal/admin/        # 管理台 API handlers
-internal/health/       # 渠道探测任务
+internal/health/       # 周期 /models 轻量探测、key cooldown 持久化与健康状态合成
 internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
 internal/browser/      # 启动后打开管理台的系统浏览器封装
 internal/update/       # GitHub Release 自动更新检查
@@ -50,6 +50,7 @@ Makefile               # 构建入口（T7 实现三平台交叉编译）
 - 前端路由守卫依赖的服务端状态（如 `['me']`）被 mutation 改变时，必须在成功回调同步更新 TanStack Query 缓存；仅重新导航不得依赖旧缓存判断。
 - 运行日志（slog JSON 到 stdout）与请求日志（入库供管理台查询）分离。
 - 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
+- 渠道健康探测只能调用 `GET {base_url}/models`，不得触发推理接口；404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）
 

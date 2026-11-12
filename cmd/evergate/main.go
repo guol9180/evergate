@@ -118,6 +118,14 @@ func run() error {
 	defer stopPersist()
 	stopLogCleaner := settings.StartLogRetentionCleaner(db, settingsMgr, logger, time.Minute)
 	defer stopLogCleaner()
+	prober := health.NewProber(health.ProberOptions{
+		DB: db, MasterKey: cfg.Security.MasterKey, Pool: poolMgr, Now: nowFn,
+	})
+	stopProbes := health.StartProbes(health.SchedulerOptions{
+		DB: db, MasterKey: cfg.Security.MasterKey, Pool: poolMgr,
+		Settings: settingsMgr, Logger: logger, Now: nowFn,
+	})
+	defer stopProbes()
 
 	logWriter := relay.NewLogWriter(db, 256, logger)
 	defer logWriter.Close()
@@ -141,6 +149,7 @@ func run() error {
 		Session:   admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
 		Update:    update.NewChecker(version, update.DefaultAPIURL, time.Now),
 		Settings:  settingsMgr,
+		Health:    prober,
 	})
 
 	engine := server.New(server.Options{

@@ -79,6 +79,9 @@ func (m *Manager) Acquire(channelID int64, keys []*store.ChannelKey) *store.Chan
 // ReportSuccess 上报一次成功。
 func (m *Manager) ReportSuccess(keyID int64) { m.sm.OnSuccess(keyID) }
 
+// CancelProbe 释放 half_open 探测名额且不改变状态，用于 inconclusive 探测。
+func (m *Manager) CancelProbe(keyID int64) { m.sm.ReleaseProbe(keyID) }
+
 // ReportFailure 按错误分类驱动状态机：
 // auth → 禁用；rate_limited+Retry-After → 按 Retry-After 冷却；rate_limited → 计失败；
 // transient → 计失败（跨请求累积达阈值冷却 key，持续故障的渠道最终 down——任务书语义；

@@ -415,10 +415,16 @@
   5. Dashboard 与渠道列表显示 active/degraded/down/inconclusive、可用 key 数、最近探测时间与错误摘要；异常渠道排前并提供手动测试入口；
   6. 后台任务使用可控时钟测试：成功恢复、失败保持 cooldown、inconclusive 不改变调度状态、停用渠道不探测、并发上限生效；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不调用 chat/completions 或 responses 产生推理费用；不引入 Redis/消息队列/外部监控系统；不做按模型健康分片；不做自动删除渠道
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：当前仅有实时请求驱动的 key 状态与手动连通测试，缺少任务书要求的周期探测与健康徽标闭环
   - 2026-11-12 执行 用户确认继续 T20；现状核查：T19 已提供探测间隔/并发/超时的 SQLite 热更新快照，pool 已有 cooldown→half_open 状态机，管理台已有手动 GET `/models` 测试但不更新 key 状态、不落健康结果。本卡将复用 pool.Acquire 作为探测凭据入口，新增可控 HTTP Prober 与周期调度器，并把手动测试改为同一公共探测路径
+  - 2026-11-12 执行 新增 `internal/health/probe.go/status.go/scheduler.go`：探测固定 GET `{base_url}/models`，复用 `pool.Acquire` 选择 active/half-open key；成功恢复 key，失败复用 retry 分类并落 key 统计，404/405 返回 inconclusive 且仅释放 half-open 名额；Channel 新增最近探测结果/状态码/延迟/错误分类/摘要与下次探测时间字段
+  - 2026-11-12 执行 周期调度器启动即探测，每轮读取 T19 设置快照并发受 `health_probe_concurrency` 限制；设置变更会废弃旧 timer 并按新间隔重建，停用渠道不进入查询队列，stop 取消上下文并等待 goroutine 退出。管理台手动测试复用同一 Prober，渠道列表/Dashboard 返回并展示健康徽标、可用 key 数、最近探测与错误摘要且异常优先排序
+  - 2026-11-12 执行 relay 四条请求路径（Chat 非流/流、Responses 原生/桥接流）统一通过公共 helper 上报 key 状态并持久化 success_count/fail_count/last_error/last_used_at，健康视图可结合实时状态与请求失败统计
+  - 2026-11-12 验证 health/admin/relay/pool 覆盖：探测成功恢复 cooldown、失败保持 cooldown、404/405 inconclusive 且释放 half-open 名额、停用渠道不探测、并发上限生效、设置变更重建等待间隔；管理 API 手动探测持久化健康视图且不泄漏 key；relay 成功/失败/不可重试统计持久化且不误惩罚无辜 key
+  - 2026-11-12 验证 隔离实例（18922 + 假上游 18921）：探测间隔热更新为 10s 后自动请求 `/models` 且实测两次间隔 10.011s；API 返回 status=active、available_key_count=1、last_probe_result=success、HTTP 200、延迟 2ms 与 next_probe_at；手动测试与自动探测同路径。无头 Chrome 登录后渠道页/Dashboard 均显示 health-upstream、正常、1/1、最近探测与摘要，1280×800 横向溢出均为 0
+  - 2026-11-12 交付 最终源码复验：`gofmt -l` 无输出、`go test -p 1 ./... -count=1` 全部通过、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 成功。`go test -race` 仍受本机缺少 gcc/CGO 限制未执行；调度器停止路径由 context cancel + WaitGroup 测试/实现保障
 
 ### T21: 下游令牌额度、有效期、模型白名单与 IP 白名单强制（P1）
 

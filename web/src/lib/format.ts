@@ -37,6 +37,7 @@ export const stateTone: Record<string, string> = {
   disabled: 'bg-red-100 text-red-700',
   degraded: 'bg-amber-100 text-amber-700',
   down: 'bg-red-100 text-red-700',
+  inconclusive: 'bg-slate-200 text-slate-700',
 }
 
 export const stateLabel: Record<string, string> = {
@@ -46,6 +47,12 @@ export const stateLabel: Record<string, string> = {
   disabled: '已禁用',
   degraded: '降级',
   down: '不可用',
+  inconclusive: '无法判定',
+}
+
+export function statusRank(status: string): number {
+  const ranks: Record<string, number> = { down: 0, degraded: 1, inconclusive: 2, active: 3 }
+  return ranks[status] ?? 1
 }
 
 // retry.ErrorKind → 人话（与后端 T4a 分类学对齐）

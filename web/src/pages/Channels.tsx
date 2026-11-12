@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, Plug, Plus, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey } from '../api/hooks'
 import { Badge, Button, Card, Dialog, Drawer, Empty, ErrorText, Field, Input, Spinner, Td, Textarea, Th } from '../components/ui'
 import type { Channel } from '../api/types'
-import { cooldownRemaining, stateLabel, stateTone } from '../lib/format'
+import { cooldownRemaining, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
 
 export default function Channels() {
   const channels = useChannels()
@@ -11,6 +11,7 @@ export default function Channels() {
   const [expanded, setExpanded] = useState<number | null>(null)
 
   if (channels.isPending) return <div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>
+  const items = [...(channels.data?.items ?? [])].sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.priority - b.priority || a.id - b.id)
 
   return (
     <div className="space-y-4">
@@ -27,11 +28,11 @@ export default function Channels() {
             <thead className="border-b border-slate-100 bg-slate-50/50">
               <tr>
                 <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>权重</Th>
-                <Th>模型</Th><Th>key</Th><Th>启用</Th><Th>测试</Th><Th className="w-20">操作</Th>
+                <Th>模型</Th><Th>key / 可用</Th><Th>最近探测</Th><Th>启用</Th><Th>测试</Th><Th className="w-20">操作</Th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {channels.data?.items.map((c) => (
+              {items.map((c) => (
                 <ChannelRow
                   key={c.id}
                   channel={c}
@@ -66,7 +67,11 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
           </button>
         </Td>
         <Td className="font-medium">{c.name}</Td>
-        <Td><Badge tone={stateTone[c.status] || ''}>{stateLabel[c.status] || c.status}</Badge></Td>
+        <Td>
+          <Badge tone={stateTone[c.status] || ''}>
+            <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
+          </Badge>
+        </Td>
         <Td>
           <div className="flex flex-wrap items-center gap-1">
             <span className="text-slate-500">{c.type}</span>
@@ -76,7 +81,18 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
         <Td>{c.priority}</Td>
         <Td>{c.weight}</Td>
         <Td>{(c.models || []).length}</Td>
-        <Td>{c.key_count}</Td>
+        <Td>
+          <span className="font-medium">{c.available_key_count}</span>
+          <span className="text-slate-400"> / {c.key_count}</span>
+        </Td>
+        <Td className="max-w-56">
+          <div className="text-xs text-slate-500">
+            {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : '未探测'}
+          </div>
+          {c.last_probe_error && (
+            <div className="truncate text-xs text-slate-400" title={c.last_probe_error}>{c.last_probe_error}</div>
+          )}
+        </Td>
         <Td>
           <button
             onClick={() => toggle.mutate({ id: c.id, enabled: !c.enabled })}
@@ -89,8 +105,8 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
           {test.isPending && test.variables === c.id ? (
             <Spinner />
           ) : result ? (
-            <Badge tone={result.ok ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
-              {result.ok ? `✓ ${result.latency_ms}ms` : `✗ ${result.status_code ?? 'err'}`}
+            <Badge tone={result.result === 'success' ? 'bg-emerald-100 text-emerald-700' : result.result === 'inconclusive' ? 'bg-slate-200 text-slate-700' : 'bg-red-100 text-red-700'}>
+              {result.result === 'success' ? `✓ ${result.latency_ms}ms` : result.result === 'inconclusive' ? `? ${result.status_code ?? 0}` : `✗ ${result.status_code ?? 'err'}`}
             </Badge>
           ) : (
             <Button size="sm" variant="outline" onClick={() => test.mutate(c.id)}>测试</Button>

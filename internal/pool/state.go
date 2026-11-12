@@ -216,6 +216,16 @@ func (sm *StateMachine) beginProbe(keyID int64) {
 	s.probeInFlight = true
 }
 
+// ReleaseProbe 释放 half_open 探测名额但保留 half_open 状态。
+// 用于“探测路径不支持”等 inconclusive 结果：本次探测不能证明 key 好坏，
+// 也不能永久占住唯一探测名额。
+func (sm *StateMachine) ReleaseProbe(keyID int64) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	s := sm.get(keyID)
+	s.probeInFlight = false
+}
+
 // Snapshot 导出全部 key 状态快照（定期持久化到 DB 用）。
 func (sm *StateMachine) Snapshot() []KeySnapshot {
 	sm.mu.Lock()

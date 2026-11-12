@@ -43,7 +43,7 @@ func (r *Relay) streamNativeResponsesResponse(c *gin.Context, resp *http.Respons
 			err = retry.ErrFirstTokenTimeout
 		}
 		cls := retry.Classify(retry.Result{Err: err})
-		r.opt.Pool.ReportFailure(key.ID, cls)
+		r.reportKeyFailure(key.ID, cls, err.Error())
 		appendTrace(0, string(cls.Kind), err.Error())
 		return outcomeNextChannel
 	}
@@ -51,14 +51,15 @@ func (r *Relay) streamNativeResponsesResponse(c *gin.Context, resp *http.Respons
 		appendTrace(0, string(cls.Kind), "upstream Responses stream error event")
 		switch cls.Kind {
 		case retry.KindRateLimited, retry.KindAuth:
-			r.opt.Pool.ReportFailure(key.ID, cls)
+			r.reportKeyFailure(key.ID, cls, "upstream Responses stream error event")
 			return outcomeNextKey
 		default:
+			r.recordKeyFailure(key.ID, "upstream Responses stream error event")
 			return outcomeNextChannel
 		}
 	}
 
-	r.opt.Pool.ReportSuccess(key.ID)
+	r.reportKeySuccess(key.ID)
 	appendTrace(http.StatusOK, "", "")
 	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(attemptStart))
 	parseResponsesEventUsage(first.data, hit)

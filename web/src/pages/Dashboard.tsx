@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Activity, AlertTriangle, ArrowRight, Download, Timer, TowerControl, Waypoints, Zap } from 'lucide-react'
 import { useChannels, useLogs, useUpdateStatus } from '../api/hooks'
 import { Badge, Card, Empty, Spinner, Td, Th } from '../components/ui'
-import { fmtInt, fmtMs, fmtTime, stateLabel, stateTone } from '../lib/format'
+import { fmtInt, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
 
 export default function Dashboard() {
   const channels = useChannels()
@@ -89,8 +89,10 @@ export default function Dashboard() {
   }
 
   const abnormal = [...chs].sort((a, b) => {
-    const rank = (s: string) => (s === 'down' ? 0 : s === 'degraded' ? 1 : 2)
-    return rank(a.status) - rank(b.status)
+    const rank = statusRank(a.status) - statusRank(b.status)
+    if (rank !== 0) return rank
+    if (a.priority !== b.priority) return a.priority - b.priority
+    return a.id - b.id
   })
 
   return (
@@ -140,17 +142,32 @@ export default function Dashboard() {
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-slate-100 bg-slate-50/50">
-              <tr><Th>渠道</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>key 数</Th><Th>模型数</Th><Th>更新时间</Th></tr>
+              <tr><Th>渠道</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>key / 可用</Th><Th>模型数</Th><Th>最近探测</Th><Th>异常摘要</Th><Th>更新时间</Th></tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {abnormal.map((c) => (
                 <tr key={c.id}>
                   <Td className="font-medium">{c.name}</Td>
-                  <Td><Badge tone={stateTone[c.status] || ''}>{stateLabel[c.status] || c.status}</Badge></Td>
+                  <Td>
+                    <Badge tone={stateTone[c.status] || ''}>
+                      <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
+                    </Badge>
+                  </Td>
                   <Td className="text-slate-500">{c.type}</Td>
                   <Td>{c.priority}</Td>
-                  <Td>{c.key_count}</Td>
+                  <Td>
+                    <span className="font-medium">{c.available_key_count}</span>
+                    <span className="text-slate-400"> / {c.key_count}</span>
+                  </Td>
                   <Td>{(c.models || []).length}</Td>
+                  <Td className="text-xs text-slate-500">
+                    {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : '未探测'}
+                  </Td>
+                  <Td className="max-w-56">
+                    <div className="truncate text-xs text-slate-400" title={c.last_probe_error || undefined}>
+                      {c.last_probe_error || '—'}
+                    </div>
+                  </Td>
                   <Td className="text-xs text-slate-400">{fmtTime(c.updated_at)}</Td>
                 </tr>
               ))}

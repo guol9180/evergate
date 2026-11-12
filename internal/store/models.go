@@ -4,9 +4,10 @@ import "time"
 
 // 渠道健康状态（由健康任务 + 实时错误统计推导）。
 const (
-	ChannelStatusActive   = "active"
-	ChannelStatusDegraded = "degraded"
-	ChannelStatusDown     = "down"
+	ChannelStatusActive       = "active"
+	ChannelStatusDegraded     = "degraded"
+	ChannelStatusDown         = "down"
+	ChannelStatusInconclusive = "inconclusive"
 )
 
 // key 状态机取值（active/cooldown/half_open/disabled，详见任务书 4.5③）。
@@ -19,16 +20,23 @@ const (
 
 // Channel 是上游渠道（任务书 4.3 channels 表）。
 type Channel struct {
-	ID           int64             `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name         string            `gorm:"size:100;not null;uniqueIndex" json:"name"`
-	Type         string            `gorm:"size:32;not null" json:"type"` // openai / openai-compatible / deepseek / vllm / anthropic / gemini ...
-	BaseURL      string            `gorm:"column:base_url;not null" json:"base_url"`
-	Priority     int               `gorm:"not null;default:0;index" json:"priority"` // 越小越优先
-	Weight       int               `gorm:"not null;default:1" json:"weight"`         // 同优先级内加权随机
-	Models       []string          `gorm:"serializer:json" json:"models"`
-	ModelMapping map[string]string `gorm:"serializer:json" json:"model_mapping"` // {请求模型: 上游模型}
-	Enabled      bool              `gorm:"not null;default:true" json:"enabled"`
-	Status       string            `gorm:"size:16;not null;default:'active'" json:"status"`
+	ID                  int64             `gorm:"primaryKey;autoIncrement" json:"id"`
+	Name                string            `gorm:"size:100;not null;uniqueIndex" json:"name"`
+	Type                string            `gorm:"size:32;not null" json:"type"` // openai / openai-compatible / deepseek / vllm / anthropic / gemini ...
+	BaseURL             string            `gorm:"column:base_url;not null" json:"base_url"`
+	Priority            int               `gorm:"not null;default:0;index" json:"priority"` // 越小越优先
+	Weight              int               `gorm:"not null;default:1" json:"weight"`         // 同优先级内加权随机
+	Models              []string          `gorm:"serializer:json" json:"models"`
+	ModelMapping        map[string]string `gorm:"serializer:json" json:"model_mapping"` // {请求模型: 上游模型}
+	Enabled             bool              `gorm:"not null;default:true" json:"enabled"`
+	Status              string            `gorm:"size:16;not null;default:'active'" json:"status"`
+	LastProbeAt         *time.Time        `json:"last_probe_at"`
+	LastProbeResult     string            `gorm:"size:16;not null;default:''" json:"last_probe_result"`
+	LastProbeStatusCode int               `gorm:"not null;default:0" json:"last_probe_status_code"`
+	LastProbeLatencyMS  int64             `gorm:"not null;default:0" json:"last_probe_latency_ms"`
+	LastProbeErrorType  string            `gorm:"size:32;not null;default:''" json:"last_probe_error_type"`
+	LastProbeError      string            `json:"last_probe_error"`
+	NextProbeAt         *time.Time        `gorm:"index" json:"next_probe_at"`
 	// SupportsResponses 表示该渠道可原生接收 /responses；否则 /v1/responses 走 CC 桥接。
 	SupportsResponses bool            `gorm:"not null;default:false" json:"supports_responses"`
 	Timeouts          ChannelTimeouts `gorm:"column:timeout_config;serializer:json" json:"timeout_config"`
