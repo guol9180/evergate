@@ -471,6 +471,7 @@
   - 2026-11-12 验证 隔离实例（18942 + 假上游 18941）：全局价 $1/$2 与渠道模型覆盖 $3/$4；两次请求各 10 输入+5 输出 token，request_logs 均 cost_status=priced、cost_micros=50。停机重启后报表返回 requests=2、success=2、tokens 20/10、cost_micros=100、priced_requests=2，Top 渠道/模型/令牌与日志对账一致
   - 2026-11-12 验证 无头 Chrome `/usage`：显示近 7 天筛选、请求 2、成功率 100%、Token 30、成本 $0.0001、日趋势与三组 Top、全局价/覆盖价维护；1440×1000 与 390×844 横向溢出均为 0
   - 2026-11-12 交付 最终源码复验：`gofmt -l` 无输出、`go test -p 1 ./... -count=1` 全部通过、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 成功。`go test -race` 仍受本机缺少 gcc/CGO 限制未执行；日聚合幂等由事务重建与重复执行测试保障
+  - 2026-11-12 发版 v0.1.14：Release Action 43191116439 成功（1m58s）；Release 正文正确提取用量成本说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,231,680 bytes），本地 SHA256 `a4fa6c9f…dc92` 与 checksums.txt 一致；隔离启动显示 version=v0.1.14，`/healthz` 返回 200，未登录访问 usage report/prices 均返回 401
 
 ### T23: X-Session-Id 会话亲和调度（P1）
 
