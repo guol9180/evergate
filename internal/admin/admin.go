@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm"
 
 	"evergate/internal/pool"
+	"evergate/internal/settings"
 	"evergate/internal/store"
 	"evergate/internal/update"
 )
@@ -30,6 +31,7 @@ type Options struct {
 	Pool      *pool.Manager // 渠道健康推导 / key 重置
 	Session   *SessionManager
 	Update    *update.Checker
+	Settings  *settings.Manager
 }
 
 // API 管理台接口集合。
@@ -50,6 +52,8 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.GET("/admin/api/auth/me", a.sessionMiddleware(), a.me)
 	r.PUT("/admin/api/auth/password", a.sessionMiddleware(), a.changePassword)
 	r.GET("/admin/api/system/update", a.sessionMiddleware(), a.systemUpdate)
+	r.GET("/admin/api/system/settings", a.sessionMiddleware(), a.getSystemSettings)
+	r.PUT("/admin/api/system/settings", a.sessionMiddleware(), a.updateSystemSettings)
 	r.GET("/admin/api/channels", a.sessionMiddleware(), a.listChannels)
 	r.POST("/admin/api/channels", a.sessionMiddleware(), a.createChannel)
 	r.GET("/admin/api/channels/:id", a.sessionMiddleware(), a.getChannel)
@@ -143,6 +147,46 @@ func (a *API) systemUpdate(c *gin.Context) {
 		return
 	}
 	ok(c, status)
+}
+
+func (a *API) getSystemSettings(c *gin.Context) {
+	if a.opt.Settings == nil {
+		fail(c, http.StatusServiceUnavailable, "系统设置未配置")
+		return
+	}
+	snapshot := a.opt.Settings.Snapshot()
+	ok(c, gin.H{
+		"settings": snapshot,
+		"scope": gin.H{
+			"runtime_source":     "SQLite runtime_settings（首次初始化来自 evergate.yml）",
+			"hot_update_enabled": true,
+		},
+	})
+}
+
+func (a *API) updateSystemSettings(c *gin.Context) {
+	if a.opt.Settings == nil {
+		fail(c, http.StatusServiceUnavailable, "系统设置未配置")
+		return
+	}
+	var req settings.Values
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		return
+	}
+	next, err := a.opt.Settings.UpdateValues(req)
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if a.opt.Pool != nil {
+		defaults := next.ConfigDefaults()
+		a.opt.Pool.UpdateCooldownConfig(
+			defaults.Cooldown.FailThreshold,
+			pool.ScheduleFrom(defaults.Cooldown.Base.Duration, defaults.Cooldown.Max.Duration),
+		)
+	}
+	ok(c, gin.H{"settings": next})
 }
 
 // sessionMiddleware 校验会话 Cookie；首登未改密前仅放行 me/password（强制改密）。

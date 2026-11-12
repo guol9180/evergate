@@ -17,7 +17,7 @@ P0（第一版交付范围）：
 - **渠道与 key 池管理**：增删改查、多行批量导入 key、单渠道连通测试
 - **下游令牌**：发放给客户端的 key，SHA-256 哈希校验
 - **请求日志**：每请求一条（含重试轨迹 retry_trace），异步批量落库，不阻塞请求路径；流式首 token 统一按“发起上游请求 → 收到首条 SSE data”计时，Chat Completions / Responses 一致
-- **Web 管理台**：登录 / Dashboard / 渠道管理 / 令牌管理 / 请求日志（重试轨迹可视化），自动检查 GitHub 新版本并提供 Windows 下载入口；浏览器角标与 Windows exe 使用同一 EverGate logo
+- **Web 管理台**：登录 / Dashboard / 渠道管理 / 令牌管理 / 请求日志（重试轨迹可视化）/ 系统设置（运行时热更新），自动检查 GitHub 新版本并提供 Windows 下载入口；浏览器角标与 Windows exe 使用同一 EverGate logo
 - **安全**：上游 key AES-GCM 加密落库；管理台密码 bcrypt；任何接口不回显明文
 - **交付形态**：`1 个可执行文件 + 1 个 SQLite 数据文件`，运行 `./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 任何外部依赖
 
@@ -50,6 +50,18 @@ go run ./cmd/evergate   # 开发态直接运行
 - API 基址：`http://localhost:8787/v1`（客户端只需改 base_url + 用下游令牌）
 - 管理台：`http://localhost:8787/`（首次启动自动创建 admin/admin123，首登强制改密）
 - 桌面体验：默认启动后自动打开管理台；服务器部署可在 `evergate.yml` 设置 `server.open_browser: false`
+
+### 运行时设置与 YAML 边界
+
+首次启动时，`evergate.yml` 中的 `defaults` 与 `storage.log_retention_days` 会初始化 SQLite 单表 `runtime_settings`；此后这些运行时业务设置以 SQLite 为唯一事实源，在管理台“系统设置”保存后立即生效，无需重启进程：
+
+- 上游连接 / 首 token / 整体超时；
+- 重试渠道数、每渠道 key 数、重试总时长；
+- cooldown 失败阈值、基础时长与上限；
+- 请求日志保留天数；
+- 健康探测间隔、并发与超时（供 T20 后台探测任务消费）。
+
+以下内容仍属于启动引导配置，修改后需要重启，且不会出现在系统设置 API/UI 中：服务端口、base path、SQLite 路径、master key、session secret。
 
 常见上游渠道基址（EverGate 会在其后拼接 `/chat/completions`；声明 Responses 能力的渠道还会拼接 `/responses`）：
 

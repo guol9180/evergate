@@ -24,6 +24,7 @@ import (
 	"evergate/internal/relay"
 	"evergate/internal/router"
 	"evergate/internal/server"
+	"evergate/internal/settings"
 	"evergate/internal/store"
 	"evergate/internal/update"
 	"evergate/web"
@@ -100,9 +101,14 @@ func run() error {
 
 	// 全局 UTC 时钟（AGENTS 红线：所有时间以 UTC 存储）
 	nowFn := func() time.Time { return time.Now().UTC() }
+	settingsMgr, err := settings.Load(db, cfg, nowFn)
+	if err != nil {
+		return fmt.Errorf("load runtime settings: %w", err)
+	}
+	runtimeDefaults := settingsMgr.Snapshot().ConfigDefaults()
 	poolMgr := pool.NewManager(
-		cfg.Defaults.Cooldown.FailThreshold,
-		pool.ScheduleFrom(cfg.Defaults.Cooldown.Base.Duration, cfg.Defaults.Cooldown.Max.Duration),
+		runtimeDefaults.Cooldown.FailThreshold,
+		pool.ScheduleFrom(runtimeDefaults.Cooldown.Base.Duration, runtimeDefaults.Cooldown.Max.Duration),
 		nowFn,
 	)
 	if err := health.RestoreCooldowns(db, poolMgr); err != nil {
@@ -110,6 +116,8 @@ func run() error {
 	}
 	stopPersist := health.StartCooldownPersister(db, poolMgr, logger, 5*time.Second)
 	defer stopPersist()
+	stopLogCleaner := settings.StartLogRetentionCleaner(db, settingsMgr, logger, time.Minute)
+	defer stopLogCleaner()
 
 	logWriter := relay.NewLogWriter(db, 256, logger)
 	defer logWriter.Close()
@@ -120,10 +128,11 @@ func run() error {
 		Router:    routerInst,
 		Pool:      poolMgr,
 		MasterKey: cfg.Security.MasterKey,
-		Defaults:  cfg.Defaults,
+		Defaults:  runtimeDefaults,
 		Logger:    logger,
 		Now:       nowFn,
 		LogWriter: logWriter,
+		Settings:  settingsMgr,
 	})
 	adminAPI := admin.New(admin.Options{
 		DB:        db,
@@ -131,6 +140,7 @@ func run() error {
 		Pool:      poolMgr,
 		Session:   admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
 		Update:    update.NewChecker(version, update.DefaultAPIURL, time.Now),
+		Settings:  settingsMgr,
 	})
 
 	engine := server.New(server.Options{

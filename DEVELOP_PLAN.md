@@ -391,9 +391,17 @@
   5. 管理台提供系统设置页，展示当前值、默认值来源、保存结果与校验错误；README 同步说明 YAML 与 DB 设置的边界；
   6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不迁移安全密钥；不做多管理员/角色权限；不提供任意 YAML 注入；不做请求级覆盖（T24）；不把渠道模型与上游 key 移入设置页
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：作为健康探测、请求覆盖与运行时可观测配置的公共基础，先落地安全设置模型与热更新机制
+  - 2026-11-11 执行 用户确认开始 T19；现状核查：YAML 中的 defaults/log_retention_days 仅启动时读取，relay 与 pool 持有静态副本，日志清理任务尚未存在，管理台也没有系统设置页。本卡将新增 SQLite 单例运行时设置、无锁快照读取、管理 API/UI、relay/pool 热应用与日志保留清理；不实现 T20 探测调度
+  - 2026-11-11 执行 新增 `internal/settings`：`runtime_settings` SQLite 单例经 AutoMigrate 建表；首次启动用 YAML 的 defaults/log_retention_days 初始化并记录 source=evergate.yml，此后 SQLite 为唯一事实源；管理台只提交数值字段，source 与时间元数据由服务端维护，端口/base_path/DB路径/master_key/session_secret 不进入 API/UI
+  - 2026-11-11 执行 设置管理器使用 atomic pointer 发布不可变快照、mutex 串行化保存、完整 Validate 后事务 Updates，非法配置不部分落库/不发布；后台任务可 Subscribe 变更通知。relay 每次请求读取最新快照，pool StateMachine 支持失败阈值与退避表热替换；新增请求日志保留清理任务，收到设置变更立即清理并每分钟兜底
+  - 2026-11-11 执行 新增管理台系统设置页 `/settings`，分组编辑上游超时、重试预算、cooldown、日志保留与健康探测参数（健康探测参数供 T20 消费），展示来源、初始化/更新时间与保存结果；README/AGENTS 已同步 YAML 与 SQLite 边界
+  - 2026-11-11 验证 settings/pool/admin/relay 测试覆盖：首次 YAML 种子与二次启动不覆盖、非法配置无部分更新、合法更新持久化并发布、订阅通知与取消订阅、日志保留清理、状态机热配置、管理 API 鉴权/敏感字段不泄漏、relay 修改首 token 超时后无需重启即切换备渠道
+  - 2026-11-11 验证 隔离实例（18912）完成真实启动/登录/改密流程：首次 GET 显示 source=evergate.yml 与 YAML 种子；PUT 后 source=database 且新值立即生效；重启后仍保持 database 新值。最终 make build 产物 + 无头 Chrome 实测设置页 13 个数值输入、保存 46 秒成功，1280×800 与 390×844 均无横向溢出
+  - 2026-11-11 交付 `gofmt` 无 diff；`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 全部通过。`go test -race` 因本机缺少 gcc/CGO 编译器无法执行；并发安全由 atomic 快照 + mutex 保存路径与相关单元测试保障
+  - 2026-11-12 交付 提交前在最终源码上复验：`gofmt -l .` 无输出、`go vet ./...` 通过、`go test -p 1 ./... -count=1` 全部通过、`make build` 重新生成 web/dist 与 Windows 二进制并通过；`.tmp-t19` 验证目录已按绝对路径核对后删除
 
 ### T20: 渠道健康自动探测与状态徽标（P1）
 

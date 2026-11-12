@@ -2,6 +2,12 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.11
+
+- 新增 SQLite 运行时设置单表与管理台系统设置页：超时、重试预算、cooldown、日志保留与健康探测参数保存后热生效，无需重启
+- `evergate.yml` 仅在首次启动时初始化安全运行时设置；端口、Base Path、SQLite 路径、master key 与 session secret 仍保留在 YAML，不会进入管理台 API/UI
+- 请求路径通过原子配置快照读取最新值；key cooldown 状态机支持阈值与退避表热更新；日志保留任务会按最新配置即时/周期清理过期请求
+
 ## v0.1.10
 
 - 新增渠道级“原生支持 Responses API”能力声明：`/v1/responses` 优先路由到该类渠道并原样透传 JSON/SSE，仅改写鉴权、base_url 与模型映射

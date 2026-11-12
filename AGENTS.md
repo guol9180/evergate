@@ -21,12 +21,13 @@ internal/provider/     # 上游适配器接口 + openai.go / anthropic.go / gemi
 internal/store/        # GORM 模型与数据访问
 internal/admin/        # 管理台 API handlers
 internal/health/       # 渠道探测任务
+internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
 internal/browser/      # 启动后打开管理台的系统浏览器封装
 internal/update/       # GitHub Release 自动更新检查
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）
 web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
 docs/                  # 设计文档与需求（开发任务书等）
-evergate.yml           # 引导配置（端口/DB路径/主密钥/默认超时）
+evergate.yml           # 引导配置（端口/DB路径/主密钥；运行时业务设置首次种子）
 Makefile               # 构建入口（T7 实现三平台交叉编译）
 ```
 

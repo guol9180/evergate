@@ -27,6 +27,11 @@ func NewManager(failThreshold int, schedule []time.Duration, now func() time.Tim
 // StateMachine 暴露内部状态机（持久化/恢复用）。
 func (m *Manager) StateMachine() *StateMachine { return m.sm }
 
+// UpdateCooldownConfig 热更新 key 状态机配置。
+func (m *Manager) UpdateCooldownConfig(failThreshold int, schedule []time.Duration) {
+	m.sm.UpdateConfig(failThreshold, schedule)
+}
+
 // Acquire 为渠道选择下一个可用 key；无可用 key 返回 nil（视为渠道故障）。
 // cooldown 已到期的 key 以 half_open 探测身份参与，同 key 同时只放行 1 个探测。
 func (m *Manager) Acquire(channelID int64, keys []*store.ChannelKey) *store.ChannelKey {

@@ -90,6 +90,22 @@ func NewStateMachine(failThreshold int, schedule []time.Duration, now func() tim
 	}
 }
 
+// UpdateConfig 原子替换失败阈值与退避表；已存在的 level/cooldown 状态保留，
+// 新配置从下一次状态流转开始生效。
+func (sm *StateMachine) UpdateConfig(failThreshold int, schedule []time.Duration) {
+	if failThreshold < 1 {
+		failThreshold = 3
+	}
+	if len(schedule) == 0 {
+		schedule = DefaultCooldownSchedule
+	}
+	schedule = append([]time.Duration(nil), schedule...)
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.failN = failThreshold
+	sm.schedule = schedule
+}
+
 func (sm *StateMachine) get(keyID int64) *keyState {
 	s, ok := sm.states[keyID]
 	if !ok {

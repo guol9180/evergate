@@ -23,6 +23,7 @@ import (
 	"evergate/internal/pool"
 	"evergate/internal/retry"
 	"evergate/internal/router"
+	"evergate/internal/settings"
 	"evergate/internal/store"
 )
 
@@ -36,6 +37,7 @@ type Options struct {
 	Logger    *slog.Logger
 	Now       func() time.Time
 	LogWriter *LogWriter // 可为 nil（测试中不落日志）
+	Settings  *settings.Manager
 }
 
 // Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
@@ -145,7 +147,7 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 		}
 	}
 
-	d := r.opt.Defaults
+	d := r.currentDefaults()
 	budget := retry.NewBudget(d.RetryBudget.Channels, d.RetryBudget.KeysPerChannel, d.RetryBudget.Total.Duration, r.opt.Now())
 	trace := make([]store.RetryAttempt, 0, 4)
 
@@ -251,7 +253,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord) attemptOutcome {
 	ch := cand.Channel
 	nativeResponses := isResponsesRequest(c) && isResponsesNative(c)
-	connect, firstToken, overall := resolveTimeouts(ch, r.opt.Defaults)
+	connect, firstToken, overall := resolveTimeouts(ch, r.currentDefaults())
 	appendTrace := func(status int, errType, errMsg string, attemptStart time.Time) {
 		*trace = append(*trace, store.RetryAttempt{
 			ChannelID: ch.ID, ChannelName: ch.Name, KeyID: key.ID,
@@ -389,6 +391,13 @@ func upstreamErrorMessage(status int, body []byte) string {
 		msg = msg[:200]
 	}
 	return msg
+}
+
+func (r *Relay) currentDefaults() config.Defaults {
+	if r.opt.Settings != nil {
+		return r.opt.Settings.Snapshot().ConfigDefaults()
+	}
+	return r.opt.Defaults
 }
 
 // recordHit 记录成功命中的渠道/key（供请求日志）。

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, jsonBody } from './client'
-import type { AdminInfo, Channel, ChannelDetail, LogsPage, TestResult, Token, UpdateStatus } from './types'
+import type { AdminInfo, Channel, ChannelDetail, LogsPage, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateStatus } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -31,6 +31,25 @@ export function useUpdateStatus(enabled = true) {
     retry: false,
     staleTime: 5 * 60_000,
     refetchInterval: 30 * 60_000,
+  })
+}
+
+// ---------- 系统设置 ----------
+export function useSystemSettings() {
+  return useQuery({
+    queryKey: ['system-settings'],
+    queryFn: () => api<SystemSettingsResponse>('/admin/api/system/settings'),
+  })
+}
+
+export function useUpdateSystemSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: SystemSettingsValues) =>
+      api<{ settings: SystemSettings }>('/admin/api/system/settings', { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: (data) => qc.setQueryData<SystemSettingsResponse>(['system-settings'], (current) =>
+      current ? { ...current, settings: data.settings } : current,
+    ),
   })
 }
 

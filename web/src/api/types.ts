@@ -22,6 +22,36 @@ export interface UpdateStatus {
   assets?: UpdateAsset[]
 }
 
+export interface SystemSettingsValues {
+  connect_timeout_ms: number
+  first_token_timeout_ms: number
+  overall_timeout_ms: number
+  retry_channels: number
+  retry_keys_per_channel: number
+  retry_total_ms: number
+  cooldown_fail_threshold: number
+  cooldown_base_ms: number
+  cooldown_max_ms: number
+  log_retention_days: number
+  health_probe_interval_ms: number
+  health_probe_concurrency: number
+  health_probe_timeout_ms: number
+}
+
+export interface SystemSettings extends SystemSettingsValues {
+  source: string
+  initialized_at: string
+  updated_at: string
+}
+
+export interface SystemSettingsResponse {
+  settings: SystemSettings
+  scope: {
+    runtime_source: string
+    hot_update_enabled: boolean
+  }
+}
+
 export interface ChannelTimeouts {
   connect_sec?: number | null
   first_token_sec?: number | null

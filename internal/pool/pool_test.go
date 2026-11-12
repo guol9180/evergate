@@ -143,6 +143,31 @@ func TestHalfOpenFailureEscalatesSchedule(t *testing.T) {
 	}
 }
 
+func TestStateMachineUpdateConfigHotApplies(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(0, 0)}
+	sm := newSM(clock)
+	sm.UpdateConfig(1, []time.Duration{20 * time.Millisecond, time.Minute})
+
+	sm.OnFailure(1)
+	clock.Advance(15 * time.Millisecond)
+	if sm.cooldownExpiredByID(1) {
+		t.Fatal("新 20ms 档位未到 15ms 不应过期")
+	}
+	clock.Advance(5 * time.Millisecond)
+	if !sm.cooldownExpiredByID(1) {
+		t.Fatal("新 20ms 档位到 20ms 应过期")
+	}
+	sm.beginProbe(1)
+	sm.OnFailure(1)
+	if sm.State(1) != store.KeyStateCooldown {
+		t.Fatalf("热更新后状态 = %s, want cooldown", sm.State(1))
+	}
+	wantUntil := time.Unix(0, 0).Add(20*time.Millisecond + time.Minute)
+	if until := sm.Snapshot()[0].CooldownUntil; !until.Equal(wantUntil) {
+		t.Fatalf("第二档未使用热更新 schedule: %v", until)
+	}
+}
+
 func TestRateLimitedUsesRetryAfterImmediately(t *testing.T) {
 	clock := &fakeClock{t: time.Unix(0, 0)}
 	sm := newSM(clock)

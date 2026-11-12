@@ -49,5 +49,6 @@ func AllModels() []any {
 		&RequestLog{},
 		&UsageDaily{},
 		&Admin{},
+		&RuntimeSetting{},
 	}
 }

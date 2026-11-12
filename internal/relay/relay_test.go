@@ -22,6 +22,7 @@ import (
 	"evergate/internal/config"
 	"evergate/internal/pool"
 	"evergate/internal/router"
+	"evergate/internal/settings"
 	"evergate/internal/store"
 )
 
@@ -1284,6 +1285,46 @@ func TestStreamFirstTokenMeasuredFromUpstreamRequestStart(t *testing.T) {
 				t.Fatalf("success trace should include time before first token: %#v", trace)
 			}
 		})
+	}
+}
+
+func TestRuntimeSettingsHotApplyToRelay(t *testing.T) {
+	env := newEnv(t)
+	mgr, err := settings.Load(env.db, config.Default(), env.clock.Now)
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
+	env.opt.Settings = mgr
+
+	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	})
+	secondary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hot ok\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		w.(http.Flusher).Flush()
+	})
+	env.addChannel(t, "primary", primary.server.URL, 0, []string{"gateway-model"}, nil, "sk-p")
+	env.addChannel(t, "secondary", secondary.server.URL, 1, []string{"gateway-model"}, nil, "sk-s")
+
+	next := mgr.Snapshot()
+	next.FirstTokenTimeoutMS = 120
+	if _, err := mgr.Update(next); err != nil {
+		t.Fatalf("update settings: %v", err)
+	}
+	resp, body := env.chat(t, `{"model":"gateway-model","stream":true,"messages":[]}`)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "hot ok") {
+		t.Fatalf("热更新首 token 超时未生效: status=%d body=%s", resp.StatusCode, body)
+	}
+	if ph, _, _ := primary.snapshot(); ph != 1 {
+		t.Fatalf("primary hits = %d, want 1", ph)
+	}
+	if sh, _, _ := secondary.snapshot(); sh != 1 {
+		t.Fatalf("secondary hits = %d, want 1", sh)
 	}
 }
 

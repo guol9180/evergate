@@ -14,16 +14,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"evergate/internal/config"
 	"evergate/internal/pool"
+	"evergate/internal/settings"
 	"evergate/internal/store"
 )
 
 type testEnv struct {
-	engine *gin.Engine
-	db     *gorm.DB
-	gw     *httptest.Server
-	pool   *pool.Manager
-	master string
+	engine  *gin.Engine
+	db      *gorm.DB
+	gw      *httptest.Server
+	pool    *pool.Manager
+	setting *settings.Manager
+	master  string
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -39,8 +42,12 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatalf("ensure admin: %v", err)
 	}
 	master, _ := store.GenerateRandomKey()
+	settingMgr, err := settings.Load(db, config.Default(), func() time.Time { return time.Now().UTC() })
+	if err != nil {
+		t.Fatalf("load settings: %v", err)
+	}
 	pl := pool.NewManager(3, pool.DefaultCooldownSchedule, func() time.Time { return time.Now().UTC() })
-	api := New(Options{DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour)})
+	api := New(Options{DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour), Settings: settingMgr})
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	api.RegisterRoutes(e)
@@ -51,7 +58,7 @@ func newEnv(t *testing.T) *testEnv {
 			_ = sqlDB.Close()
 		}
 	})
-	return &testEnv{engine: e, db: db, gw: gw, pool: pl, master: master}
+	return &testEnv{engine: e, db: db, gw: gw, pool: pl, setting: settingMgr, master: master}
 }
 
 func (e *testEnv) req(t *testing.T, method, path, cookie, body string) (int, string, *http.Response) {
@@ -136,6 +143,63 @@ func TestSystemUpdateStatusRequiresAuth(t *testing.T) {
 	code, _, _ := env.req(t, "GET", "/admin/api/system/update", "", "")
 	if code != http.StatusUnauthorized {
 		t.Fatalf("update status without session = %d, want 401", code)
+	}
+}
+
+func TestSystemSettingsHotUpdate(t *testing.T) {
+	env := newEnv(t)
+	// 未登录禁止读取
+	if code, _, _ := env.req(t, "GET", "/admin/api/system/settings", "", ""); code != http.StatusUnauthorized {
+		t.Fatalf("settings without session = %d, want 401", code)
+	}
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+
+	code, body, _ := env.req(t, "GET", "/admin/api/system/settings", cookie, "")
+	if code != http.StatusOK {
+		t.Fatalf("get settings: %d %s", code, body)
+	}
+	if strings.Contains(body, "master_key") || strings.Contains(body, "session_secret") || strings.Contains(body, "sqlite_path") {
+		t.Fatalf("系统设置接口泄漏引导敏感字段: %s", body)
+	}
+	if !strings.Contains(body, `"source":"evergate.yml"`) || !strings.Contains(body, `"hot_update_enabled":true`) {
+		t.Fatalf("设置响应缺少来源/热更新说明: %s", body)
+	}
+
+	current := env.setting.Snapshot()
+	invalid := current
+	invalid.ConnectTimeoutMS = 0
+	payload, _ := json.Marshal(invalid)
+	if code, body, _ = env.req(t, "PUT", "/admin/api/system/settings", cookie, string(payload)); code != http.StatusBadRequest {
+		t.Fatalf("invalid settings = %d %s", code, body)
+	}
+	if env.setting.Snapshot().ConnectTimeoutMS != current.ConnectTimeoutMS {
+		t.Fatal("非法配置不应产生部分更新")
+	}
+
+	next := current
+	next.FirstTokenTimeoutMS = 45_000
+	next.RetryChannels = 5
+	next.CooldownFailThreshold = 4
+	next.LogRetentionDays = 21
+	payload, _ = json.Marshal(next)
+	if code, body, _ = env.req(t, "PUT", "/admin/api/system/settings", cookie, string(payload)); code != http.StatusOK {
+		t.Fatalf("update settings: %d %s", code, body)
+	}
+	got := env.setting.Snapshot()
+	if got.FirstTokenTimeoutMS != 45_000 || got.RetryChannels != 5 || got.CooldownFailThreshold != 4 || got.LogRetentionDays != 21 {
+		t.Fatalf("热更新快照不正确: %#v", got)
+	}
+	if got.Source != settings.SourceDatabase {
+		t.Fatalf("更新后 source = %q, want database", got.Source)
+	}
+	var row store.RuntimeSetting
+	if err := env.db.First(&row, "id = ?", 1).Error; err != nil {
+		t.Fatalf("read settings row: %v", err)
+	}
+	if row.FirstTokenTimeoutMS != 45_000 || row.Source != settings.SourceDatabase {
+		t.Fatalf("设置未持久化: %#v", row)
 	}
 }
 
