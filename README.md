@@ -36,12 +36,6 @@
 - 桥接模式把 Responses 请求转换为上游 Chat Completions：支持 `function`、自由文本/`lark`/`regex` grammar `custom` 工具、namespace 工具、Responses Lite `additional_tools`、`reasoning.effort` 与 `text.verbosity`；不可桥接的有状态字段显式 400，绝不静默丢弃。
 - 不同 namespace 同名工具映射为 `<namespace>__<tool>` 唯一函数名，响应与历史回传恢复原始 namespace/name。
 
-### 会话亲和（`X-Session-Id`）
-
-- 同一启用的下游令牌、同一模型、同一非空 `X-Session-Id`（≤128 字节）在 TTL（10 分钟）内再次请求时，优先复用上次成功的渠道与 key；每次成功复用都会为该记录续期。
-- 亲和只在**最高优先级组内**提升候选顺序，priority 仍决定主备层级；粘性渠道/key 被停用、冷却、删除或请求失败时，回退现有重试与健康调度，成功后自动改写记录。
-- 表为有界 LRU（4096 条），只保存 `token + model + session` 的 SHA-256 指纹，不保存原始 session ID；仅进程内存，不持久化、不跨实例，进程重启后亲和丢失属预期行为。
-
 ## 快速开始
 
 ```bash
@@ -93,7 +87,7 @@ go run ./cmd/evergate   # 开发态直接运行
 
 ## 路线图
 
-P1 进行中：npm 平台包分发、一键自动更新、请求级配置覆盖、Playground、Prometheus / OTel 指标；Anthropic Messages 入口延后。完整任务卡与验收标准见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)。
+当前阶段、已完成与后续任务见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)。Anthropic Messages 入口延后。
 
 ## 参与开发
 

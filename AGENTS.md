@@ -2,8 +2,8 @@
 
 ## 通用规范（必建四条）
 
-1. **复用优先，不过度设计**：同一逻辑或结构出现第二份副本时，立即抽取为公共函数 / 公共样式 / 公共组件；前端页面表现优先组件化；保证代码质量（可读、可测、可维护），不为假想的未来需求预先抽象。
-2. **文档同步更新**：每次开发结束或提交之前，同步更新三份文档：README.md（结构与用法变化）、AGENTS.md（规范变化）、DEVELOP_PLAN.md（任务状态与验收清单）；**文档与代码不同步视为任务未完成**。
+1. **复用优先，不过度设计**：同一逻辑或结构出现第二份副本时，立即抽取为公共函数 / 公共样式 / 公共组件；前端页面表现优先组件化；保证代码质量，不为假想的未来需求预先抽象。
+2. **文档同步**：DEVELOP_PLAN.md 随任务同步（进度只追加、状态如实流转）；AGENTS.md 仅在开发规范变化时更新；README.md 仅在项目定位、结构、用法或环境变化时更新——新增功能默认只记录在 DEVELOP_PLAN.md，不逐条追加进 README，README 不是变更日志。文档与代码不同步视为任务未完成。
 3. **计划执行分离**：动手前先在 DEVELOP_PLAN.md 建任务卡（目标、验收标准、边界）并确认；执行中不得顺手扩范围，需求或范围变化先回任务卡更新，再改代码。
 4. **诚实终态**：声明完成必须附实际产出文件与验证证据（执行了什么、结果如何）；未运行的测试或验证不得声称通过；受阻时如实标注 blocked 并写明原因与可否绕行。
 
@@ -18,7 +18,7 @@ internal/router/       # 模型 → 渠道候选列表（优先级+权重）
 internal/pool/         # key 池调度器 + cooldown 状态机
 internal/affinity/     # X-Session-Id 会话亲和：SHA-256 指纹 + TTL + 有界 LRU
 internal/retry/        # 错误分类器 + 重试预算
-internal/provider/     # 上游适配器接口 + openai.go / anthropic.go / gemini.go ...
+internal/provider/     # 上游适配器接口（规划；当前 OpenAI 兼容协议适配在 relay）
 internal/store/        # GORM 模型与数据访问
 internal/admin/        # 管理台 API handlers
 internal/health/       # 周期 /models 轻量探测、key cooldown 持久化与健康状态合成
@@ -30,7 +30,7 @@ web/                   # React 管理台源码（构建产物 go:embed 嵌入）
 web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
 docs/                  # 设计文档与需求（开发任务书等）
 evergate.yml           # 引导配置（端口/DB路径/主密钥；运行时业务设置首次种子）
-Makefile               # 构建入口（T7 实现三平台交叉编译）
+Makefile               # 构建入口（前端构建 / 本机构建 / 三平台交叉编译）
 ```
 
 - 业务数据（渠道/密钥/令牌）一律存 DB，不进 YAML；YAML 仅做引导。
