@@ -425,6 +425,8 @@
   - 2026-11-12 验证 health/admin/relay/pool 覆盖：探测成功恢复 cooldown、失败保持 cooldown、404/405 inconclusive 且释放 half-open 名额、停用渠道不探测、并发上限生效、设置变更重建等待间隔；管理 API 手动探测持久化健康视图且不泄漏 key；relay 成功/失败/不可重试统计持久化且不误惩罚无辜 key
   - 2026-11-12 验证 隔离实例（18922 + 假上游 18921）：探测间隔热更新为 10s 后自动请求 `/models` 且实测两次间隔 10.011s；API 返回 status=active、available_key_count=1、last_probe_result=success、HTTP 200、延迟 2ms 与 next_probe_at；手动测试与自动探测同路径。无头 Chrome 登录后渠道页/Dashboard 均显示 health-upstream、正常、1/1、最近探测与摘要，1280×800 横向溢出均为 0
   - 2026-11-12 交付 最终源码复验：`gofmt -l` 无输出、`go test -p 1 ./... -count=1` 全部通过、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 成功。`go test -race` 仍受本机缺少 gcc/CGO 限制未执行；调度器停止路径由 context cancel + WaitGroup 测试/实现保障
+  - 2026-11-12 发版 v0.1.12：Release Action 43166116456 成功（2m22s）；Release 正文正确提取渠道健康探测说明，三平台二进制 + checksums.txt 共 4 资产齐全。重新下载 Windows exe（28,129,280 bytes），本地 SHA256 `ec8d08f5…ca0e` 与 checksums.txt 一致；隔离启动显示 version=v0.1.12，`/healthz` 返回 200，未登录 GET channels/settings 均返回 401
+  - 2026-11-12 交付 开源 README 复审：移除尚未实现的 `/metrics` 已提供表述与未实现的用量 CRUD 描述，明确 Prometheus 在路线图；补充初始 `admin/admin123` 仅用于本机初始化且禁止未加访问控制直接公网暴露；将“渠道健康”独立章节压缩为功能亮点与自动出站探测提示。README/示例配置敏感信息扫描无真实代理、私有路径或密钥；当前本机 bootstrap 密钥经 Git 历史精确检索未泄漏
 
 ### T21: 下游令牌额度、有效期、模型白名单与 IP 白名单强制（P1）
 

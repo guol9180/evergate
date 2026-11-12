@@ -17,8 +17,9 @@
 - **不中断**（本项目存在的第一理由）：key 池调度 + cooldown 状态机 + 错误分类重试（重试 → 换 key → 换渠道）；SSE 场景下「首个 chunk 写给客户端之前」可无感切换，之后绝不重试
 - **双协议上游**：Chat Completions 全渠道支持；渠道级声明 Responses 能力后 `/v1/responses` 原生透传保真，未声明渠道自动 R→CC 桥接兜底
 - **Web 管理台**：登录 / Dashboard / 渠道与 key 池管理 / 下游令牌 / 请求日志（重试轨迹可视化）/ 系统设置热更新，内置新版本检查
-- **安全**：上游 key AES-GCM 加密落库（主密钥不进 DB）；管理台密码 bcrypt；任何接口不回显明文；`/metrics` 仅 loopback
-- **可观测**：每请求一条日志（含 retry_trace 与统一口径 first_token_ms），异步批量落库不阻塞请求路径
+- **渠道健康**：周期使用启用 key 调用 `GET /models` 轻量探测（不触发推理），展示健康状态、可用 key 数与最近错误；404/405 仅标记“无法判定”
+- **安全**：上游 key AES-GCM 加密落库（主密钥不进 DB）；管理台密码 bcrypt；任何接口不回显明文
+- **可观测**：每请求一条日志（含 retry_trace 与统一口径 first_token_ms），异步批量落库不阻塞请求路径；Prometheus `/metrics` 在路线图中，当前未提供
 - **零依赖交付**：`1 个可执行文件 + 1 个 SQLite 数据文件`，`./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 数据库服务
 
 ## 协议路由矩阵
@@ -45,11 +46,13 @@ go run ./cmd/evergate   # 开发态直接运行
 ```
 
 1. 复制配置模板：`cp evergate.yml.example evergate.yml`（密钥留空则首次启动自动生成并写回）
-2. 启动后访问管理台 `http://localhost:8787/`（默认 `admin/admin123`，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`
+2. 启动后访问管理台 `http://localhost:8787/`（初始账号 `admin/admin123`，仅用于本机初始化，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`
 3. 管理台添加渠道（Base URL + 上游 key，支持多行批量导入）并创建下游令牌
 4. 客户端只需改 base_url 为 `http://localhost:8787/v1` 并使用下游令牌
 
-存活检查 `GET /healthz`；指标 `GET /metrics`（仅 loopback）。默认端口 `8787`，避开常用 8080，修改只需改 `evergate.yml` 的 `server.port`。
+添加上游 key 后，后台会按「系统设置」中的周期、并发与超时自动调用上游 `/models` 做健康探测；该探测不触发推理请求。
+
+存活检查 `GET /healthz`。默认端口 `8787`，避开常用 8080，修改只需改 `evergate.yml` 的 `server.port`。
 
 ### 运行时设置与 YAML 边界
 
@@ -65,23 +68,14 @@ go run ./cmd/evergate   # 开发态直接运行
 - 上游 key 以 AES-GCM 加密存储，主密钥仅在 `evergate.yml`（已 gitignore）；DB 文件泄露 ≠ key 泄露
 - 下游令牌仅存 SHA-256 哈希；管理台接口永不回显任何 key 明文
 - 面向**本地 / 内网可信环境**设计：管理台与 API 同端口，公网暴露前请自行加反向代理 TLS 与访问控制
-
-## 渠道健康
-
-后台任务按「系统设置」中的间隔、并发与超时，对启用渠道使用可用 key 发起轻量探测：
-
-- 探测路径固定为 `GET {base_url}/models`，不调用 chat/completions / responses，不产生推理费用
-- 探测成功会把 cooldown 到期的 key 恢复为 active；失败按现有错误分类驱动 key 状态机并记录状态码、错误分类、摘要、延迟与下次探测时间
-- 上游返回 404/405 时标记为 `inconclusive`（无法判定），不会把“探测路径不支持”误判为渠道故障
-- Dashboard 与渠道列表展示 active / degraded / down / inconclusive、可用 key 数、最近探测时间与错误摘要；异常渠道优先排序
-- 渠道页的「测试」按钮与后台探测共用同一条公共路径，手动结果同样入库并驱动 key 状态
+- 初始 `admin/admin123` 只用于首次登录并会强制改密；请不要在未加访问控制的情况下把管理端口暴露到公网
 
 ## 架构概览
 
 单进程 Go 服务，自上而下：
 
 1. **`/v1/*` OpenAI 兼容入口**：下游令牌鉴权 → 路由器（模型 → 候选渠道，priority 升序 + 同级 weight 加权随机）→ key 池调度（渠道内加权轮询，跳过 cooldown/disabled）→ 错误分类重试控制器 → relay（SSE 零缓冲 flush 透传，首 token 超时属可重试错误）
-2. **`/admin/api/*` 管理台 API**（session 鉴权）：渠道 / 凭据 / 令牌 / 日志 / 用量 / 设置 CRUD
+2. **`/admin/api/*` 管理台 API**（session 鉴权）：渠道 / 凭据 / 令牌 / 请求日志 / 系统设置管理
 3. **SQLite（WAL 模式）**：channels / channel_keys / tokens / request_logs / usage_daily / admins / runtime_settings，业务数据唯一事实源；后台 goroutine 负责健康探测、冷却恢复、日志清理
 4. **React 管理台**：构建产物经 go:embed 嵌入同一二进制
 
