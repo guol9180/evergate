@@ -5,13 +5,15 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"sync"
 
 	"evergate/internal/store"
 )
 
 // Router 模型路由器：enabled 且支持该模型的渠道，按 priority 升序分组，
-// 同优先级内按 weight 加权随机排序。会话亲和为 P1，暂不实现。
+// 同优先级内按 weight 加权随机排序。亲和提升由 relay 在候选列表上完成。
 type Router struct {
+	mu   sync.Mutex // math/rand.Rand 非并发安全；请求路径会并发调用 Route
 	rand *rand.Rand
 }
 
@@ -55,6 +57,8 @@ func (r *Router) Route(model string, channels []*store.Channel) []Candidate {
 
 // shuffleWeighted 同优先级组内加权随机排序（Efraimidis–Spirakis：key = u^(1/w)，降序）。
 func (r *Router) shuffleWeighted(group []*store.Channel) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	keys := make([]float64, len(group))
 	for i, ch := range group {
 		w := float64(ch.Weight)

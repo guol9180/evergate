@@ -483,9 +483,17 @@
   4. 亲和键绑定 token/model，不同下游令牌即使传相同 session ID 也不能复用记录；记录只保存哈希后的 session 指纹，不保存原文；
   5. 并发相同 session 请求测试不出现锁竞争退化；进程重启后允许亲和丢失并自然重建；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
 - 边界：第一版仅进程内存表，不持久化到 SQLite，不引入 Redis；不做跨实例亲和；不保证流式请求中途重试；T24 请求级覆盖可覆盖亲和策略但不绕过健康状态
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：当前路由每次按优先级/权重随机选择，缺少任务书要求的会话亲和能力
+  - 2026-11-12 执行 开始 T23：新建进程内 `internal/affinity`（SHA-256 指纹 + TTL 10m + LRU 4096），
+    relay 在最高优先级组内提升粘性渠道并为该渠道优先取粘性 key；成功 upsert、失败 forget；
+    同时为 router 加权随机补互斥，消除并发请求下的共享 Rand 数据竞争
+  - 2026-11-12 验证 `go test -p 1 ./... -count=1` 全包通过；`go vet ./...` 通过；`make build` 成功产出
+    `bin/evergate.exe`。新增测试：affinity 单测（token/model 隔离、TTL 过期重建、LRU 淘汰、超长/空 session、
+    仅存指纹、ForgetIfMatches、32 goroutine 并发读写）+ relay 公共 HTTP 边界（CC/Responses 粘渠道与粘 key、
+    不同 token 隔离、粘性渠道 500 切换并改写亲和、粘性 key 冷却回退同渠道其他 key、非法 header 不写表、
+    TTL 过期、4×5 并发同 session 全部 200）。未运行 `-race`：本机无 gcc/CGO，不主张 race 通过
 
 ### T24: 请求级路由与重试配置覆盖（P1）
 

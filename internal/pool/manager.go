@@ -37,28 +37,41 @@ func (m *Manager) UpdateCooldownConfig(failThreshold int, schedule []time.Durati
 func (m *Manager) Acquire(channelID int64, keys []*store.ChannelKey) *store.ChannelKey {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.acquireLocked(channelID, keys)
+}
 
+// AcquirePreferred 优先返回指定 key（会话亲和）：仅当该 key 仍启用且处于
+// active / 可探测状态时命中；否则等价于 Acquire 的普通调度，绝不复活不可用 key。
+func (m *Manager) AcquirePreferred(channelID int64, keys []*store.ChannelKey, preferredKeyID int64) *store.ChannelKey {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if preferredKeyID != 0 {
+		for _, k := range keys {
+			if k.ID != preferredKeyID {
+				continue
+			}
+			if eligible, probe := m.keyEligible(k); eligible {
+				if probe {
+					m.sm.beginProbe(k.ID)
+				}
+				return k
+			}
+			break // 粘性 key 存在但不可用 → 回退普通调度
+		}
+	}
+	return m.acquireLocked(channelID, keys)
+}
+
+// acquireLocked 是 Acquire 的无锁实现，调用方必须持有 m.mu。
+func (m *Manager) acquireLocked(channelID int64, keys []*store.ChannelKey) *store.ChannelKey {
 	eligible := make([]*store.ChannelKey, 0, len(keys))
 	probeCandidates := make(map[int64]bool)
 	for _, k := range keys {
-		if !k.Enabled {
-			continue
-		}
-		switch m.sm.State(k.ID) {
-		case store.KeyStateActive:
+		if ok, probe := m.keyEligible(k); ok {
 			eligible = append(eligible, k)
-		case store.KeyStateCooldown:
-			// 到期且探测名额未被占用 → 可作为探测候选
-			if m.sm.cooldownExpiredByID(k.ID) && !m.sm.probeOccupied(k.ID) {
-				eligible = append(eligible, k)
+			if probe {
 				probeCandidates[k.ID] = true
 			}
-		case store.KeyStateHalfOpen:
-			if !m.sm.probeOccupied(k.ID) {
-				eligible = append(eligible, k)
-				probeCandidates[k.ID] = true
-			}
-		default: // disabled
 		}
 	}
 	if len(eligible) == 0 {
@@ -74,6 +87,28 @@ func (m *Manager) Acquire(channelID int64, keys []*store.ChannelKey) *store.Chan
 		m.sm.beginProbe(picked.ID)
 	}
 	return picked
+}
+
+// keyEligible 判定 key 是否可参与调度；probe 表示本次会占用 half_open 探测名额。
+// 调用方必须持有 m.mu。
+func (m *Manager) keyEligible(k *store.ChannelKey) (eligible, probe bool) {
+	if !k.Enabled {
+		return false, false
+	}
+	switch m.sm.State(k.ID) {
+	case store.KeyStateActive:
+		return true, false
+	case store.KeyStateCooldown:
+		// 到期且探测名额未被占用 → 可作为探测候选
+		if m.sm.cooldownExpiredByID(k.ID) && !m.sm.probeOccupied(k.ID) {
+			return true, true
+		}
+	case store.KeyStateHalfOpen:
+		if !m.sm.probeOccupied(k.ID) {
+			return true, true
+		}
+	}
+	return false, false
 }
 
 // ReportSuccess 上报一次成功。

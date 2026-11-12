@@ -355,3 +355,37 @@ func TestDeriveChannelStatus(t *testing.T) {
 		}
 	})
 }
+
+func TestAcquirePreferred(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(1000, 0)}
+	m := NewManager(3, DefaultCooldownSchedule, clock.Now)
+	keys := []*store.ChannelKey{
+		{ID: 1, ChannelID: 9, Enabled: true, Weight: 1},
+		{ID: 2, ChannelID: 9, Enabled: true, Weight: 1},
+	}
+
+	if got := m.AcquirePreferred(9, keys, 2); got == nil || got.ID != 2 {
+		t.Fatalf("preferred 可用时应直接命中 key 2, got %+v", got)
+	}
+
+	m.StateMachine().OnRateLimited(2, time.Minute)
+	if got := m.AcquirePreferred(9, keys, 2); got == nil || got.ID != 1 {
+		t.Fatalf("preferred 冷却时应回退普通调度, got %+v", got)
+	}
+
+	m.StateMachine().OnAuthFailure(1)
+	if got := m.AcquirePreferred(9, keys, 1); got != nil {
+		t.Fatalf("全部不可用时应返回 nil, got %+v", got)
+	}
+
+	disabled := []*store.ChannelKey{
+		{ID: 3, ChannelID: 9, Enabled: false},
+		{ID: 4, ChannelID: 9, Enabled: true, Weight: 1},
+	}
+	if got := m.AcquirePreferred(9, disabled, 3); got == nil || got.ID != 4 {
+		t.Fatalf("preferred 被停用时应回退 key 4, got %+v", got)
+	}
+	if got := m.AcquirePreferred(9, disabled, 999); got == nil || got.ID != 4 {
+		t.Fatalf("preferred 不存在时应回退普通调度, got %+v", got)
+	}
+}

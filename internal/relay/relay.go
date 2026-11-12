@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"evergate/internal/affinity"
 	"evergate/internal/config"
 	"evergate/internal/pool"
 	"evergate/internal/retry"
@@ -40,6 +41,7 @@ type Options struct {
 	LogWriter *LogWriter // 可为 nil（测试中不落日志）
 	Settings  *settings.Manager
 	Usage     *usage.Manager
+	Affinity  *affinity.Table // 可为 nil：New 时创建默认进程内亲和表
 }
 
 // Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
@@ -57,6 +59,9 @@ func New(opt Options) *Relay {
 	if opt.Logger == nil {
 		opt.Logger = slog.Default()
 	}
+	if opt.Affinity == nil {
+		opt.Affinity = affinity.New(0, 0, opt.Now)
+	}
 	return &Relay{opt: opt, transports: make(map[time.Duration]*http.Transport)}
 }
 
@@ -68,6 +73,10 @@ const (
 	outcomeNextKey                           // 换下一个 key（同渠道）
 	outcomeNextChannel                       // 换下一候选渠道
 )
+
+// ctxAffinitySession 仅保存规范化后的会话 ID 供请求结束统一更新亲和表；
+// 不进入请求日志或下游响应。
+const ctxAffinitySession = "evergate.affinity_session"
 
 // hitRecord 记录实际命中的渠道/key 与首个 token 延迟（供请求日志）。
 type hitRecord struct {
@@ -116,12 +125,26 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 		return nil, status, errType, errMsg
 	}
 
+	// 会话亲和：只对已通过鉴权与令牌治理的请求生效（tokenID=0 表示未鉴权，直接跳过）。
+	tokenID, _ := tokenFromContext(c)
+	session := affinity.NormalizeSession(c.GetHeader("X-Session-Id"))
+	var sticky affinity.Entry
+	stickyOK := false
+	if session != "" && tokenID != 0 {
+		sticky, stickyOK = r.opt.Affinity.Lookup(tokenID, model, session)
+		// 仅本次请求内使用；不落请求日志、不进下游响应。
+		c.Set(ctxAffinitySession, session)
+	}
+
 	var channels []*store.Channel
 	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
 		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
 		return nil, http.StatusInternalServerError, "server_error", err.Error()
 	}
 	candidates := r.opt.Router.Route(model, channels)
+	if stickyOK {
+		candidates = promoteSticky(candidates, sticky)
+	}
 	if isResponsesRequest(c) {
 		candidates = preferResponsesNative(candidates)
 		if !anyResponsesNative(candidates) {
@@ -158,7 +181,11 @@ loop:
 			if !budget.Allow(ci+1, ki, r.opt.Now()) {
 				break loop // 重试预算耗尽
 			}
-			key := r.opt.Pool.Acquire(cand.Channel.ID, keys)
+			preferredKeyID := int64(0)
+			if stickyOK && cand.Channel.ID == sticky.ChannelID && ki == 1 {
+				preferredKeyID = sticky.KeyID
+			}
+			key := r.opt.Pool.AcquirePreferred(cand.Channel.ID, keys, preferredKeyID)
 			if key == nil || usedKeys[key.ID] {
 				continue loop // 渠道无可用 key（或只剩已试过的 key）→ 换下一候选渠道
 			}
@@ -220,6 +247,35 @@ loop:
 	return trace, http.StatusServiceUnavailable, errType, msg
 }
 
+// promoteSticky 把粘性渠道提到候选列表最前，但只在最高优先级组内生效：
+// priority 仍决定主备层级，亲和不能把流量长期钉在低优先级备用渠道上。
+// 粘性渠道不在候选列表（删除/停用/不支持该模型）时原样返回。
+func promoteSticky(candidates []router.Candidate, entry affinity.Entry) []router.Candidate {
+	if entry.ChannelID == 0 || len(candidates) < 2 {
+		return candidates
+	}
+	minPriority := candidates[0].Channel.Priority
+	for _, cand := range candidates[1:] {
+		if cand.Channel.Priority < minPriority {
+			minPriority = cand.Channel.Priority
+		}
+	}
+	for i, cand := range candidates {
+		if cand.Channel.ID != entry.ChannelID {
+			continue
+		}
+		if i == 0 || cand.Channel.Priority != minPriority {
+			return candidates
+		}
+		out := make([]router.Candidate, 0, len(candidates))
+		out = append(out, cand)
+		out = append(out, candidates[:i]...)
+		out = append(out, candidates[i+1:]...)
+		return out
+	}
+	return candidates
+}
+
 // HandleModels 处理 GET /v1/models：启用渠道模型去重合并。
 func (r *Relay) HandleModels(c *gin.Context) {
 	var channels []*store.Channel
@@ -247,6 +303,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 
 // finishRequest 统一处理额度结算与请求日志，Chat/Responses 两条入口不得各自分叉。
 func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, trace []store.RetryAttempt, status int, errType, errMsg string) {
+	r.updateAffinity(c, hit, status, errType)
 	if status >= http.StatusOK && status < http.StatusBadRequest && errType == "" {
 		usageErrType, usageErrMsg := r.settleTokenUsage(c, hit)
 		if usageErrType != "" {
@@ -272,6 +329,29 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus,
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 	})
+}
+
+// updateAffinity 在请求终态统一更新亲和表：仅 2xx 成功写入/刷新，
+// 失败（含全部渠道耗尽）删除旧记录，下次请求重新按普通调度选择。
+func (r *Relay) updateAffinity(c *gin.Context, hit *hitRecord, status int, errType string) {
+	value, ok := c.Get(ctxAffinitySession)
+	if !ok {
+		return // 未携带合法 session 或治理阶段已拒绝：不读写亲和
+	}
+	session, _ := value.(string)
+	tokenID, _ := tokenFromContext(c)
+	model, _ := c.Get("evergate.model")
+	modelName, _ := model.(string)
+	if session == "" || tokenID == 0 || modelName == "" {
+		return
+	}
+	if status >= http.StatusOK && status < http.StatusMultipleChoices && errType == "" && hit.channelID != 0 {
+		r.opt.Affinity.Remember(tokenID, modelName, session, hit.channelID, hit.keyID)
+		return
+	}
+	if status >= http.StatusBadRequest {
+		r.opt.Affinity.Forget(tokenID, modelName, session)
+	}
 }
 
 func (r *Relay) requestCost(status int, hit *hitRecord) (int64, string) {
