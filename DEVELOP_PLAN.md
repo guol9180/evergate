@@ -579,6 +579,7 @@
   - 2026-11-13 依赖 未新增 Go 依赖：官方 Prometheus/OTel SDK 会使二进制明显超出 <30MB 红线；手写固定指标集与 OTLP JSON 更可控，已在 AGENTS 记录约束
   - 2026-11-13 验证 `go test ./internal/metrics ./internal/telemetry ./internal/relay ./internal/server ./internal/health -count=1` 通过；覆盖 loopback 403、指标增量、SSE 首 token、OTel 默认禁用/父子 span/导出失败告警
   - 2026-11-13 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`go test -p 1 ./... -count=1` 全绿、`make build` 成功；二进制 27.63MB（<30MB）。隔离端口 18919 冒烟：`/healthz` 200、`/metrics` 200 且格式正确、`OTEL_EXPORTER_OTLP_ENDPOINT` 设置后日志出现 `otel tracing enabled`（未设置时不建 goroutine）
+  - 2026-11-13 交付 提交 435af98 推送 main + tag v0.1.21；Actions 43359245543 成功（2m30s），Release 正文取自 CHANGELOG，4 个资产齐全；下载 windows-amd64.exe SHA256 与 checksums.txt 一致（5abf0149…），隔离端口 18920 冒烟 `/healthz` 200、`/metrics` 200、`/admin/api/auth/me` 401
 
 ### T27: README 开源优化与仓库公开（P0，用户指令）
 
