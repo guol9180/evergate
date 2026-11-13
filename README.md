@@ -42,11 +42,17 @@
 # 方式一：直接下载 Release 单二进制后运行
 ./evergate
 
-# 方式二：源码构建（web/dist 已入库，后端构建无需 Node）
+# 方式二：npm 全局安装（Windows x64 / Linux x64 / macOS Apple Silicon）
+npm i -g evergate
+evergate
+
+# 方式三：源码构建（web/dist 已入库，后端构建无需 Node）
 make build              # → bin/evergate(.exe)，React 管理台已嵌入
 make build-all          # 三平台交叉编译：windows/amd64、linux/amd64、darwin/arm64
 go run ./cmd/evergate   # 开发态直接运行
 ```
+
+npm 安装会自动选择本平台子包，实际运行仍是原生单二进制；Node 仅用于启动垫片。国内网络可用 `npm i -g evergate --registry=https://registry.npmmirror.com`（镜像同步可能有延迟）。
 
 1. 复制配置模板：`cp evergate.yml.example evergate.yml`（密钥留空则首次启动自动生成并写回）
 2. 启动后访问管理台 `http://localhost:8787/`（初始账号 `admin/admin123`，仅用于本机初始化，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`

@@ -632,6 +632,7 @@
   - 2026-11-13 执行 新增 `npm/wrapper`（主包 + 启动垫片，不含二进制）、`npm/platform`（子包模板）与 `scripts/stage-npm.mjs`；Release workflow 在构建后 staging，按「三个平台子包 → 主包」顺序发布，已发布版本自动跳过，NPM_TOKEN 缺失时跳过并提示
   - 2026-11-13 验证 本地 staging v0.1.22 并 `npm pack`：主包 2.2KB（4 个文件、无二进制），win32 11.2MB / linux 11.0MB / darwin 10.3MB，均含 LICENSE 与 README；本地安装 wrapper+win32 tgz 后经 npm 垫片启动，18922 `/healthz` 200、`/metrics` 200；`evergate` 与三个平台包名在 npm registry 仍为 404（未占用）
   - 2026-11-13 blocked 等待用户配置：npm 账号开启 2FA 并创建可绕过 2FA 的 Automation token，写入 GitHub secret `NPM_TOKEN`；之后推 tag 才能验证验收 #1/#2/#4/#5（自动发布、三平台安装、镜像同步）；当前不影响现有 GitHub Release
+  - 2026-11-13 执行 用户已配置 `NPM_TOKEN`（granular token：All packages 读写 + bypass 2FA，30 天有效）；README 增加 npm 安装方式，准备 tag v0.1.23 验证自动发布
 
 ### T30: 一键自动更新（P1，用户指令）
 
