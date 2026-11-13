@@ -626,9 +626,12 @@
   5. 发布后可经 `https://registry.npmmirror.com` 安装（或实测记录同步延迟为可接受）；
   6. `go test ./...`、`make build`、GitHub Release 三平台产物不受影响。
 - 边界：不改动 GitHub Releases 现有产物与 changelog 事实源；不做 brew/scoop/winget 等其他包管理器；provenance 为可选加分项不设为验收；不宣传 npx 免安装为长期使用方式
-- 状态：planned
+- 状态：blocked
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-12 计划 用户指令确认建卡；前置准备（npm 账号注册 + 2FA + 仓库 NPM_TOKEN secret）待开工时配置
+  - 2026-11-13 执行 新增 `npm/wrapper`（主包 + 启动垫片，不含二进制）、`npm/platform`（子包模板）与 `scripts/stage-npm.mjs`；Release workflow 在构建后 staging，按「三个平台子包 → 主包」顺序发布，已发布版本自动跳过，NPM_TOKEN 缺失时跳过并提示
+  - 2026-11-13 验证 本地 staging v0.1.22 并 `npm pack`：主包 2.2KB（4 个文件、无二进制），win32 11.2MB / linux 11.0MB / darwin 10.3MB，均含 LICENSE 与 README；本地安装 wrapper+win32 tgz 后经 npm 垫片启动，18922 `/healthz` 200、`/metrics` 200；`evergate` 与三个平台包名在 npm registry 仍为 404（未占用）
+  - 2026-11-13 blocked 等待用户配置：npm 账号开启 2FA 并创建可绕过 2FA 的 Automation token，写入 GitHub secret `NPM_TOKEN`；之后推 tag 才能验证验收 #1/#2/#4/#5（自动发布、三平台安装、镜像同步）；当前不影响现有 GitHub Release
 
 ### T30: 一键自动更新（P1，用户指令）
 

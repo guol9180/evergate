@@ -1,0 +1,18 @@
+{
+  "name": "evergate-platform",
+  "version": "0.0.0",
+  "description": "EverGate platform binary (installed automatically by the evergate package)",
+  "homepage": "https://github.com/guol9180/evergate",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guol9180/evergate.git"
+  },
+  "license": "MIT",
+  "os": [],
+  "cpu": [],
+  "files": [
+    "bin/",
+    "README.md",
+    "LICENSE"
+  ]
+}

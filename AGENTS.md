@@ -29,6 +29,9 @@ internal/browser/      # 启动后打开管理台的系统浏览器封装
 internal/update/       # GitHub Release 自动更新检查
 internal/metrics/      # 进程内 Prometheus 注册表、文本曝光与 loopback 限制
 internal/telemetry/    # 可选 OTLP/HTTP JSON 链路导出（无 SDK 依赖，默认关闭）
+npm/wrapper/           # npm 主包模板（启动垫片，不含二进制）
+npm/platform/          # npm 平台子包模板（版本/os/cpu 由发布脚本注入）
+scripts/               # 构建与发布辅助脚本（如 stage-npm.mjs）
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）
 web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
 docs/                  # 设计文档与需求（开发任务书等）
@@ -68,6 +71,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
 - `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
 - OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
+- npm 发布：主包 `evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）

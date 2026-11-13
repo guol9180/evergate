@@ -1,0 +1,39 @@
+{
+  "name": "evergate",
+  "version": "0.0.0",
+  "description": "Self-hosted OpenAI-compatible LLM gateway with key-pool failover and zero-buffer SSE streaming",
+  "keywords": [
+    "ai-gateway",
+    "llm-gateway",
+    "openai-compatible",
+    "openai",
+    "responses-api",
+    "failover",
+    "self-hosted"
+  ],
+  "homepage": "https://github.com/guol9180/evergate",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guol9180/evergate.git"
+  },
+  "bugs": {
+    "url": "https://github.com/guol9180/evergate/issues"
+  },
+  "license": "MIT",
+  "bin": {
+    "evergate": "bin/evergate.js"
+  },
+  "files": [
+    "bin/evergate.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "optionalDependencies": {
+    "evergate-win32-x64": "0.0.0",
+    "evergate-linux-amd64": "0.0.0",
+    "evergate-darwin-arm64": "0.0.0"
+  }
+}

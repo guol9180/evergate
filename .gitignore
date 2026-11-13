@@ -1,9 +1,12 @@
 # 构建产物
-bin/
+/bin/
 /evergate
 /evergate.exe
 web/node_modules/
 web/tsconfig.app.tsbuildinfo
+release-local/
+dist-npm/
+*.tgz
 
 # 运行时数据
 data/

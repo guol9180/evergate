@@ -39,6 +39,39 @@ jobs:
           CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o release/evergate-darwin-arm64  ./cmd/evergate
           sha256sum release/* > release/checksums.txt
 
+      - name: Stage npm packages
+        run: node scripts/stage-npm.mjs "${GITHUB_REF_NAME#v}" "$PWD/release" "$PWD/dist-npm"
+
+      - name: Check npm token
+        id: npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish npm packages
+        if: steps.npm.outputs.enabled == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
+          VERSION="${GITHUB_REF_NAME#v}"
+          for pkg in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
+            if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
+              echo "$pkg@$VERSION already published; skipping"
+            else
+              (cd "dist-npm/$pkg" && npm publish --access public)
+            fi
+          done
+
+      - name: Skip npm publish (NPM_TOKEN missing)
+        if: steps.npm.outputs.enabled != 'true'
+        run: echo "NPM_TOKEN is not configured; staged npm packages were not published."
+
       - name: Extract changelog section
         id: changelog
         run: |
