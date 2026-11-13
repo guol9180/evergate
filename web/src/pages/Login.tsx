@@ -21,7 +21,7 @@ export default function Login() {
 
   return (
     <div className="flex h-full items-center justify-center p-6">
-      <Card className="w-full max-w-md bg-white/95 p-8 shadow-xl backdrop-blur">
+      <Card className="w-full max-w-md bg-white/95 p-6 shadow-xl backdrop-blur sm:p-8">
         <div className="mb-6 flex flex-col items-center gap-3">
           <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50">
             <img src="/logo.svg" alt="" width={28} height={28} />

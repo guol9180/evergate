@@ -31,7 +31,7 @@ export default function ChangePassword() {
 
   return (
     <div className="flex h-full items-center justify-center p-6">
-      <Card className="w-full max-w-md bg-white/95 p-8 shadow-xl backdrop-blur">
+      <Card className="w-full max-w-md bg-white/95 p-6 shadow-xl backdrop-blur sm:p-8">
         <div className="mb-4 flex flex-col items-center gap-2 text-center">
           <ShieldAlert size={28} className="text-amber-500" />
           <h1 className="text-lg font-bold">首次登录须修改密码</h1>
@@ -39,13 +39,13 @@ export default function ChangePassword() {
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
           <Field label="旧密码">
-            <Input type="password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} />
+            <Input type="password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} autoComplete="current-password" />
           </Field>
           <Field label="新密码（≥8 位）">
-            <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} />
+            <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" />
           </Field>
           <Field label="确认新密码">
-            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
           </Field>
           <ErrorText>{localError || (change.isError ? (change.error as Error).message : null)}</ErrorText>
           <Button type="submit" className="w-full" disabled={change.isPending}>

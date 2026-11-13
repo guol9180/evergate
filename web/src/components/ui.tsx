@@ -80,11 +80,23 @@ export function Card({ className = '', children }: { className?: string; childre
   return <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>{children}</div>
 }
 
+export function PageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-lg font-bold tracking-tight text-slate-900">{title}</h1>
+        {description && <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>}
+      </div>
+      {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>}
+    </header>
+  )
+}
+
 export function Spinner({ className = '' }: { className?: string }) {
   return <span className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600 ${className}`} />
 }
 
-export function Dialog({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean }) {
+export function Dialog({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     if (open) window.addEventListener('keydown', onKey)
@@ -93,12 +105,13 @@ export function Dialog({ open, onClose, title, children, wide }: { open: boolean
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`max-h-[85vh] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} overflow-auto rounded-xl bg-white shadow-xl`}>
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+      <div className={`flex max-h-[85vh] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-white shadow-xl`}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
           <button onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={16} /></button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="flex-1 overflow-auto px-5 py-4">{children}</div>
+        {footer && <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-3">{footer}</div>}
       </div>
     </div>
   )
@@ -108,7 +121,7 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`flex h-full ${wide ? 'w-[560px]' : 'w-[420px]'} flex-col bg-white shadow-2xl`}>
+      <div className={`flex h-full w-full ${wide ? 'sm:w-[560px]' : 'sm:w-[420px]'} flex-col bg-white shadow-2xl`}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
           <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
           <button onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={16} /></button>
@@ -135,9 +148,9 @@ export function ErrorText({ children }: { children?: ReactNode }) {
 }
 
 export function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <th className={`px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 ${className}`}>{children}</th>
+  return <th className={`whitespace-nowrap px-3 py-2.5 text-left align-middle text-xs font-semibold uppercase tracking-wide text-slate-500 ${className}`}>{children}</th>
 }
 
 export function Td({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
-  return <td className={`px-3 py-2.5 text-sm text-slate-700 ${className}`} title={title}>{children}</td>
+  return <td className={`px-3 py-2.5 align-middle text-sm text-slate-700 ${className}`} title={title}>{children}</td>
 }

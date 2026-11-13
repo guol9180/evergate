@@ -3,7 +3,7 @@ import { FlaskConical, Play, Square } from 'lucide-react'
 import { useChannels } from '../api/hooks'
 import { runPlayground, type PlaygroundMeta } from '../api/playground'
 import RetryTimeline from '../components/RetryTimeline'
-import { Badge, Button, Card, Empty, Select, Spinner, Switch, Textarea } from '../components/ui'
+import { Badge, Button, Card, Empty, PageHeader, Select, Spinner, Switch, Textarea } from '../components/ui'
 import { fmtInt, fmtMs, kindText } from '../lib/format'
 
 const MAX_PROMPT = 16000
@@ -78,15 +78,11 @@ export default function Playground() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="flex items-center gap-2 text-lg font-bold"><FlaskConical size={18} /> Playground</h1>
-          <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
-            用管理台会话直接验证渠道与协议兼容性。请求复用网关调度与健康规则，并写入请求日志的 Playground 来源。
-          </p>
-        </div>
-        <Badge tone="self-start bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-100">管理台专用 · 不暴露密钥</Badge>
-      </header>
+      <PageHeader
+        title={<span className="flex items-center gap-2"><FlaskConical size={18} /> Playground</span>}
+        description="用管理台会话直接验证渠道与协议兼容性。请求复用网关调度与健康规则，并写入请求日志的 Playground 来源。"
+        actions={<Badge tone="bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-100">管理台专用 · 不暴露密钥</Badge>}
+      />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
         <Card className="min-w-0 self-start p-4 sm:p-5">

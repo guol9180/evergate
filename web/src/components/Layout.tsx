@@ -87,7 +87,7 @@ export default function Layout() {
             title="退出登录"
             className="flex w-full items-center justify-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 xl:justify-start"
           >
-            <LogOut size={16} /> 退出登录
+            <LogOut size={16} /> <span className="hidden xl:inline">退出登录</span>
           </button>
         </div>
       </aside>

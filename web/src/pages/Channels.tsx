@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from 'react'
-import { ChevronDown, ChevronRight, Plug, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Plug, Plus, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey } from '../api/hooks'
-import { Badge, Button, Card, Dialog, Drawer, Empty, ErrorText, Field, Input, Spinner, Td, Textarea, Th } from '../components/ui'
+import { Badge, Button, Card, Dialog, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Switch, Td, Textarea, Th } from '../components/ui'
 import type { Channel } from '../api/types'
 import { cooldownRemaining, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
 
@@ -15,34 +15,37 @@ export default function Channels() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">渠道管理</h1>
-        <Button onClick={() => setEditing('new')}><Plus size={15} /> 新建渠道</Button>
-      </div>
+      <PageHeader
+        title="渠道管理"
+        description="上游渠道、优先级权重与 key 池状态；展开行可管理凭据。"
+        actions={<Button onClick={() => setEditing('new')}><Plus size={15} /> 新建渠道</Button>}
+      />
 
       <Card>
         {channels.data?.items.length === 0 ? (
           <Empty icon={<Plug size={36} />} title="还没有渠道" hint="新建一个上游渠道，填入 base_url 与支持的模型" />
         ) : (
-          <table className="w-full">
-            <thead className="border-b border-slate-100 bg-slate-50/50">
-              <tr>
-                <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>权重</Th>
-                <Th>模型</Th><Th>key / 可用</Th><Th>最近探测</Th><Th>启用</Th><Th>测试</Th><Th className="w-20">操作</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {items.map((c) => (
-                <ChannelRow
-                  key={c.id}
-                  channel={c}
-                  expanded={expanded === c.id}
-                  onToggleExpand={() => setExpanded(expanded === c.id ? null : c.id)}
-                  onEdit={() => setEditing(c)}
-                />
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px]">
+              <thead className="border-b border-slate-100 bg-slate-50/50">
+                <tr>
+                  <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>权重</Th>
+                  <Th>模型</Th><Th>key / 可用</Th><Th>最近探测</Th><Th>启用</Th><Th>测试</Th><Th className="w-28"><span className="block pr-2.5 text-right">操作</span></Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {items.map((c) => (
+                  <ChannelRow
+                    key={c.id}
+                    channel={c}
+                    expanded={expanded === c.id}
+                    onToggleExpand={() => setExpanded(expanded === c.id ? null : c.id)}
+                    onEdit={() => setEditing(c)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
 
@@ -62,7 +65,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
     <>
       <tr className="hover:bg-slate-50/50">
         <Td>
-          <button onClick={onToggleExpand} className="rounded p-1 text-slate-400 hover:bg-slate-100">
+          <button onClick={onToggleExpand} aria-label={expanded ? '收起 key 列表' : '展开 key 列表'} className="rounded p-1 text-slate-400 hover:bg-slate-100">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         </Td>
@@ -94,12 +97,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
           )}
         </Td>
         <Td>
-          <button
-            onClick={() => toggle.mutate({ id: c.id, enabled: !c.enabled })}
-            className={`h-5 w-9 rounded-full transition-colors ${c.enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
-          >
-            <span className={`block h-4 w-4 translate-x-0.5 rounded-full bg-white transition-transform ${c.enabled ? 'translate-x-4' : ''}`} />
-          </button>
+          <Switch checked={c.enabled} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={`启用渠道 ${c.name}`} />
         </Td>
         <Td>
           {test.isPending && test.variables === c.id ? (
@@ -109,13 +107,15 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
               {result.result === 'success' ? `✓ ${result.latency_ms}ms` : result.result === 'inconclusive' ? `? ${result.status_code ?? 0}` : `✗ ${result.status_code ?? 'err'}`}
             </Badge>
           ) : (
-            <Button size="sm" variant="outline" onClick={() => test.mutate(c.id)}>测试</Button>
+            <Button size="sm" variant="outline" aria-label={`测试渠道 ${c.name}`} title="测试连通性" onClick={() => test.mutate(c.id)}>
+              <Plug size={13} />
+            </Button>
           )}
         </Td>
         <Td>
-          <div className="flex gap-1">
-            <Button size="sm" variant="ghost" onClick={onEdit}>编辑</Button>
-            <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50"
+          <div className="flex justify-end gap-1 whitespace-nowrap">
+            <Button size="sm" variant="ghost" aria-label={`编辑渠道 ${c.name}`} title="编辑" onClick={onEdit}><Pencil size={13} /></Button>
+            <Button size="sm" variant="ghost" aria-label={`删除渠道 ${c.name}`} title="删除" className="text-red-500 hover:bg-red-50"
               onClick={() => confirm(`删除渠道「${c.name}」及其全部 key？`) && del.mutate(c.id)}>
               <Trash2 size={13} />
             </Button>
@@ -140,44 +140,43 @@ function KeysPanel({ channelId }: { channelId: number }) {
   return (
     <Card className="p-4">
       <h3 className="mb-3 text-sm font-semibold">上游 key（渠道：{detail.data.channel.name}）</h3>
-      <table className="w-full">
-        <thead className="border-b border-slate-100 bg-slate-50/50">
-          <tr><Th>#</Th><Th>状态</Th><Th>权重</Th><Th>连续失败</Th><Th>退避档位</Th><Th>冷却剩余</Th><Th>成功/失败</Th><Th>最近错误</Th><Th>启用</Th><Th className="w-16">操作</Th></tr>
-        </thead>
-        <tbody className="divide-y divide-slate-50">
-          {detail.data.keys.map((k, i) => {
-            const remain = cooldownRemaining(k.cooldown_until)
-            return (
-              <tr key={k.id}>
-                <Td className="text-slate-400">{i + 1}</Td>
-                <Td>
-                  <Badge tone={stateTone[k.state] || ''}>{stateLabel[k.state] || k.state}</Badge>
-                </Td>
-                <Td>{k.weight}</Td>
-                <Td className={k.consecutive_fails > 0 ? 'text-amber-600 font-medium' : ''}>{k.consecutive_fails}</Td>
-                <Td>L{k.level}</Td>
-                <Td>{remain ? <span className="text-amber-600">{remain}</span> : '—'}</Td>
-                <Td className="text-xs text-slate-500">{k.success_count}/{k.fail_count}</Td>
-                <Td className="max-w-48 truncate text-xs text-slate-400" title={k.last_error}>{k.last_error || '—'}</Td>
-                <Td>
-                  <button
-                    onClick={() => updateKey.mutate({ id: k.id, enabled: !k.enabled })}
-                    className={`h-5 w-9 rounded-full transition-colors ${k.enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                  >
-                    <span className={`block h-4 w-4 translate-x-0.5 rounded-full bg-white transition-transform ${k.enabled ? 'translate-x-4' : ''}`} />
-                  </button>
-                </Td>
-                <Td>
-                  <Button size="sm" variant="ghost" className="text-red-500 hover:bg-red-50"
-                    onClick={() => confirm('删除这把 key？') && delKey.mutate({ id: k.id, channelId })}>
-                    <Trash2 size={13} />
-                  </Button>
-                </Td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[860px]">
+          <thead className="border-b border-slate-100 bg-slate-50/50">
+            <tr><Th>#</Th><Th>状态</Th><Th>权重</Th><Th>连续失败</Th><Th>退避档位</Th><Th>冷却剩余</Th><Th>成功/失败</Th><Th>最近错误</Th><Th>启用</Th><Th className="w-16"><span className="block pr-2.5 text-right">操作</span></Th></tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {detail.data.keys.map((k, i) => {
+              const remain = cooldownRemaining(k.cooldown_until)
+              return (
+                <tr key={k.id}>
+                  <Td className="text-slate-400">{i + 1}</Td>
+                  <Td>
+                    <Badge tone={stateTone[k.state] || ''}>{stateLabel[k.state] || k.state}</Badge>
+                  </Td>
+                  <Td>{k.weight}</Td>
+                  <Td className={k.consecutive_fails > 0 ? 'text-amber-600 font-medium' : ''}>{k.consecutive_fails}</Td>
+                  <Td>L{k.level}</Td>
+                  <Td>{remain ? <span className="text-amber-600">{remain}</span> : '—'}</Td>
+                  <Td className="text-xs text-slate-500">{k.success_count}/{k.fail_count}</Td>
+                  <Td className="max-w-48 truncate text-xs text-slate-400" title={k.last_error}>{k.last_error || '—'}</Td>
+                  <Td>
+                    <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={`启用 key ${i + 1}`} />
+                  </Td>
+                  <Td>
+                    <div className="flex justify-end">
+                      <Button size="sm" variant="ghost" aria-label={`删除 key ${i + 1}`} title="删除" className="text-red-500 hover:bg-red-50"
+                        onClick={() => confirm('删除这把 key？') && delKey.mutate({ id: k.id, channelId })}>
+                        <Trash2 size={13} />
+                      </Button>
+                    </div>
+                  </Td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
       <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
         <div className="mb-2 text-xs font-medium text-slate-600">批量导入 key（每行一把，加密存储，不会回显明文）</div>
         <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-xxxxxxx\nsk-yyyyyyy'} />
@@ -198,6 +197,7 @@ function KeysPanel({ channelId }: { channelId: number }) {
 // 新建/编辑渠道弹窗
 function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: () => void }) {
   const save = useSaveChannel()
+  const formID = 'channel-form'
   const [name, setName] = useState(channel?.name ?? '')
   const [type, setType] = useState(channel?.type ?? 'openai-compatible')
   const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? '')
@@ -235,29 +235,38 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   }
 
   return (
-    <Dialog open onClose={onClose} title={channel ? '编辑渠道' : '新建渠道'} wide>
-      <form onSubmit={onSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+    <Dialog
+      open
+      onClose={onClose}
+      title={channel ? '编辑渠道' : '新建渠道'}
+      wide
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+          <Button type="submit" form={formID} disabled={save.isPending}>{save.isPending ? '保存中…' : '保存'}</Button>
+        </div>
+      }
+    >
+      <form id={formID} onSubmit={onSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="openai-main" /></Field>
           <Field label="类型">
-            <select value={type} onChange={(e) => setType(e.target.value)}
-              className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+            <Select value={type} onChange={(e) => setType(e.target.value)}>
               {['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic-compat', 'gemini-compat'].map((t) => <option key={t}>{t}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <Field label="Base URL" hint={`上游 API 根地址（一般以 /v1 结尾），网关会拼接 ${supportsResponses ? '/responses（Responses 请求）与 /chat/completions（Chat 请求）' : '/chat/completions'}`}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
         </Field>
-        <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm text-slate-700">
-          <input type="checkbox" checked={supportsResponses} onChange={(e) => setSupportsResponses(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 text-slate-900" />
-          <span>
-            原生支持 Responses API
-            <span className="block text-xs text-slate-400">开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions</span>
-          </span>
-        </label>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-sm text-slate-700">原生支持 Responses API</div>
+            <div className="text-xs text-slate-400">开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions</div>
+          </div>
+          <Switch checked={supportsResponses} onChange={setSupportsResponses} label="原生支持 Responses API" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="优先级" hint="越小越优先"><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
           <Field label="权重" hint="同优先级内加权随机"><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
         </div>
@@ -268,10 +277,6 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           <Textarea rows={3} value={mapping} onChange={(e) => setMapping(e.target.value)} placeholder='{}' />
         </Field>
         <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-          <Button type="submit" disabled={save.isPending}>{save.isPending ? '保存中…' : '保存'}</Button>
-        </div>
       </form>
     </Dialog>
   )

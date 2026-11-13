@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react'
 import { Check, Copy, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useTokens, useUpdateToken } from '../api/hooks'
 import type { Token } from '../api/types'
-import { Badge, Button, Card, Dialog, Empty, ErrorText, Field, Input, Spinner, Td, Textarea, Th } from '../components/ui'
+import { Badge, Button, Card, Dialog, Empty, ErrorText, Field, Input, PageHeader, Spinner, Switch, Td, Textarea, Th } from '../components/ui'
 import { fmtInt, fmtTime } from '../lib/format'
 
 const tokenStatusTone: Record<string, string> = {
@@ -29,20 +29,21 @@ export default function Tokens() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-bold">令牌管理</h1>
-        <Button onClick={() => setEditing('new')}><Plus size={15} /> 新建令牌</Button>
-      </div>
+      <PageHeader
+        title="令牌管理"
+        description="下游 API key、额度、有效期与访问白名单；明文 key 仅在创建时展示一次。"
+        actions={<Button onClick={() => setEditing('new')}><Plus size={15} /> 新建令牌</Button>}
+      />
       <Card>
         {tokens.data?.items.length === 0 ? (
           <Empty icon={<KeyRound size={36} />} title="还没有下游令牌" hint="创建令牌后发给客户端，作为调用网关的 API key" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full min-w-[900px]">
               <thead className="border-b border-slate-100 bg-slate-50/50">
                 <tr>
                   <Th>名称</Th><Th>状态</Th><Th>额度</Th><Th>允许模型</Th><Th>IP 白名单</Th>
-                  <Th>过期时间</Th><Th>创建时间</Th><Th>启用</Th><Th className="w-24">操作</Th>
+                  <Th>过期时间</Th><Th>创建时间</Th><Th>启用</Th><Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -75,19 +76,16 @@ export default function Tokens() {
                     <Td className="text-xs">{fmtTime(t.expired_at)}</Td>
                     <Td className="text-xs text-slate-400">{fmtTime(t.created_at)}</Td>
                     <Td>
-                      <button
-                        onClick={() => update.mutate({ id: t.id, enabled: !t.enabled })}
-                        className={`h-5 w-9 rounded-full transition-colors ${t.enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                      >
-                        <span className={`block h-4 w-4 translate-x-0.5 rounded-full bg-white transition-transform ${t.enabled ? 'translate-x-4' : ''}`} />
-                      </button>
+                      <Switch checked={t.enabled} onChange={(enabled) => update.mutate({ id: t.id, enabled })} label={`启用令牌 ${t.name}`} />
                     </Td>
                     <Td>
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" onClick={() => setEditing(t)}><Pencil size={13} /></Button>
+                      <div className="flex justify-end gap-1">
+                        <Button size="sm" variant="ghost" aria-label={`编辑令牌 ${t.name}`} title="编辑" onClick={() => setEditing(t)}><Pencil size={13} /></Button>
                         <Button
                           size="sm"
                           variant="ghost"
+                          aria-label={`删除令牌 ${t.name}`}
+                          title="删除"
                           className="text-red-500 hover:bg-red-50"
                           onClick={() => confirm(`删除令牌「${t.name}」？使用它的客户端将立即失效。`) && del.mutate(t.id)}
                         >
@@ -110,6 +108,7 @@ export default function Tokens() {
 function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => void }) {
   const create = useCreateToken()
   const update = useUpdateToken()
+  const formID = 'token-form'
   const [name, setName] = useState(token?.name ?? '')
   const [quota, setQuota] = useState(String(token?.quota ?? 0))
   const [expiredAt, setExpiredAt] = useState(toLocalInput(token?.expired_at))
@@ -158,9 +157,22 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   }
 
   return (
-    <Dialog open onClose={onClose} title={token ? '编辑令牌治理' : '新建令牌'} wide>
-      <form onSubmit={onSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+    <Dialog
+      open
+      onClose={onClose}
+      title={token ? '编辑令牌治理' : '新建令牌'}
+      wide
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>取消</Button>
+          <Button type="submit" form={formID} disabled={create.isPending || update.isPending}>
+            {create.isPending || update.isPending ? '保存中…' : '保存'}
+          </Button>
+        </div>
+      }
+    >
+      <form id={formID} onSubmit={onSubmit} className="space-y-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="名称" hint="便于识别用途，如 cli-token、chatbox">
             <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="my-token" />
           </Field>
@@ -171,7 +183,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
         <Field label="过期时间" hint="留空表示不限；编辑时留空会清除过期时间">
           <Input type="datetime-local" value={expiredAt} onChange={(e) => setExpiredAt(e.target.value)} />
         </Field>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="允许模型（每行一个）" hint="留空表示允许全部模型">
             <Textarea rows={4} value={modelsText} onChange={(e) => setModelsText(e.target.value)} placeholder={'gpt-4o\nglm-4.7'} />
           </Field>
@@ -180,12 +192,6 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
           </Field>
         </div>
         <ErrorText>{create.isError ? (create.error as Error).message : update.isError ? (update.error as Error).message : null}</ErrorText>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-          <Button type="submit" disabled={create.isPending || update.isPending}>
-            {create.isPending || update.isPending ? '保存中…' : '保存'}
-          </Button>
-        </div>
       </form>
     </Dialog>
   )

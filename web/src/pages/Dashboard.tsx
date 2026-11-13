@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, AlertTriangle, ArrowRight, Download, Timer, TowerControl, Waypoints, Zap } from 'lucide-react'
 import { useChannels, useLogs, useUpdateStatus } from '../api/hooks'
-import { Badge, Card, Empty, Spinner, Td, Th } from '../components/ui'
+import { Badge, Card, Empty, PageHeader, Spinner, Td, Th } from '../components/ui'
 import { fmtInt, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
 
 export default function Dashboard() {
@@ -65,6 +65,7 @@ export default function Dashboard() {
     return (
       <div className="space-y-6">
         {updateBanner}
+        <PageHeader title="运行概览" description="本地网关、渠道健康与今日请求状态。" />
         <Card className="p-10">
           <Empty icon={<TowerControl size={40} />} title="欢迎使用 EverGate" hint="按以下四步开始使用你的 AI 网关" />
           <ol className="mx-auto max-w-md space-y-3 text-sm">
@@ -98,21 +99,28 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {updateBanner}
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">运行概览</h1>
-          <p className="mt-1 text-sm text-slate-500">本地网关、渠道健康与今日请求状态。</p>
-        </div>
-        <div className="text-xs text-slate-400">
-          {update.isPending ? '版本检查中…' : update.data?.development ? '开发版本' : `版本 ${update.data?.current_version ?? '未知'}`}
-        </div>
-      </header>
+      <PageHeader
+        title="运行概览"
+        description="本地网关、渠道健康与今日请求状态。"
+        actions={
+          <span className="text-xs text-slate-400">
+            {update.isPending ? '版本检查中…' : update.data?.development ? '开发版本' : `版本 ${update.data?.current_version ?? '未知'}`}
+          </span>
+        }
+      />
 
       {/* 事实行（gpt-load HomeSummary 模式） */}
-      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-        <span className="text-2xl font-bold">{stats.channels}</span><span className="text-sm text-slate-500">渠道</span>
-        <span className="text-2xl font-bold">{stats.models}</span><span className="text-sm text-slate-500">去重模型</span>
-        <span className="text-2xl font-bold">{stats.keys}</span><span className="text-sm text-slate-500">上游 key</span>
+      <div className="flex flex-wrap gap-x-8 gap-y-3">
+        {[
+          { value: stats.channels, label: '渠道' },
+          { value: stats.models, label: '去重模型' },
+          { value: stats.keys, label: '上游 key' },
+        ].map((item) => (
+          <div key={item.label} className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums">{item.value}</span>
+            <span className="text-sm text-slate-500">{item.label}</span>
+          </div>
+        ))}
       </div>
 
       {/* 今日卡片 */}
@@ -140,7 +148,7 @@ export default function Dashboard() {
           <Link to="/channels" className="text-xs text-indigo-600 hover:underline">管理渠道</Link>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[900px]">
             <thead className="border-b border-slate-100 bg-slate-50/50">
               <tr><Th>渠道</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>key / 可用</Th><Th>模型数</Th><Th>最近探测</Th><Th>异常摘要</Th><Th>更新时间</Th></tr>
             </thead>

@@ -10,7 +10,7 @@ import {
   useUsageReport,
 } from '../api/hooks'
 import type { UsageDimensionRow } from '../api/types'
-import { Badge, Button, Card, Empty, ErrorText, Field, Input, Spinner, Td, Th } from '../components/ui'
+import { Badge, Button, Card, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
 import { fmtInt } from '../lib/format'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -33,32 +33,32 @@ export default function Usage() {
 
   return (
     <div className="space-y-5">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold">用量成本</h1>
-          <p className="mt-1 text-sm text-slate-500">按 UTC 日聚合请求、token 与价格快照。</p>
-        </div>
-        <Button variant="outline" onClick={() => report.refetch()} disabled={report.isFetching}>
-          <RefreshCw size={14} className={report.isFetching ? 'animate-spin' : ''} /> 刷新
-        </Button>
-      </header>
+      <PageHeader
+        title="用量成本"
+        description="按 UTC 日聚合请求、token 与价格快照。"
+        actions={
+          <Button variant="outline" onClick={() => report.refetch()} disabled={report.isFetching}>
+            <RefreshCw size={14} className={report.isFetching ? 'animate-spin' : ''} /> 刷新
+          </Button>
+        }
+      />
 
       <Card className="p-4">
         <div className="grid gap-3 md:grid-cols-5">
           <Field label="开始日期"><Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="结束日期"><Input type="date" value={end} min={start} max={today()} onChange={(e) => setEnd(e.target.value)} /></Field>
           <Field label="渠道">
-            <select value={channelID} onChange={(e) => setChannelID(e.target.value)} className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+            <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
               <option value="">全部渠道</option>
               {chs.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-            </select>
+            </Select>
           </Field>
           <Field label="模型"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="全部模型" /></Field>
           <Field label="令牌">
-            <select value={tokenID} onChange={(e) => setTokenID(e.target.value)} className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+            <Select value={tokenID} onChange={(e) => setTokenID(e.target.value)}>
               <option value="">全部令牌</option>
               {tks.map((token) => <option key={token.id} value={token.id}>{token.name}</option>)}
-            </select>
+            </Select>
           </Field>
         </div>
         <ErrorText>{report.isError ? (report.error as Error).message : null}</ErrorText>
@@ -136,18 +136,20 @@ function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) 
     <Card>
       <h3 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold">{title}</h3>
       {rows.length === 0 ? <Empty title="暂无数据" /> : (
-        <table className="w-full">
-          <thead className="bg-slate-50/60"><tr><Th>名称</Th><Th>请求</Th><Th>成本</Th></tr></thead>
-          <tbody className="divide-y divide-slate-50">
-            {rows.map((row) => (
-              <tr key={`${row.id}-${row.name}`}>
-                <Td className="max-w-40 truncate font-medium" title={row.name}>{row.name}</Td>
-                <Td>{fmtInt(row.requests)}</Td>
-                <Td className="text-xs">{fmtMoney(row.cost_micros)}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[300px]">
+            <thead className="bg-slate-50/60"><tr><Th>名称</Th><Th>请求</Th><Th>成本</Th></tr></thead>
+            <tbody className="divide-y divide-slate-50">
+              {rows.map((row) => (
+                <tr key={`${row.id}-${row.name}`}>
+                  <Td className="max-w-40 truncate font-medium" title={row.name}>{row.name}</Td>
+                  <Td>{fmtInt(row.requests)}</Td>
+                  <Td className="text-xs">{fmtMoney(row.cost_micros)}</Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </Card>
   )
@@ -207,10 +209,10 @@ function PriceCard() {
 
       <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-slate-300 p-3">
         <div className="text-xs font-medium text-slate-600">渠道 + 模型覆盖</div>
-        <div className="grid grid-cols-2 gap-2">
-          <select value={channelID} onChange={(e) => setChannelID(e.target.value)} className="h-9 rounded-md border border-slate-300 bg-white px-2 text-sm">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
             {(channels.data?.items ?? []).map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-          </select>
+          </Select>
           <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="上游模型名" />
           <Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder="输入价格" />
           <Input type="number" min={0} step="0.000001" value={overrideOut} onChange={(e) => setOverrideOut(e.target.value)} placeholder="输出价格" />

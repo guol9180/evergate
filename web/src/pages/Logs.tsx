@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Search, ScrollText } from 'lucide-react'
 import { useLogs } from '../api/hooks'
-import { Badge, Button, Card, Drawer, Empty, Input, Spinner, Td, Th } from '../components/ui'
+import { Badge, Button, Card, Drawer, Empty, Input, PageHeader, Spinner, Td, Th } from '../components/ui'
 import RetryTimeline from '../components/RetryTimeline'
 import type { RequestLog } from '../api/types'
 import { fmtInt, fmtMs, fmtTime, kindText, statusTone } from '../lib/format'
@@ -29,15 +29,17 @@ export default function Logs() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-bold">请求日志</h1>
+      <PageHeader title="请求日志" description="按模型、状态、渠道与令牌筛选；点击行查看命中链路与重试轨迹。" />
 
       {/* 筛选栏（gpt-load LogsFilterForm 模式） */}
-      <Card className="flex flex-wrap items-end gap-3 p-4">
-        <div className="w-44"><Input placeholder="模型" value={model} onChange={(e) => { setModel(e.target.value); setPage(1) }} /></div>
-        <div className="w-28"><Input placeholder="状态码" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} /></div>
-        <div className="w-28"><Input placeholder="渠道 ID" value={channelId} onChange={(e) => { setChannelId(e.target.value); setPage(1) }} /></div>
-        <div className="w-28"><Input placeholder="令牌 ID" value={tokenId} onChange={(e) => { setTokenId(e.target.value); setPage(1) }} /></div>
-        <span className="pb-2 text-xs text-slate-400"><Search size={14} className="inline" /> 输入即筛选</span>
+      <Card className="p-4">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
+          <div className="col-span-2 sm:w-44"><Input placeholder="模型" value={model} onChange={(e) => { setModel(e.target.value); setPage(1) }} /></div>
+          <div className="sm:w-28"><Input placeholder="状态码" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} /></div>
+          <div className="sm:w-28"><Input placeholder="渠道 ID" value={channelId} onChange={(e) => { setChannelId(e.target.value); setPage(1) }} /></div>
+          <div className="sm:w-28"><Input placeholder="令牌 ID" value={tokenId} onChange={(e) => { setTokenId(e.target.value); setPage(1) }} /></div>
+          <span className="col-span-2 text-xs text-slate-400 sm:pb-2"><Search size={14} className="inline" /> 输入即筛选</span>
+        </div>
       </Card>
 
       <Card>
@@ -46,29 +48,31 @@ export default function Logs() {
         ) : logs.data?.items.length === 0 ? (
           <Empty icon={<ScrollText size={36} />} title="暂无日志" hint="有请求经过网关后，这里会显示每次调用的完整轨迹" />
         ) : (
-          <table className="w-full">
-            <thead className="border-b border-slate-100 bg-slate-50/50">
-              <tr><Th>时间</Th><Th>模型</Th><Th>渠道</Th><Th>状态</Th><Th>首 token</Th><Th>总耗时</Th><Th>tokens</Th><Th>令牌</Th><Th>重试</Th></tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {logs.data?.items.map((l) => (
-                <tr key={l.id} className="cursor-pointer hover:bg-slate-50/50" onClick={() => setSelected(l)}>
-                  <Td className="whitespace-nowrap text-xs text-slate-500">{fmtTime(l.created_at)}</Td>
-                  <Td className="font-medium">
-                    {l.model}
-                    {l.source === 'playground' && <Badge tone="bg-indigo-100 text-indigo-700 ml-2">Playground</Badge>}
-                  </Td>
-                  <Td className="text-slate-500">{l.channel_name || '—'}</Td>
-                  <Td className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</Td>
-                  <Td>{fmtMs(l.first_token_ms || undefined)}</Td>
-                  <Td>{fmtMs(l.total_ms || undefined)}</Td>
-                  <Td className="text-xs text-slate-500">{l.prompt_tokens}/{l.completion_tokens}</Td>
-                  <Td className="text-xs text-slate-500">{l.token_name || '—'}</Td>
-                  <Td>{(l.retry_trace?.length ?? 0) > 1 ? <Badge tone="bg-amber-100 text-amber-700">{l.retry_trace!.length} 次</Badge> : '—'}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px]">
+              <thead className="border-b border-slate-100 bg-slate-50/50">
+                <tr><Th>时间</Th><Th>模型</Th><Th>渠道</Th><Th>状态</Th><Th>首 token</Th><Th>总耗时</Th><Th>tokens</Th><Th>令牌</Th><Th>重试</Th></tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {logs.data?.items.map((l) => (
+                  <tr key={l.id} className="cursor-pointer hover:bg-slate-50/50" onClick={() => setSelected(l)}>
+                    <Td className="whitespace-nowrap text-xs text-slate-500">{fmtTime(l.created_at)}</Td>
+                    <Td className="font-medium">
+                      {l.model}
+                      {l.source === 'playground' && <Badge tone="bg-indigo-100 text-indigo-700 ml-2">Playground</Badge>}
+                    </Td>
+                    <Td className="text-slate-500">{l.channel_name || '—'}</Td>
+                    <Td className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</Td>
+                    <Td>{fmtMs(l.first_token_ms || undefined)}</Td>
+                    <Td>{fmtMs(l.total_ms || undefined)}</Td>
+                    <Td className="text-xs text-slate-500">{l.prompt_tokens}/{l.completion_tokens}</Td>
+                    <Td className="text-xs text-slate-500">{l.token_name || '—'}</Td>
+                    <Td>{(l.retry_trace?.length ?? 0) > 1 ? <Badge tone="bg-amber-100 text-amber-700">{l.retry_trace!.length} 次</Badge> : '—'}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         {/* 分页 */}
         <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
