@@ -17,7 +17,7 @@ export default function RetryTimeline({ attempts }: { attempts: RetryAttempt[] |
               <span className={`mt-1 h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {i < attempts.length - 1 && <span className="w-px flex-1 bg-slate-200" />}
             </div>
-            <div className="min-w-0 flex-1 pb-5">
+            <div className={`min-w-0 flex-1 ${i < attempts.length - 1 ? 'pb-5' : 'pb-0'}`}>
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-medium">尝试 {a.attempt}</span>
                 <span className="break-all text-slate-500">→ {a.channel_name} · key #{a.key_id}</span>

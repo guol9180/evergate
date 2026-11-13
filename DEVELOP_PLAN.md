@@ -552,6 +552,10 @@
     `go vet ./...`、`npm --prefix web run build`、`make build` 通过
   - 2026-11-13 验证 无头 Chrome 实测 1280×800 与 390×844：`scrollWidth == innerWidth`（无横向破版）；
     非流式与流式请求均渲染正文、usage、首 token/总耗时与重试轨迹；`request_logs.source=playground` 已确认
+  - 2026-11-13 执行 UI 精修（用户强调前端排版与结构美观）：响应与命中链路合并为单卡，新增状态栏与 usage
+    chips；流式光标 + 自动滚动；协议改为紧凑分段控件；新增共享 Select/Switch 组件；移动端徽标不再拉伸
+  - 2026-11-13 验证 精修后重新构建，无头 Chrome 1280×800 / 390×844 再次确认 `scrollWidth == innerWidth`；
+    截图复核协议按钮、计数器、Switch、状态 pill 与命中链路层级，无横向破版与明显错位
 
 ### T26: Prometheus 指标与 OpenTelemetry 可选导出（P1）
 

@@ -2,6 +2,12 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.18
+
+- Playground 布局精修：响应正文与命中链路合并为单卡，新增协议/HTTP 状态栏、usage 指标 chips 与 Playground 日志提示，减少浮动卡片割裂感
+- 流式输出增加光标与自动滚动，长内容限制在独立滚动区；表单计数器右对齐、协议切换改为紧凑分段控件，移动端徽标与控件不再拉伸换行
+- 新增共享 `Select` 与 `Switch` 表单组件用于 Playground，统一焦点态、禁用态与无障碍 `role=switch`；重试时间线末项去除多余留白
+
 ## v0.1.17
 
 - 管理台新增 Playground：选择模型与 Chat Completions / Responses 协议，编辑 system/user 消息并切换流式，直接验证渠道与协议兼容性，无需创建或复制下游令牌
