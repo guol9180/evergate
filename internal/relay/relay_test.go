@@ -1308,7 +1308,7 @@ func TestStreamFirstTokenMeasuredFromUpstreamRequestStart(t *testing.T) {
 			hit := &hitRecord{}
 			trace := make([]store.RetryAttempt, 0, 1)
 			outcome := env.attemptOne(c, router.Candidate{Channel: &ch, UpstreamModel: "upstream-model"}, &key,
-				[]byte(`{"model":"gateway-model","stream":true,"messages":[]}`), "gateway-model", true, &trace, hit)
+				[]byte(`{"model":"gateway-model","stream":true,"messages":[]}`), "gateway-model", true, &trace, hit, nil)
 			if outcome != outcomeDone {
 				t.Fatalf("outcome = %v, want done", outcome)
 			}

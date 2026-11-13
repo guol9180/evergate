@@ -18,14 +18,24 @@ import (
 // postWithSession 通过带 TokenAuth 的公共 HTTP 边界发起请求，可附加 X-Session-Id。
 func postWithSession(t *testing.T, gateway *httptest.Server, path, token, session, body string) (*http.Response, string) {
 	t.Helper()
+	headers := map[string]string{}
+	if session != "" {
+		headers["X-Session-Id"] = session
+	}
+	return postWithHeaders(t, gateway, path, token, headers, body)
+}
+
+// postWithHeaders 通过带 TokenAuth 的公共 HTTP 边界发起请求。
+func postWithHeaders(t *testing.T, gateway *httptest.Server, path, token string, headers map[string]string, body string) (*http.Response, string) {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, gateway.URL+path, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
-	if session != "" {
-		req.Header.Set("X-Session-Id", session)
+	for key, value := range headers {
+		req.Header.Set(key, value)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

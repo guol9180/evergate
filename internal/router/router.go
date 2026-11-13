@@ -32,7 +32,7 @@ type Candidate struct {
 func (r *Router) Route(model string, channels []*store.Channel) []Candidate {
 	matched := make([]*store.Channel, 0, len(channels))
 	for _, ch := range channels {
-		if ch.Enabled && containsModel(ch.Models, model) {
+		if ch.Enabled && SupportsModel(ch, model) {
 			matched = append(matched, ch)
 		}
 	}
@@ -70,8 +70,12 @@ func (r *Router) shuffleWeighted(group []*store.Channel) {
 	sort.SliceStable(group, func(i, j int) bool { return keys[i] > keys[j] })
 }
 
-func containsModel(models []string, model string) bool {
-	for _, m := range models {
+// SupportsModel 判断渠道声明的模型列表是否包含 model。
+func SupportsModel(ch *store.Channel, model string) bool {
+	if ch == nil {
+		return false
+	}
+	for _, m := range ch.Models {
 		if m == model {
 			return true
 		}

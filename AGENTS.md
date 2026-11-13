@@ -14,6 +14,7 @@ cmd/evergate/main.go   # 唯一入口：加载配置 → 迁移 DB → 启动 HT
 internal/config/       # YAML 引导配置加载
 internal/server/       # Gin 路由注册、中间件（鉴权/日志/recovery）
 internal/relay/        # 核心代理：上游请求构造、SSE 透传、超时控制
+internal/reqconfig/    # X-EverGate-Config 请求级白名单覆盖解析与脱敏摘要
 internal/router/       # 模型 → 渠道候选列表（优先级+权重）
 internal/pool/         # key 池调度器 + cooldown 状态机
 internal/affinity/     # X-Session-Id 会话亲和：SHA-256 指纹 + TTL + 有界 LRU
@@ -55,6 +56,8 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 渠道健康探测只能调用 `GET {base_url}/models`，不得触发推理接口；404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
 - 会话亲和表只保存 `token + model + session` 的 SHA-256 指纹，禁止保存 `X-Session-Id` 原文或写入请求日志/响应；TTL 与 LRU 容量必须有界，第一版仅进程内存，禁止擅自加 Redis/SQLite 持久化。
 - 会话亲和只能在最高优先级组内提升候选渠道，且粘性 key 必须重新通过 enabled/cooldown/探测名额校验；不得绕过 priority 主备层级、健康状态或重试预算。
+- 请求级 `X-EverGate-Config` 只允许 timeouts / retry / channels / session_affinity 白名单字段，必须在 TokenAuth 与令牌治理之后解析；未知字段与敏感字段（api_key/model/allowed_models 等）一律 400 并带字段路径，禁止静默忽略或放宽。
+- 请求级覆盖不得绕过鉴权、模型白名单、额度、IP 限制或上游 key 加密；渠道 id 必须校验存在、启用且支持当前模型；摘要只允许脱敏生效字段（≤512B）落请求日志，禁止保存原始 header。
 - 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 

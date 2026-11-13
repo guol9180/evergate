@@ -127,6 +127,7 @@ type RequestLog struct {
 	CostStatus       string         `gorm:"size:32;not null;default:''" json:"cost_status"`
 	IP               string         `gorm:"size:45" json:"ip"`
 	UserAgent        string         `json:"user_agent"`
+	ConfigOverride   string         `gorm:"size:512" json:"config_override,omitempty"` // 请求级覆盖脱敏摘要
 }
 
 // UsageDaily 是按 UTC 天 + 渠道 + 请求模型 + 令牌的幂等聚合。

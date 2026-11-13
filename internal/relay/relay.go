@@ -22,6 +22,7 @@ import (
 	"evergate/internal/affinity"
 	"evergate/internal/config"
 	"evergate/internal/pool"
+	"evergate/internal/reqconfig"
 	"evergate/internal/retry"
 	"evergate/internal/router"
 	"evergate/internal/settings"
@@ -78,6 +79,9 @@ const (
 // 不进入请求日志或下游响应。
 const ctxAffinitySession = "evergate.affinity_session"
 
+// ctxConfigSummary 保存脱敏后的请求级覆盖摘要，仅用于请求日志落库。
+const ctxConfigSummary = "evergate.config_summary"
+
 // hitRecord 记录实际命中的渠道/key 与首个 token 延迟（供请求日志）。
 type hitRecord struct {
 	channelID        int64
@@ -125,12 +129,24 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 		return nil, status, errType, errMsg
 	}
 
+	// 请求级覆盖：鉴权与令牌治理之后才解析，任何覆盖都不能绕过权限约束。
+	override, cfgErr := reqconfig.Parse(c.GetHeader("X-EverGate-Config"))
+	if cfgErr != nil {
+		msg := cfgErr.Error()
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_config", msg)
+		return nil, http.StatusBadRequest, "invalid_request_config", msg
+	}
+	if summary := override.Summary(); summary != "" {
+		c.Set(ctxConfigSummary, summary)
+	}
+
 	// 会话亲和：只对已通过鉴权与令牌治理的请求生效（tokenID=0 表示未鉴权，直接跳过）。
 	tokenID, _ := tokenFromContext(c)
 	session := affinity.NormalizeSession(c.GetHeader("X-Session-Id"))
 	var sticky affinity.Entry
 	stickyOK := false
-	if session != "" && tokenID != 0 {
+	affinityEnabled := override.SessionAffinity == nil || *override.SessionAffinity
+	if affinityEnabled && session != "" && tokenID != 0 {
 		sticky, stickyOK = r.opt.Affinity.Lookup(tokenID, model, session)
 		// 仅本次请求内使用；不落请求日志、不进下游响应。
 		c.Set(ctxAffinitySession, session)
@@ -140,6 +156,14 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
 		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
 		return nil, http.StatusInternalServerError, "server_error", err.Error()
+	}
+	if len(override.ChannelIDs) > 0 {
+		channels, err = filterChannels(channels, model, override.ChannelIDs)
+		if err != nil {
+			msg := err.Error()
+			writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_config", msg)
+			return nil, http.StatusBadRequest, "invalid_request_config", msg
+		}
 	}
 	candidates := r.opt.Router.Route(model, channels)
 	if stickyOK {
@@ -167,6 +191,17 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 	}
 
 	d := r.currentDefaults()
+	if override.Retry != nil {
+		if override.Retry.Channels != nil {
+			d.RetryBudget.Channels = *override.Retry.Channels
+		}
+		if override.Retry.KeysPerChannel != nil {
+			d.RetryBudget.KeysPerChannel = *override.Retry.KeysPerChannel
+		}
+		if override.Retry.Total != nil {
+			d.RetryBudget.Total = config.Duration{Duration: *override.Retry.Total}
+		}
+	}
 	budget := retry.NewBudget(d.RetryBudget.Channels, d.RetryBudget.KeysPerChannel, d.RetryBudget.Total.Duration, r.opt.Now())
 	trace := make([]store.RetryAttempt, 0, 4)
 
@@ -217,7 +252,7 @@ loop:
 					c.Set(responsesNativeKey, false)
 				}
 			}
-			out := r.attemptOne(c, cand, key, attemptBody, model, stream, &trace, hit)
+			out := r.attemptOne(c, cand, key, attemptBody, model, stream, &trace, hit, override.Timeouts)
 			switch out {
 			case outcomeDone:
 				return trace, c.Writer.Status(), "", ""
@@ -276,6 +311,27 @@ func promoteSticky(candidates []router.Candidate, entry affinity.Entry) []router
 	return candidates
 }
 
+// filterChannels 按请求级渠道白名单过滤候选，并校验每个 id 存在、启用且支持当前模型。
+// 任何不合法 id 都返回带 channels[i] 路径的错误，避免静默缩小候选导致难以排查。
+func filterChannels(channels []*store.Channel, model string, ids []int64) ([]*store.Channel, error) {
+	byID := make(map[int64]*store.Channel, len(channels))
+	for _, ch := range channels {
+		byID[ch.ID] = ch
+	}
+	out := make([]*store.Channel, 0, len(ids))
+	for i, id := range ids {
+		ch, ok := byID[id]
+		if !ok {
+			return nil, fmt.Errorf("channels[%d]: 渠道 %d 不存在或未启用", i, id)
+		}
+		if !router.SupportsModel(ch, model) {
+			return nil, fmt.Errorf("channels[%d]: 渠道 %d 不支持模型 %q", i, id, model)
+		}
+		out = append(out, ch)
+	}
+	return out, nil
+}
+
 // HandleModels 处理 GET /v1/models：启用渠道模型去重合并。
 func (r *Relay) HandleModels(c *gin.Context) {
 	var channels []*store.Channel
@@ -328,7 +384,21 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, ReasoningTokens: hit.reasoningTokens,
 		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus,
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+		ConfigOverride: configSummaryFromContext(c),
 	})
+}
+
+// configSummaryFromContext 返回已脱敏且有界的覆盖摘要；原始 header 永不落库。
+func configSummaryFromContext(c *gin.Context) string {
+	value, ok := c.Get(ctxConfigSummary)
+	if !ok {
+		return ""
+	}
+	summary, _ := value.(string)
+	if len(summary) > reqconfig.MaxSummaryBytes {
+		return summary[:reqconfig.MaxSummaryBytes]
+	}
+	return summary
 }
 
 // updateAffinity 在请求终态统一更新亲和表：仅 2xx 成功写入/刷新，
@@ -437,10 +507,11 @@ func (r *Relay) settleTokenUsage(c *gin.Context, hit *hitRecord) (string, string
 }
 
 // attemptOne 执行一次上游尝试并分类处置。
-func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord) attemptOutcome {
+func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord, timeoutOverride *reqconfig.Timeouts) attemptOutcome {
 	ch := cand.Channel
 	nativeResponses := isResponsesRequest(c) && isResponsesNative(c)
 	connect, firstToken, overall := resolveTimeouts(ch, r.currentDefaults())
+	connect, firstToken, overall = applyTimeoutOverride(connect, firstToken, overall, timeoutOverride)
 	appendTrace := func(status int, errType, errMsg string, attemptStart time.Time) {
 		*trace = append(*trace, store.RetryAttempt{
 			ChannelID: ch.ID, ChannelName: ch.Name, KeyID: key.ID,
@@ -672,6 +743,23 @@ func resolveTimeouts(ch *store.Channel, d config.Defaults) (connect, firstToken,
 		overall = time.Duration(*ch.Timeouts.OverallSec) * time.Second
 	}
 	return
+}
+
+// applyTimeoutOverride 以请求级覆盖最高优先级合并超时（渠道级 > 运行时默认）。
+func applyTimeoutOverride(connect, firstToken, overall time.Duration, ov *reqconfig.Timeouts) (time.Duration, time.Duration, time.Duration) {
+	if ov == nil {
+		return connect, firstToken, overall
+	}
+	if ov.Connect != nil {
+		connect = *ov.Connect
+	}
+	if ov.FirstToken != nil {
+		firstToken = *ov.FirstToken
+	}
+	if ov.Overall != nil {
+		overall = *ov.Overall
+	}
+	return connect, firstToken, overall
 }
 
 // parseChatRequest 提取 model 与 stream 标志。

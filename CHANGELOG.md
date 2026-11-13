@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.16
+
+- 新增请求级 `X-EverGate-Config` 覆盖：支持超时（connect/first_token/overall）、重试预算（渠道数/每渠道 key 数/总时长）、候选渠道 id 列表与 `session_affinity` 开关，覆盖只对当前请求生效
+- 严格白名单解析：未知字段、类型错误、敏感字段（api_key/model/allowed_models 等）与越界值返回 400 并给出字段路径；小于安全下限的时长自动收敛，超大值拒绝
+- 覆盖在 TokenAuth 与令牌治理之后应用，不能绕过模型白名单、额度、IP 限制或上游 key 加密；候选渠道必须存在、启用且支持请求模型
+- 请求日志新增 `config_override`：仅保存脱敏后的生效摘要（≤512B），不保存原始 header
+
 ## v0.1.15
 
 - 新增 `X-Session-Id` 会话亲和：同一下游令牌 + 模型 + 会话在 10 分钟 TTL 内优先复用上次成功的渠道与 key，每次成功复用自动续期并改写记录

@@ -19,6 +19,7 @@
 - **Web 管理台**：登录 / Dashboard / 渠道与 key 池管理 / 下游令牌 / 请求日志（重试轨迹可视化）/ 系统设置热更新，内置新版本检查
 - **令牌治理**：下游 token 支持额度、有效期、模型白名单与 IP 白名单（精确 IP / CIDR）；成功响应按实际输入 + 输出 token 扣减额度
 - **会话亲和**：请求携带 `X-Session-Id` 时，同一下游令牌 + 模型的后续请求在 10 分钟内优先复用上次成功的渠道与 key；记录仅存 SHA-256 指纹于进程内存，重启后自然重建，故障时仍按原有重试与健康规则切换
+- **请求级配置**：`X-EverGate-Config` 白名单覆盖单请求超时、重试预算、候选渠道与亲和开关，不绕过鉴权、令牌治理或上游 key 加密
 - **用量成本**：可配置全局与渠道+模型每百万 token 单价；请求完成时按价格快照计价，后台按 UTC 日幂等聚合，管理台提供日期/渠道/模型/令牌筛选和 Top 维度
 - **渠道健康**：周期使用启用 key 调用 `GET /models` 轻量探测（不触发推理），展示健康状态、可用 key 数与最近错误；404/405 仅标记“无法判定”
 - **安全**：上游 key AES-GCM 加密落库（主密钥不进 DB）；管理台密码 bcrypt；任何接口不回显明文
@@ -66,6 +67,21 @@ go run ./cmd/evergate   # 开发态直接运行
 
 端口、base path、SQLite 路径、master key、session secret 属启动引导配置，修改需重启。
 
+### 请求级配置覆盖（`X-EverGate-Config`）
+
+单个请求可通过 header 覆盖超时、重试预算、候选渠道与亲和开关，仅接受以下白名单字段：
+
+```json
+{"timeouts":{"connect":"10s","first_token":"60s","overall":"180s"},
+ "retry":{"channels":2,"keys_per_channel":1,"total":"45s"},
+ "channels":[1,3],
+ "session_affinity":false}
+```
+
+- header 必须是 ≤4096 字节的 JSON 对象，时长使用 `30s` / `5m`；`channels` 中的 id 必须存在、已启用且支持当前模型。
+- 未知字段、类型错误、越界值或试图覆盖 `api_key` / `model` / `allowed_models` 等字段一律返回 400，并指出字段路径。
+- 覆盖不能绕过令牌鉴权、模型白名单、额度与 IP 限制；生效字段以脱敏摘要写入请求日志。
+
 ## 安全模型
 
 - 上游 key 以 AES-GCM 加密存储，主密钥仅在 `evergate.yml`（已 gitignore）；DB 文件泄露 ≠ key 泄露
@@ -78,7 +94,7 @@ go run ./cmd/evergate   # 开发态直接运行
 
 单进程 Go 服务，自上而下：
 
-1. **`/v1/*` OpenAI 兼容入口**：下游令牌鉴权 → 路由器（模型 → 候选渠道，priority 升序 + 同级 weight 加权随机；`X-Session-Id` 命中亲和时在最高优先级组内提前粘性渠道）→ key 池调度（渠道内加权轮询，亲和优先同 key，跳过 cooldown/disabled）→ 错误分类重试控制器 → relay（SSE 零缓冲 flush 透传，首 token 超时属可重试错误）
+1. **`/v1/*` OpenAI 兼容入口**：下游令牌鉴权 → 令牌治理 → `X-EverGate-Config` 白名单覆盖 → 路由器（模型 → 候选渠道，priority 升序 + 同级 weight 加权随机；`X-Session-Id` 命中亲和时在最高优先级组内提前粘性渠道）→ key 池调度（渠道内加权轮询，亲和优先同 key，跳过 cooldown/disabled）→ 错误分类重试控制器 → relay（SSE 零缓冲 flush 透传，首 token 超时属可重试错误）
 2. **`/admin/api/*` 管理台 API**（session 鉴权）：渠道 / 凭据 / 令牌 / 请求日志 / 系统设置管理
 3. **SQLite（WAL 模式）**：channels / channel_keys / tokens / request_logs / usage_daily / model_prices / admins / runtime_settings，业务数据唯一事实源；后台 goroutine 负责健康探测、冷却恢复、成本聚合与日志清理
 4. **React 管理台**：构建产物经 go:embed 嵌入同一二进制

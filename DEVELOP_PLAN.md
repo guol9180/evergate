@@ -510,9 +510,17 @@
   4. request_logs 记录脱敏后的有效覆盖摘要（如超时/渠道范围/亲和开关），不保存原始 header 中的无关大 JSON，日志大小有上限；
   5. CC 与 Responses 公共 HTTP 边界测试覆盖无 header、合法覆盖、非法覆盖、候选耗尽、与 T21 权限约束叠加；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不做请求配置持久化/命名配置集；不做 provider hooks/插件系统；不允许请求指定上游 key 明文或索引；不做 CC↔R 协议转换策略覆盖
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：将任务书 Portkey config 借鉴收敛为显式白名单，避免任意配置注入与权限绕行
+  - 2026-11-13 执行 新增 `internal/reqconfig`：严格白名单解析 timeouts / retry / channels / session_affinity，
+    未知字段与敏感字段按路径 400，时长小于安全下限收敛、超上限拒绝，header ≤4096B，摘要 ≤512B；
+    relay 在 TokenAuth 与令牌治理之后应用覆盖，渠道 id 校验存在/启用/支持模型，超时覆盖高于渠道级，
+    session_affinity=false 时本次请求不读写亲和；RequestLog 新增 `config_override` 脱敏摘要
+  - 2026-11-13 验证 `go test -p 1 ./... -count=1` 全包通过（含 reqconfig 单测与 relay CC/Responses 公共
+    HTTP 边界：合法覆盖限制渠道与重试预算、非法 JSON/未知字段/类型错误/越界/渠道不存在或停用、
+    模型白名单叠加 403、无 token 401、session 亲和开关、摘要落库有界、候选耗尽 503）；
+    `go vet ./...` 通过；`make build` 成功（前端重新构建，dist 无差异）
 
 ### T25: 管理台 Playground 与命中链路调试（P1）
 
