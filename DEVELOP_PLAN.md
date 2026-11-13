@@ -655,13 +655,15 @@
   6. WHEN npm 通道不可用 THEN 按配置回退 GitHub Releases 下载 + checksums.txt SHA256 校验；
   7. 公共 HTTP 边界回归测试（mock registry / Release）覆盖成功、校验失败、替换失败、重启编排；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不做强制/后台静默更新（必须用户点击确认）；不做自动回滚 watchdog（仅保留备份与回滚指引）；不做代码签名（已知局限：integrity 防传输损坏与镜像篡改，不防 registry 账号级攻击）；不做差量补丁；不引入 AGPL 实现（禁参考 MinIO selfupdate），替换引擎自研零新增依赖
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-12 计划 用户指令确认建卡；依赖 T29 平台包就绪后开工；评估结论：下载通道层与替换引擎层正交，npm 不消除 Windows 锁文件问题，替换/重启编排仍需自研
   - 2026-11-13 执行 新增 `internal/selfupdate`：npm 平台包 tarball + sha512 integrity、GitHub Releases + checksums.txt SHA256 回退、同目录改名替换/备份、30s 优雅重启与新进程拉起；管理台新增 apply/progress 接口与三阶段轮询 UI
   - 2026-11-13 验证 单元测试覆盖 npm integrity 成功/失败、GitHub checksum、npm→GitHub 自动回退、替换备份、校验失败保留旧二进制、dev/不可写目录拒绝、同版本拒绝；`go test ./internal/selfupdate` 通过
   - 2026-11-13 验证 端到端（18926）：v0.1.24 → 本地 mock npm registry(v0.1.25) 一键更新成功；旧进程优雅停止并拉起新进程，`/healthz` 200、版本变为 v0.1.25、备份文件 SHA256 与 v0.1.24 原二进制一致
   - 2026-11-13 验证 更新弹窗 390/1280 截图通过（无横向溢出）；失败态标红下载阶段并展示可滚动错误与备份路径；`npm --prefix web run build`、`make build`、`go test -p 1 ./...`、`go vet` 通过
+  - 2026-11-13 交付 提交 291388d、tag v0.1.25；Release Action 43399275445 成功（2m50s），4 个资产与 CHANGELOG 正文齐全；npm `@heguoliang/*` 0.1.25 已发布
+  - 2026-11-13 验证 真实 npm 通道端到端：v0.1.24 本地构建从官方 registry 一键更新到 0.1.25，18930 `/healthz` 200、`/metrics` 200、版本变为 v0.1.25，旧版本备份保留（29.5MB）
 
 ### T31: 三件套文档复审（P0，用户指令）
 
