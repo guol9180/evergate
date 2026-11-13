@@ -11,30 +11,16 @@
 
 **下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供三平台单二进制（Windows x64 / Linux x64 / macOS Apple Silicon），推送 `v*` tag 自动构建。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
-## 功能亮点
+## 功能
 
-- **统一入口**：OpenAI Chat Completions `/v1/chat/completions`（SSE 流式 + tool calls 透传）、OpenAI Responses `/v1/responses`、`/v1/models`；Anthropic Messages 延后支持（见路线图）
-- **不中断**（本项目存在的第一理由）：key 池调度 + cooldown 状态机 + 错误分类重试（重试 → 换 key → 换渠道）；SSE 场景下「首个 chunk 写给客户端之前」可无感切换，之后绝不重试
-- **双协议上游**：Chat Completions 全渠道支持；渠道级声明 Responses 能力后 `/v1/responses` 原生透传保真，未声明渠道自动 R→CC 桥接兜底
-- **Web 管理台**：登录 / Dashboard / 渠道与 key 池管理 / 下游令牌 / 请求日志（重试轨迹可视化）/ Playground / 系统设置热更新，内置新版本检查
-- **令牌治理**：下游 token 支持额度、有效期、模型白名单与 IP 白名单（精确 IP / CIDR）；成功响应按实际输入 + 输出 token 扣减额度
-- **会话亲和**：请求携带 `X-Session-Id` 时，同一下游令牌 + 模型的后续请求在 10 分钟内优先复用上次成功的渠道与 key；记录仅存 SHA-256 指纹于进程内存，重启后自然重建，故障时仍按原有重试与健康规则切换
-- **用量成本**：可配置全局与渠道+模型每百万 token 单价；请求完成时按价格快照计价，后台按 UTC 日幂等聚合，管理台提供日期/渠道/模型/令牌筛选、请求数/成功率双轴日趋势图与 Top 维度
-- **渠道健康**：周期使用启用 key 调用 `GET /models` 轻量探测（不触发推理），展示健康状态、可用 key 数与最近错误；404/405 仅标记“无法判定”
-- **安全**：上游 key AES-GCM 加密落库（主密钥不进 DB）；管理台密码 bcrypt；任何接口不回显明文
-- **可观测**：每请求一条日志（含 retry_trace 与统一口径 first_token_ms），异步批量落库不阻塞请求路径；Prometheus `/metrics` 暴露请求/错误/首 token/上游尝试/渠道与 key 状态（仅本机 loopback 可抓取）；可选 OTLP/HTTP JSON 链路导出，默认关闭
-- **零依赖交付**：`1 个可执行文件 + 1 个 SQLite 数据文件`，`./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 数据库服务
+- **统一入口**：OpenAI Chat Completions / Responses 与 `/v1/models`；上游支持任意 OpenAI 兼容端点，Responses 渠道可原生透传，其余自动桥接
+- **故障切换**：渠道 + key 池调度、错误分类重试与 cooldown；SSE 首个 chunk 前可无感切换，之后不重试
+- **管理台**：渠道/key、下游令牌、请求日志、Playground、用量成本、系统设置
+- **治理与成本**：令牌额度、有效期、模型/IP 白名单；价格快照与 UTC 日聚合
+- **单二进制交付**：1 个可执行文件 + 1 个 SQLite 数据文件，无需 Docker / Redis / 外部数据库
+- **可观测与更新**：Prometheus `/metrics`、可选 OTLP、一键更新；配置见 [运维配置](./docs/运维配置.md)
 
-## 协议路由矩阵
-
-| 下游入口 | 上游声明 Responses 能力 | 未声明 Responses 能力 |
-|---|---|---|
-| `POST /v1/chat/completions` | CC→CC 透传 | CC→CC 透传 |
-| `POST /v1/responses` | R→R 原生透传（含非流式、SSE、工具与 usage） | R→CC 桥接转换 |
-
-- 渠道编辑页开启「原生支持 Responses API」后，`/v1/responses` 优先路由到该渠道，仅改写鉴权、base_url 与模型映射；请求/响应 JSON 与 SSE 事件保持上游语义，`store` / `previous_response_id` 等有状态字段保真。
-- 桥接模式把 Responses 请求转换为上游 Chat Completions：支持 `function`、自由文本/`lark`/`regex` grammar `custom` 工具、namespace 工具、Responses Lite `additional_tools`、`reasoning.effort` 与 `text.verbosity`；不可桥接的有状态字段显式 400，绝不静默丢弃。
-- 不同 namespace 同名工具映射为 `<namespace>__<tool>` 唯一函数名，响应与历史回传恢复原始 namespace/name。
+协议、调度与验收细节见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)；下游协议调研见 [协议生态调研](./docs/协议生态调研-ChatCompletions与Responses.md)。
 
 ## 快速开始
 
@@ -59,45 +45,28 @@ npm 安装会自动选择本平台子包，实际运行仍是原生单二进制�
 3. 管理台添加渠道（Base URL + 上游 key，支持多行批量导入）并创建下游令牌；可按需配置 token 额度、有效期、模型白名单与 IP 白名单
 4. 客户端只需改 base_url 为 `http://localhost:8787/v1` 并使用下游令牌
 
-添加上游 key 后，后台会按「系统设置」中的周期、并发与超时自动调用上游 `/models` 做健康探测；该探测不触发推理请求。
-
 存活检查 `GET /healthz`。默认端口 `8787`，避开常用 8080，修改只需改 `evergate.yml` 的 `server.port`。
 
-### 运行时设置与 YAML 边界
+## 运维与配置
 
-首次启动时 `evergate.yml` 的 `defaults` 与日志保留天数会初始化 SQLite `runtime_settings` 表；此后这些运行时业务设置以 SQLite 为唯一事实源，管理台「系统设置」保存即热生效：
-
-- 上游连接 / 首 token / 整体超时；重试渠道数、每渠道 key 数、重试总时长
-- cooldown 失败阈值、基础时长与上限；请求日志保留天数；健康探测参数
-
-端口、base path、SQLite 路径、master key、session secret 属启动引导配置，修改需重启。
-
-### 可观测性
-
-- `GET /metrics` 输出 Prometheus 文本格式，仅允许 loopback 直连抓取（非本机返回 403），无需额外鉴权或 sidecar
-- 指标包含请求/错误/并发数、首 token 直方图、上游尝试与错误分类，以及抓取时从 SQLite + key 状态机采集的渠道健康与 key 状态
-- 链路导出默认关闭；设置标准环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT`（或 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`）后启用 OTLP/HTTP JSON 导出，支持 `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME`；显式使用 `grpc` 或 `http/protobuf` 协议会保持关闭并记录告警
-- 导出失败只写 warning，不影响请求结果；进程退出时排空队列（最长 10 秒）
+运行时设置、Prometheus/OTLP、一键更新与环境变量见 [docs/运维配置.md](./docs/运维配置.md)。
 
 ## 安全模型
 
-- 上游 key 以 AES-GCM 加密存储，主密钥仅在 `evergate.yml`（已 gitignore）；DB 文件泄露 ≠ key 泄露
-- 下游令牌仅存 SHA-256 哈希；管理台接口永不回显任何 key 明文
-- 下游令牌的 IP 白名单默认基于 TCP 直连地址判断；当前版本不信任 `X-Forwarded-For`
-- 面向**本地 / 内网可信环境**设计：管理台与 API 同端口，公网暴露前请自行加反向代理 TLS 与访问控制
-- 初始 `admin/admin123` 只用于首次登录并会强制改密；请不要在未加访问控制的情况下把管理端口暴露到公网
+- 上游 key 以 AES-GCM 加密存储，主密钥仅在 `evergate.yml`（已 gitignore）；下游令牌仅存 SHA-256
+- 管理台与 API 同端口，面向本地 / 内网可信环境；公网暴露前请自行加 TLS 与访问控制
+- 初始 `admin/admin123` 仅用于首次登录并会强制改密
 
 ## 架构概览
 
-单进程 Go 服务，自上而下：
+单进程 Go 服务：
 
-1. **`/v1/*` OpenAI 兼容入口**：下游令牌鉴权 → 路由器（模型 → 候选渠道，priority 升序 + 同级 weight 加权随机；`X-Session-Id` 命中亲和时在最高优先级组内提前粘性渠道）→ key 池调度（渠道内加权轮询，亲和优先同 key，跳过 cooldown/disabled）→ 错误分类重试控制器 → relay（SSE 零缓冲 flush 透传，首 token 超时属可重试错误）
-2. **`/admin/api/*` 管理台 API**（session 鉴权）：渠道 / 凭据 / 令牌 / 请求日志 / Playground / 系统设置管理
-3. **SQLite（WAL 模式）**：channels / channel_keys / tokens / request_logs / usage_daily / model_prices / admins / runtime_settings，业务数据唯一事实源；后台 goroutine 负责健康探测、冷却恢复、成本聚合与日志清理
-4. **React 管理台**：构建产物经 go:embed 嵌入同一二进制
-5. **运维端点**：`/healthz` 存活检查；`/metrics` Prometheus 文本指标（仅 loopback，非本机 403）；`internal/telemetry` 在设置 OTLP 环境变量时导出父子 span，未启用时无后台 goroutine
+1. `/v1/*`：下游令牌鉴权 → 路由 → key 池调度 → 错误分类重试 → relay/SSE
+2. `/admin/api/*`：管理台 API（session 鉴权）
+3. SQLite（WAL）：渠道、令牌、请求日志、用量与运行时设置的事实源
+4. React 管理台构建产物 go:embed 进同一二进制；`/healthz` 与 `/metrics` 为运维端点
 
-核心技术栈：Go 1.24+ / Gin / GORM / glebarez 纯 Go SQLite；React 19 / TypeScript / Vite / TanStack Query/Router/Table / Tailwind 4 / shadcn/ui。
+技术栈：Go 1.24+ / Gin / GORM / 纯 Go SQLite；React 19 / TypeScript / Vite / TanStack Query / Tailwind 4。
 
 ## 路线图
 
@@ -112,7 +81,7 @@ make build                   # 提交前完整构建
 ```
 
 - 开发规范：[AGENTS.md](./AGENTS.md)；需求与设计：[docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)；协议调研：[docs/协议生态调研-ChatCompletions与Responses.md](./docs/协议生态调研-ChatCompletions与Responses.md)
-- 参考项目边界：gpt-load（MIT）/ bifrost（Apache-2.0）/ LiteLLM 核心（MIT）仅作设计借鉴；new-api（AGPL-3.0）不复制任何代码
+- 运维与配置：[docs/运维配置.md](./docs/运维配置.md)；参考项目与许可证边界见 [AGENTS.md](./AGENTS.md)
 
 ## License
 
