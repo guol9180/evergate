@@ -29,6 +29,7 @@ internal/browser/      # 启动后打开管理台的系统浏览器封装
 internal/update/       # GitHub Release 自动更新检查
 internal/metrics/      # 进程内 Prometheus 注册表、文本曝光与 loopback 限制
 internal/telemetry/    # 可选 OTLP/HTTP JSON 链路导出（无 SDK 依赖，默认关闭）
+internal/selfupdate/   # 一键更新：npm/GitHub 下载、integrity 校验、改名替换与重启编排
 npm/wrapper/           # npm 主包模板（启动垫片，不含二进制）
 npm/platform/          # npm 平台子包模板（版本/os/cpu 由发布脚本注入）
 scripts/               # 构建与发布辅助脚本（如 stage-npm.mjs）
@@ -72,6 +73,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
 - OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
 - npm 发布：主包 `evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
+- 一键更新：下载必须校验 npm `dist.integrity`（sha512）或 GitHub `checksums.txt`（SHA256）；替换只允许同目录改名交换并保留旧版本备份，失败不得破坏原二进制；重启必须沿用 30s 优雅停机；禁止从任意 URL 下载或引入第三方自更新库。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）

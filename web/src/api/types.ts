@@ -22,6 +22,34 @@ export interface UpdateStatus {
   assets?: UpdateAsset[]
 }
 
+export interface SelfUpdateCapability {
+  available: boolean
+  reason?: string
+  executable?: string
+  platform: string
+  dev: boolean
+}
+
+export interface UpdateJob {
+  id: string
+  stage: 'downloading' | 'verifying' | 'replacing' | 'restarting' | 'failed'
+  progress: number
+  source?: 'npm' | 'github' | string
+  target_version: string
+  message?: string
+  error?: string
+  failed_stage?: string
+  backup_path?: string
+  started_at: string
+  updated_at: string
+}
+
+export interface UpdateProgress {
+  capability: SelfUpdateCapability
+  job: UpdateJob | null
+  current_version: string
+}
+
 export interface SystemSettingsValues {
   connect_timeout_ms: number
   first_token_timeout_ms: number

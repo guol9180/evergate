@@ -1,13 +1,15 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, AlertTriangle, ArrowRight, Download, Timer, TowerControl, Waypoints, Zap } from 'lucide-react'
 import { useChannels, useLogs, useUpdateStatus } from '../api/hooks'
-import { Badge, Card, Empty, PageHeader, Spinner, Td, Th } from '../components/ui'
+import { Badge, Button, Card, Empty, PageHeader, Spinner, Td, Th } from '../components/ui'
+import { UpdateDialog } from '../components/UpdateDialog'
 import { fmtInt, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
 
 export default function Dashboard() {
   const channels = useChannels()
   const update = useUpdateStatus()
+  const [updateOpen, setUpdateOpen] = useState(false)
   const todayStart = useMemo(() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
@@ -35,21 +37,18 @@ export default function Dashboard() {
     }
   }, [chs, logItems, logs.data])
 
-  const windowsAsset = update.data?.assets?.find((asset) => asset.name.endsWith('windows-amd64.exe'))
   const updateBanner = update.data?.update_available ? (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
       <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm">
         <Download size={16} />
       </span>
       <div className="min-w-56 flex-1">
-        <div className="text-sm font-semibold text-indigo-900">EverGate {update.data.latest_version} 可下载</div>
-        <p className="text-xs text-indigo-700/80">下载 Windows 版后替换旧 exe 并重启；数据目录保持不变。</p>
+        <div className="text-sm font-semibold text-indigo-900">EverGate {update.data.latest_version} 可更新</div>
+        <p className="text-xs text-indigo-700/80">一键下载、校验并替换当前版本，服务自动优雅重启；数据目录保持不变。</p>
       </div>
-      {windowsAsset && (
-        <a href={windowsAsset.browser_download_url} className="inline-flex h-8 items-center rounded-md bg-indigo-600 px-3 text-xs font-medium text-white transition-colors hover:bg-indigo-700" target="_blank" rel="noreferrer">
-          下载 Windows 版
-        </a>
-      )}
+      <Button size="sm" onClick={() => setUpdateOpen(true)}>
+        <Download size={14} /> 立即更新
+      </Button>
       <a href={update.data.release_url} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-700 hover:underline">
         查看更新说明
       </a>
@@ -85,6 +84,7 @@ export default function Dashboard() {
             ))}
           </ol>
         </Card>
+        <UpdateDialog open={updateOpen} onClose={() => setUpdateOpen(false)} status={update.data} />
       </div>
     )
   }
@@ -183,6 +183,7 @@ export default function Dashboard() {
           </table>
         </div>
       </Card>
+      <UpdateDialog open={updateOpen} onClose={() => setUpdateOpen(false)} status={update.data} />
     </div>
   )
 }

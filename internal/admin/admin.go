@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"sort"
@@ -22,6 +23,7 @@ import (
 
 	"evergate/internal/health"
 	"evergate/internal/pool"
+	"evergate/internal/selfupdate"
 	"evergate/internal/settings"
 	"evergate/internal/store"
 	"evergate/internal/update"
@@ -30,14 +32,15 @@ import (
 
 // Options 管理 API 装配依赖。
 type Options struct {
-	DB        *gorm.DB
-	MasterKey string        // 解密上游 key 用于连通测试
-	Pool      *pool.Manager // 渠道健康推导 / key 重置
-	Session   *SessionManager
-	Update    *update.Checker
-	Settings  *settings.Manager
-	Health    *health.Prober
-	Usage     *usage.Manager
+	DB         *gorm.DB
+	MasterKey  string        // 解密上游 key 用于连通测试
+	Pool       *pool.Manager // 渠道健康推导 / key 重置
+	Session    *SessionManager
+	Update     *update.Checker
+	Settings   *settings.Manager
+	Health     *health.Prober
+	Usage      *usage.Manager
+	SelfUpdate *selfupdate.Manager
 	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
 	Playground gin.HandlerFunc
 }
@@ -60,6 +63,8 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.GET("/admin/api/auth/me", a.sessionMiddleware(), a.me)
 	r.PUT("/admin/api/auth/password", a.sessionMiddleware(), a.changePassword)
 	r.GET("/admin/api/system/update", a.sessionMiddleware(), a.systemUpdate)
+	r.POST("/admin/api/system/update/apply", a.sessionMiddleware(), a.applySystemUpdate)
+	r.GET("/admin/api/system/update/progress", a.sessionMiddleware(), a.systemUpdateProgress)
 	r.GET("/admin/api/system/settings", a.sessionMiddleware(), a.getSystemSettings)
 	r.PUT("/admin/api/system/settings", a.sessionMiddleware(), a.updateSystemSettings)
 	r.GET("/admin/api/usage/report", a.sessionMiddleware(), a.getUsageReport)
@@ -170,6 +175,44 @@ func (a *API) systemUpdate(c *gin.Context) {
 		return
 	}
 	ok(c, status)
+}
+
+// applySystemUpdate 启动一键更新；任务异步执行，前端轮询 progress。
+func (a *API) applySystemUpdate(c *gin.Context) {
+	if a.opt.SelfUpdate == nil {
+		fail(c, http.StatusServiceUnavailable, "自动更新未配置")
+		return
+	}
+	var req struct {
+		Version string `json:"version"`
+		Source  string `json:"source"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
+		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		return
+	}
+	job, err := a.opt.SelfUpdate.Start(req.Version, req.Source)
+	if err != nil {
+		if errors.Is(err, selfupdate.ErrBusy) {
+			fail(c, http.StatusConflict, err.Error())
+			return
+		}
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	ok(c, job)
+}
+
+func (a *API) systemUpdateProgress(c *gin.Context) {
+	if a.opt.SelfUpdate == nil {
+		fail(c, http.StatusServiceUnavailable, "自动更新未配置")
+		return
+	}
+	ok(c, gin.H{
+		"capability":      a.opt.SelfUpdate.Capability(),
+		"job":             a.opt.SelfUpdate.Snapshot(),
+		"current_version": a.opt.SelfUpdate.CurrentVersion(),
+	})
 }
 
 func (a *API) getSystemSettings(c *gin.Context) {

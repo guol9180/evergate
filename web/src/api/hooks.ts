@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, jsonBody } from './client'
-import type { AdminInfo, Channel, ChannelDetail, LogsPage, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, Channel, ChannelDetail, LogsPage, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -31,6 +31,27 @@ export function useUpdateStatus(enabled = true) {
     retry: false,
     staleTime: 5 * 60_000,
     refetchInterval: 30 * 60_000,
+  })
+}
+
+export function useUpdateProgress(enabled: boolean) {
+  return useQuery({
+    queryKey: ['system-update-progress'],
+    queryFn: () => api<UpdateProgress>('/admin/api/system/update/progress'),
+    enabled,
+    retry: false,
+    staleTime: 0,
+    refetchInterval: enabled ? 900 : false,
+  })
+}
+
+export function useApplyUpdate() {
+  return useMutation({
+    mutationFn: (data: { version?: string; source?: string }) =>
+      api<UpdateJob>('/admin/api/system/update/apply', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   })
 }
 

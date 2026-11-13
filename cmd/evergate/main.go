@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"evergate/internal/pool"
 	"evergate/internal/relay"
 	"evergate/internal/router"
+	"evergate/internal/selfupdate"
 	"evergate/internal/server"
 	"evergate/internal/settings"
 	"evergate/internal/store"
@@ -164,6 +166,23 @@ func run() error {
 	})
 
 	routerInst := router.New(time.Now().UnixNano())
+	updateAPIURL := os.Getenv("EVERGATE_UPDATE_API_URL")
+	if updateAPIURL == "" {
+		updateAPIURL = update.DefaultAPIURL
+	}
+	updateChecker := update.NewChecker(version, updateAPIURL, time.Now)
+	restartCh := make(chan struct{})
+	var restartOnce sync.Once
+	updater := selfupdate.New(selfupdate.Options{
+		CurrentVersion: version,
+		Args:           os.Args[1:],
+		Registry:       os.Getenv("EVERGATE_NPM_REGISTRY"),
+		Latest:         updateChecker.Check,
+		Logger:         logger,
+		Now:            time.Now,
+		RequestRestart: func() { restartOnce.Do(func() { close(restartCh) }) },
+	})
+	selfupdate.CleanupBackups(updater.Executable(), 1)
 	relayHandler := relay.New(relay.Options{
 		DB:        db,
 		Router:    routerInst,
@@ -183,11 +202,12 @@ func run() error {
 		MasterKey:  cfg.Security.MasterKey,
 		Pool:       poolMgr,
 		Session:    admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
-		Update:     update.NewChecker(version, update.DefaultAPIURL, time.Now),
+		Update:     updateChecker,
 		Settings:   settingsMgr,
 		Health:     prober,
 		Usage:      usageMgr,
 		Playground: relayHandler.HandlePlayground,
+		SelfUpdate: updater,
 	})
 
 	engine := server.New(server.Options{
@@ -243,11 +263,20 @@ func run() error {
 		return fmt.Errorf("http server: %w", err)
 	case <-ctx.Done():
 		logger.Info("shutdown signal received, draining requests (max 30s)")
+	case <-restartCh:
+		logger.Info("self-update restart requested, draining requests (max 30s)")
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("graceful shutdown: %w", err)
+	}
+	if spec, ok := updater.PendingLaunch(); ok {
+		if err := selfupdate.Spawn(spec); err != nil {
+			logger.Error("launch new version failed", slog.Any("error", err), slog.String("path", spec.Path))
+		} else {
+			logger.Info("new version launched", slog.String("path", spec.Path))
+		}
 	}
 	logger.Info("evergate stopped")
 	return nil

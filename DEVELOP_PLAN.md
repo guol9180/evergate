@@ -658,6 +658,10 @@
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-12 计划 用户指令确认建卡；依赖 T29 平台包就绪后开工；评估结论：下载通道层与替换引擎层正交，npm 不消除 Windows 锁文件问题，替换/重启编排仍需自研
+  - 2026-11-13 执行 新增 `internal/selfupdate`：npm 平台包 tarball + sha512 integrity、GitHub Releases + checksums.txt SHA256 回退、同目录改名替换/备份、30s 优雅重启与新进程拉起；管理台新增 apply/progress 接口与三阶段轮询 UI
+  - 2026-11-13 验证 单元测试覆盖 npm integrity 成功/失败、GitHub checksum、npm→GitHub 自动回退、替换备份、校验失败保留旧二进制、dev/不可写目录拒绝、同版本拒绝；`go test ./internal/selfupdate` 通过
+  - 2026-11-13 验证 端到端（18926）：v0.1.24 → 本地 mock npm registry(v0.1.25) 一键更新成功；旧进程优雅停止并拉起新进程，`/healthz` 200、版本变为 v0.1.25、备份文件 SHA256 与 v0.1.24 原二进制一致
+  - 2026-11-13 验证 更新弹窗 390/1280 截图通过（无横向溢出）；失败态标红下载阶段并展示可滚动错误与备份路径；`npm --prefix web run build`、`make build`、`go test -p 1 ./...`、`go vet` 通过
 
 ### T31: 三件套文档复审（P0，用户指令）
 

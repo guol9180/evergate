@@ -2,6 +2,14 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.25
+
+- 管理台新增一键更新：Dashboard 提示新版本后可直接下载、校验、替换并优雅重启，界面展示下载/校验/替换/重启四阶段进度与失败原因
+- 下载优先 npm 平台子包并校验 `dist.integrity`（sha512），失败自动回退 GitHub Releases 并用 `checksums.txt` 校验 SHA256；`EVERGATE_NPM_REGISTRY` / `EVERGATE_UPDATE_API_URL` 可切换镜像与 API
+- Windows 使用运行中 exe 改名交换（`<exe>.bak-<version>-<timestamp>`），Unix 同目录原子替换；失败自动恢复旧文件，启动时仅保留最近一份备份并清理 `.new-*` 残留
+- 重启沿用 30 秒优雅排空，新进程以相同参数/工作目录启动；新版本健康后版本号生效，旧版本备份保留供手动回滚
+- 开发版本（dev/dirty）、`go run` 临时文件或不可写安装目录会拒绝自更新并提示原因
+
 ## v0.1.24
 
 - 新增 npm 安装渠道：`npm i -g @heguoliang/evergate` 自动按 `os`/`cpu` 选择 `@heguoliang/evergate-win32-x64` / `@heguoliang/evergate-linux-amd64` / `@heguoliang/evergate-darwin-arm64` 平台子包
