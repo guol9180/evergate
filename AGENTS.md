@@ -53,6 +53,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - Responses namespace 工具扁平化必须生成确定性且全局唯一的 Chat 函数名；响应输出与历史回传必须恢复原始 `namespace/name`，不得只按局部工具名去重或依赖跨请求内存状态。
 - 管理台 API 返回统一 JSON 结构；任何接口不得回显上游 key 明文。
 - 前端路由守卫依赖的服务端状态（如 `['me']`）被 mutation 改变时，必须在成功回调同步更新 TanStack Query 缓存；仅重新导航不得依赖旧缓存判断。
+- 前端图表统一使用 Recharts 共享组件（参照 `web/src/components/TrendChart.tsx`），不得手写 div/SVG 图表；图表宽度 100%，高度必须由响应式规则或 flex 填充，禁止在卡片内留下大块空白；引入图表库需按路由懒加载，避免进入首屏 bundle。
 - 运行日志（slog JSON 到 stdout）与请求日志（入库供管理台查询）分离。
 - 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
 - 渠道健康探测只能调用 `GET {base_url}/models`，不得触发推理接口；404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。

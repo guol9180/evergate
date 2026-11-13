@@ -9,9 +9,10 @@ import {
   useUsagePrices,
   useUsageReport,
 } from '../api/hooks'
-import type { UsageDimensionRow } from '../api/types'
+import type { UsageDailyPoint, UsageDimensionRow } from '../api/types'
 import { Badge, Button, Card, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
-import { fmtInt } from '../lib/format'
+import { TrendChart } from '../components/TrendChart'
+import { fmtInt, fmtMoney } from '../lib/format'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
@@ -29,6 +30,7 @@ export default function Usage() {
   const chs = channels.data?.items ?? []
   const tks = tokens.data?.items ?? []
   const data = report.data
+  const daily = useMemo(() => fillDailyGaps(data?.daily ?? [], data?.start, data?.end), [data])
   const successRate = data?.totals.requests ? (data.totals.success / data.totals.requests) * 100 : null
 
   return (
@@ -81,7 +83,7 @@ export default function Usage() {
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
-            <TrendCard daily={data.daily} />
+            <TrendCard daily={daily} />
             <PriceCard />
           </div>
 
@@ -106,29 +108,43 @@ function Metric({ label, value, hint, warning }: { label: string; value: string;
   )
 }
 
-function TrendCard({ daily }: { daily: { date: string; requests: number; success: number; cost_micros: number }[] }) {
-  const max = Math.max(1, ...daily.map((point) => point.requests))
+function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
   return (
-    <Card className="p-4">
+    <Card className="flex h-full flex-col p-4">
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-indigo-500" /> 日趋势</h3>
-        <span className="text-xs text-slate-400">柱高 = 请求数</span>
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-indigo-500" />请求数</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-3.5 rounded bg-emerald-500" />成功率</span>
+        </div>
       </div>
       {daily.length === 0 ? <Empty title="所选范围暂无数据" /> : (
-        <div className="mt-5 flex h-44 items-end gap-1.5">
-          {daily.map((point) => (
-            <div key={point.date} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-1" title={`${point.date} · ${point.requests} 请求 · ${fmtMoney(point.cost_micros)}`}>
-              <div
-                className="w-full max-w-12 rounded-t bg-indigo-500/80 transition-colors group-hover:bg-indigo-600"
-                style={{ height: `${Math.max(3, (point.requests / max) * 145)}px` }}
-              />
-              <span className="max-w-full truncate text-[10px] text-slate-400">{point.date.slice(5)}</span>
-            </div>
-          ))}
+        <div className="mt-4 h-[clamp(224px,32vw,360px)] xl:h-auto xl:min-h-72 xl:flex-1">
+          <TrendChart data={daily} className="h-full" />
         </div>
       )}
     </Card>
   )
+}
+
+/**
+ * 补齐所选日期区间内没有聚合记录的天，避免缺失日期在分类轴上被压缩（趋势失真）。
+ * 超过 400 天不补齐，避免长时间范围生成过多 SVG 节点。
+ */
+function fillDailyGaps(points: UsageDailyPoint[], start?: string, end?: string): UsageDailyPoint[] {
+  if (points.length === 0 || !start || !end) return points
+  const startMs = Date.parse(`${start}T00:00:00Z`)
+  const endMs = Date.parse(`${end}T00:00:00Z`)
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return points
+  const days = Math.round((endMs - startMs) / 86_400_000) + 1
+  if (days <= 0 || days > 400) return points
+  const byDate = new Map(points.map((point) => [point.date, point]))
+  return Array.from({ length: days }, (_, i) => {
+    const date = new Date(startMs + i * 86_400_000).toISOString().slice(0, 10)
+    return byDate.get(date) ?? {
+      date, requests: 0, success: 0, tokens_in: 0, tokens_out: 0, cost_micros: 0, cost: 0,
+    }
+  })
 }
 
 function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) {
@@ -242,6 +258,3 @@ function toPriceInput(micros: number | undefined): string {
   return ((micros || 0) / 1_000_000).toFixed(6).replace(/\.?0+$/, '')
 }
 
-function fmtMoney(micros: number): string {
-  return `$${(micros / 1_000_000).toFixed(6).replace(/\.?0+$/, '')}`
-}

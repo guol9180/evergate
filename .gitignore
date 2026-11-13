@@ -3,6 +3,7 @@ bin/
 /evergate
 /evergate.exe
 web/node_modules/
+web/tsconfig.app.tsbuildinfo
 
 # 运行时数据
 data/

@@ -18,6 +18,11 @@ export function fmtInt(n: number | null | undefined): string {
   return n.toLocaleString('zh-CN')
 }
 
+/** 微美元 → 美元展示；去掉末尾多余的 0。 */
+export function fmtMoney(micros: number | null | undefined): string {
+  return `$${((micros ?? 0) / 1_000_000).toFixed(6).replace(/\.?0+$/, '')}`
+}
+
 export function cooldownRemaining(until: string | null | undefined): string | null {
   if (!until) return null
   const ms = new Date(until).getTime() - Date.now()
