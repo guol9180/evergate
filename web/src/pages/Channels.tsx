@@ -1,8 +1,9 @@
 import { type FormEvent, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Plug, Plus, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Pencil, Plug, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey } from '../api/hooks'
 import { Badge, Button, Card, Dialog, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Switch, Td, Textarea, Th } from '../components/ui'
 import type { Channel } from '../api/types'
+import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset } from '../lib/channelPresets'
 import { cooldownRemaining, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
 
 export default function Channels() {
@@ -199,6 +200,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const save = useSaveChannel()
   const formID = 'channel-form'
   const [name, setName] = useState(channel?.name ?? '')
+  const [nameTouched, setNameTouched] = useState(Boolean(channel))
+  const [presetId, setPresetId] = useState(CUSTOM_CHANNEL_PRESET)
   const [type, setType] = useState(channel?.type ?? 'openai-compatible')
   const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? '')
   const [priority, setPriority] = useState(String(channel?.priority ?? 0))
@@ -206,6 +209,17 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [supportsResponses, setSupportsResponses] = useState(channel?.supports_responses ?? false)
   const [models, setModels] = useState((channel?.models || []).join('\n'))
   const [mapping, setMapping] = useState(channel?.model_mapping ? JSON.stringify(channel.model_mapping, null, 2) : '')
+  const preset = findChannelPreset(presetId)
+
+  const applyPreset = (id: string) => {
+    setPresetId(id)
+    const next = findChannelPreset(id)
+    if (!next) return
+    setType(next.type)
+    setBaseUrl(next.baseUrl)
+    setSupportsResponses(next.supportsResponses)
+    if (!nameTouched) setName(next.defaultName)
+  }
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -248,8 +262,30 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       }
     >
       <form id={formID} onSubmit={onSubmit} className="space-y-4">
+        {!channel && (
+          <div className="space-y-2">
+            <Field label="供应商预设" hint="选择后自动填充 Base URL 与推荐配置，仍可手动调整">
+              <Select value={presetId} onChange={(e) => applyPreset(e.target.value)}>
+                <option value={CUSTOM_CHANNEL_PRESET}>自定义</option>
+                {CHANNEL_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </Select>
+            </Field>
+            {preset && (
+              <div className={`rounded-lg border px-3 py-2.5 ${preset.warning ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50/70'}`}>
+                <div className={`text-xs ${preset.warning ? 'text-amber-800' : 'text-slate-600'}`}>{preset.description}</div>
+                <div className="mt-1 font-mono text-[11px] text-slate-500">{preset.baseUrl}</div>
+                {preset.warning && (
+                  <div className="mt-1.5 flex gap-1.5 text-xs font-medium text-amber-700">
+                    <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                    <span>{preset.warning}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="名称"><Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="openai-main" /></Field>
+          <Field label="名称"><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
           <Field label="类型">
             <Select value={type} onChange={(e) => setType(e.target.value)}>
               {['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic-compat', 'gemini-compat'].map((t) => <option key={t}>{t}</option>)}
@@ -271,7 +307,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           <Field label="权重" hint="同优先级内加权随机"><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
         </div>
         <Field label="支持的模型（每行一个）">
-          <Textarea rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={'gpt-4o\ngpt-4o-mini'} required />
+          <Textarea rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} required />
         </Field>
         <Field label="模型映射（可选 JSON）" hint='{"请求模型": "上游模型"}，如 {"gpt-4": "gpt-4o-2024"}'>
           <Textarea rows={3} value={mapping} onChange={(e) => setMapping(e.target.value)} placeholder='{}' />

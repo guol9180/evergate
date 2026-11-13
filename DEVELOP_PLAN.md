@@ -610,9 +610,13 @@
   4. README 不再维护厂商基址清单，知识唯一来源为产品内预设模板；
   5. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过，`web/dist` 同步提交。
 - 边界：预设清单为内置静态数据，不做在线模板更新与远程模板源；不做预设自动连通探测（沿用现有单渠道连通测试）；不做账号代注册 / OAuth；不涉及 Anthropic/Gemini 原生协议适配
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-12 计划 用户指令确认建卡并明确暂不执行；README「常见上游基址」小节同步删除，该知识待本卡落地时转入产品预设模板
+  - 2026-11-13 执行 用户指令开始 T28：预设清单落为前端静态常量，新建渠道表单增加「供应商预设」，选中后填充类型/Base URL/Responses 能力/名称，Coding 套餐显示避坑提示；编辑渠道不显示预设避免覆盖既有配置
+  - 2026-11-13 执行 新增 `web/src/lib/channelPresets.ts`：OpenAI / DeepSeek / Kimi / BigModel 常规 / BigModel Coding / Z.ai Coding 六条内置模板，含显示名、Base URL、类型、Responses 能力、说明与 Coding 避坑提示，无任何 key/账号信息；`Channels.tsx` 名称未手动修改时同步填充默认渠道名，模型输入框使用预设示例占位符
+  - 2026-11-13 验证 无头 Chrome 实测：选择 Z.ai Coding 后 Base URL 自动为 `https://api.z.ai/api/coding/paas/v4`、名称 `zai-coding`、HTTP 503 避坑提示可见；1280×800 与 390×844 两种视口下 `scrollWidth == innerWidth`（1280/1280、390/390）；选择 DeepSeek 预设保存后 `/admin/api/channels` 返回 type=deepseek、base_url=`https://api.deepseek.com`、supports_responses=true、models=[deepseek-chat]
+  - 2026-11-13 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`go test -p 1 ./... -count=1` 全部 ok；`npm --prefix web run build` 与 `make build` 通过，二进制 28.14MB（<30MB），`web/dist` 已更新；README 无厂商基址清单（仅定位段提及厂商名）
 
 ### T29: npm 平台包发布流水线（P1，用户指令）
 
