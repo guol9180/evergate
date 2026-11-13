@@ -27,6 +27,8 @@ internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
 internal/usage/        # 模型价格快照、请求成本、UTC 日幂等聚合与报表查询
 internal/browser/      # 启动后打开管理台的系统浏览器封装
 internal/update/       # GitHub Release 自动更新检查
+internal/metrics/      # 进程内 Prometheus 注册表、文本曝光与 loopback 限制
+internal/telemetry/    # 可选 OTLP/HTTP JSON 链路导出（无 SDK 依赖，默认关闭）
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）
 web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
 docs/                  # 设计文档与需求（开发任务书等）
@@ -63,6 +65,8 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 管理台页面统一使用 `PageHeader`（独立登录/改密页除外），标题与描述字号一致；数据表必须放在 `overflow-x-auto` 容器内并设置合理 min-width，窄屏只允许卡片内横向滚动，禁止页面级横向溢出。
 - 表格行内操作优先使用图标按钮，并提供 `aria-label` 与 `title`；禁止只放一个中文词当按钮。Drawer 在窄屏必须占满宽度，Dialog 表单栅格在窄屏降为单列。
 - 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
+- `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
+- OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）

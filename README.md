@@ -22,7 +22,7 @@
 - **用量成本**：可配置全局与渠道+模型每百万 token 单价；请求完成时按价格快照计价，后台按 UTC 日幂等聚合，管理台提供日期/渠道/模型/令牌筛选和 Top 维度
 - **渠道健康**：周期使用启用 key 调用 `GET /models` 轻量探测（不触发推理），展示健康状态、可用 key 数与最近错误；404/405 仅标记“无法判定”
 - **安全**：上游 key AES-GCM 加密落库（主密钥不进 DB）；管理台密码 bcrypt；任何接口不回显明文
-- **可观测**：每请求一条日志（含 retry_trace 与统一口径 first_token_ms），异步批量落库不阻塞请求路径；Prometheus `/metrics` 在路线图中，当前未提供
+- **可观测**：每请求一条日志（含 retry_trace 与统一口径 first_token_ms），异步批量落库不阻塞请求路径；Prometheus `/metrics` 暴露请求/错误/首 token/上游尝试/渠道与 key 状态（仅本机 loopback 可抓取）；可选 OTLP/HTTP JSON 链路导出，默认关闭
 - **零依赖交付**：`1 个可执行文件 + 1 个 SQLite 数据文件`，`./evergate` 一条命令同时启动 API 与管理台，无需 Docker / Redis / 数据库服务
 
 ## 协议路由矩阵
@@ -66,6 +66,13 @@ go run ./cmd/evergate   # 开发态直接运行
 
 端口、base path、SQLite 路径、master key、session secret 属启动引导配置，修改需重启。
 
+### 可观测性
+
+- `GET /metrics` 输出 Prometheus 文本格式，仅允许 loopback 直连抓取（非本机返回 403），无需额外鉴权或 sidecar
+- 指标包含请求/错误/并发数、首 token 直方图、上游尝试与错误分类，以及抓取时从 SQLite + key 状态机采集的渠道健康与 key 状态
+- 链路导出默认关闭；设置标准环境变量 `OTEL_EXPORTER_OTLP_ENDPOINT`（或 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`）后启用 OTLP/HTTP JSON 导出，支持 `OTEL_EXPORTER_OTLP_HEADERS` / `OTEL_SERVICE_NAME`；显式使用 `grpc` 或 `http/protobuf` 协议会保持关闭并记录告警
+- 导出失败只写 warning，不影响请求结果；进程退出时排空队列（最长 10 秒）
+
 ## 安全模型
 
 - 上游 key 以 AES-GCM 加密存储，主密钥仅在 `evergate.yml`（已 gitignore）；DB 文件泄露 ≠ key 泄露
@@ -82,6 +89,7 @@ go run ./cmd/evergate   # 开发态直接运行
 2. **`/admin/api/*` 管理台 API**（session 鉴权）：渠道 / 凭据 / 令牌 / 请求日志 / Playground / 系统设置管理
 3. **SQLite（WAL 模式）**：channels / channel_keys / tokens / request_logs / usage_daily / model_prices / admins / runtime_settings，业务数据唯一事实源；后台 goroutine 负责健康探测、冷却恢复、成本聚合与日志清理
 4. **React 管理台**：构建产物经 go:embed 嵌入同一二进制
+5. **运维端点**：`/healthz` 存活检查；`/metrics` Prometheus 文本指标（仅 loopback，非本机 403）；`internal/telemetry` 在设置 OTLP 环境变量时导出父子 span，未启用时无后台 goroutine
 
 核心技术栈：Go 1.24+ / Gin / GORM / glebarez 纯 Go SQLite；React 19 / TypeScript / Vite / TanStack Query/Router/Table / Tailwind 4 / shadcn/ui。
 

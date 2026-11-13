@@ -144,22 +144,29 @@ type chatCallFunc struct {
 func (r *Relay) HandleResponses(c *gin.Context) {
 	start := r.opt.Now()
 	hit := &hitRecord{}
+	req := r.beginRequest(c, "responses")
+	defer req.end()
+	c.Set("evergate.protocol", responsesProtocol)
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
+		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "读取请求体失败")
+		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "读取请求体失败")
 		return
 	}
 	if _, _, ok := parseChatRequest(body); !ok {
+		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
+		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "缺少 model 字段")
 		return
 	}
 	_ = c.Request.Body.Close()
 	c.Request.Body = io.NopCloser(strings.NewReader(string(body)))
-	c.Set("evergate.protocol", responsesProtocol)
 	setResponsesOriginalBody(c, body)
 
 	trace, status, errType, errMsg := r.dispatch(c, hit)
 	r.finishRequest(c, start, hit, trace, status, errType, errMsg)
+	req.setResult(trace, status, errType, errMsg)
 }
 
 func responsesToChat(body []byte) ([]byte, *responsesToolRegistry, error) {

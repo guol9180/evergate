@@ -59,6 +59,8 @@ type playgroundUsage struct {
 // HandlePlayground 执行管理台调试请求：复用 relay 调度内核，但不经过下游令牌鉴权，
 // 仅由 admin 会话中间件保护（路由注册见 admin.RegisterRoutes）。
 func (r *Relay) HandlePlayground(c *gin.Context) {
+	reqSpan := r.beginRequest(c, "playground")
+	defer reqSpan.end()
 	req, err := parsePlaygroundRequest(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
@@ -87,6 +89,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	trace, status, errType, errMsg := r.dispatch(inner, hit)
 	elapsed := r.opt.Now().Sub(start)
 	r.finishRequest(inner, start, hit, trace, status, errType, errMsg)
+	reqSpan.setResult(trace, status, errType, errMsg)
 
 	meta := playgroundMeta{
 		Protocol: req.Protocol, Model: req.Model, Status: status,

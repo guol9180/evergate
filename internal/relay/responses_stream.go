@@ -64,6 +64,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 			Attempt: len(*trace) + 1, ErrorType: errType, ErrorMessage: errMsg,
 			ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
 		})
+		r.metricAttempt(cand.Channel.ID, cand.UpstreamModel, errType)
 	}
 	br := bufio.NewReaderSize(resp.Body, 32*1024)
 	var timeout atomic.Bool
@@ -93,7 +94,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 
 	r.reportKeySuccess(key.ID)
 	appendTrace("", "")
-	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
+	r.recordHit(c, hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 	state := &responsesStream{
 		w: newSSEWriter(c.Writer), model: model, now: r.opt.Now(),
 		tools: map[int]*responsesStreamTool{}, toolRegistry: responsesToolIdentities(c), hit: hit,

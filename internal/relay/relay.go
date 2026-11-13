@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -21,12 +22,14 @@ import (
 
 	"evergate/internal/affinity"
 	"evergate/internal/config"
+	"evergate/internal/metrics"
 	"evergate/internal/pool"
 	"evergate/internal/reqconfig"
 	"evergate/internal/retry"
 	"evergate/internal/router"
 	"evergate/internal/settings"
 	"evergate/internal/store"
+	"evergate/internal/telemetry"
 	"evergate/internal/usage"
 )
 
@@ -42,7 +45,9 @@ type Options struct {
 	LogWriter *LogWriter // 可为 nil（测试中不落日志）
 	Settings  *settings.Manager
 	Usage     *usage.Manager
-	Affinity  *affinity.Table // 可为 nil：New 时创建默认进程内亲和表
+	Affinity  *affinity.Table   // 可为 nil：New 时创建默认进程内亲和表
+	Metrics   *metrics.Registry // 可为 nil：New 时创建默认注册表
+	Tracer    *telemetry.Tracer // 可为 nil：禁用链路导出
 }
 
 // Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
@@ -62,6 +67,12 @@ func New(opt Options) *Relay {
 	}
 	if opt.Affinity == nil {
 		opt.Affinity = affinity.New(0, 0, opt.Now)
+	}
+	if opt.Metrics == nil {
+		opt.Metrics = metrics.New()
+	}
+	if opt.Tracer == nil {
+		opt.Tracer = telemetry.New(telemetry.Config{}, opt.Logger)
 	}
 	return &Relay{opt: opt, transports: make(map[time.Duration]*http.Transport)}
 }
@@ -102,8 +113,58 @@ type hitRecord struct {
 func (r *Relay) HandleChatCompletions(c *gin.Context) {
 	start := r.opt.Now()
 	hit := &hitRecord{}
+	req := r.beginRequest(c, "chat")
+	defer req.end()
 	trace, status, errType, errMsg := r.dispatch(c, hit)
 	r.finishRequest(c, start, hit, trace, status, errType, errMsg)
+	req.setResult(trace, status, errType, errMsg)
+}
+
+// requestSpan 统一维护请求级并发 gauge 与链路 span，避免各入口重复实现。
+type requestSpan struct {
+	relay   *Relay
+	c       *gin.Context
+	span    *telemetry.Span
+	proto   string
+	trace   []store.RetryAttempt
+	status  int
+	errType string
+	errMsg  string
+}
+
+func (r *Relay) beginRequest(c *gin.Context, protocol string) *requestSpan {
+	r.opt.Metrics.ActiveRequests.Add(1)
+	ctx, span := telemetry.StartSpan(c.Request.Context(), r.opt.Tracer, "relay.request", telemetry.KindInternal)
+	c.Request = c.Request.WithContext(ctx)
+	return &requestSpan{relay: r, c: c, span: span, proto: protocol}
+}
+
+func (rs *requestSpan) setResult(trace []store.RetryAttempt, status int, errType, errMsg string) {
+	rs.trace, rs.status, rs.errType, rs.errMsg = trace, status, errType, errMsg
+}
+
+// end 在 handler 退出时（含 panic 路径）归还并发计数并结束 span。
+func (rs *requestSpan) end() {
+	rs.relay.opt.Metrics.ActiveRequests.Add(-1)
+	if rs.span == nil {
+		return
+	}
+	model, _ := rs.c.Get("evergate.model")
+	if name, ok := model.(string); ok && name != "" {
+		rs.span.SetAttr(telemetry.String("gen_ai.request.model", name))
+	}
+	rs.span.SetAttr(telemetry.String("evergate.protocol", rs.proto))
+	rs.span.SetAttr(telemetry.Int("evergate.attempts", int64(len(rs.trace))))
+	if rs.status != 0 {
+		rs.span.SetAttr(telemetry.Int("http.response.status_code", int64(rs.status)))
+	}
+	var spanErr error
+	if rs.errType != "" {
+		spanErr = fmt.Errorf("%s: %s", rs.errType, rs.errMsg)
+	} else if rs.status >= http.StatusBadRequest {
+		spanErr = fmt.Errorf("http %d", rs.status)
+	}
+	rs.span.End(spanErr)
 }
 
 // dispatch 执行完整编排，返回（重试轨迹, 最终状态码, 错误类型, 错误消息）。
@@ -360,6 +421,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 // finishRequest 统一处理额度结算与请求日志，Chat/Responses 两条入口不得各自分叉。
 func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, trace []store.RetryAttempt, status int, errType, errMsg string) {
 	r.updateAffinity(c, hit, status, errType)
+	r.recordRequestMetrics(c, status, errType)
 	if status >= http.StatusOK && status < http.StatusBadRequest && errType == "" {
 		usageErrType, usageErrMsg := r.settleTokenUsage(c, hit)
 		if usageErrType != "" {
@@ -387,6 +449,35 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 		ConfigOverride: configSummaryFromContext(c),
 	})
+}
+
+// recordRequestMetrics 记录入口请求数与终态错误数；错误类型限制基数。
+func (r *Relay) recordRequestMetrics(c *gin.Context, status int, errType string) {
+	if r.opt.Metrics == nil {
+		return
+	}
+	r.opt.Metrics.Requests.Inc(protocolLabel(c), strconv.Itoa(status))
+	switch {
+	case errType != "":
+		r.opt.Metrics.RequestErrors.Inc(r.opt.Metrics.LowCardinality("error_type", errType))
+	case status >= http.StatusBadRequest:
+		r.opt.Metrics.RequestErrors.Inc("http_error")
+	}
+}
+
+// protocolLabel 返回入口协议标签：chat / responses / playground（固定低基数）。
+func protocolLabel(c *gin.Context) string {
+	if value, ok := c.Get(ctxPlayground); ok {
+		if enabled, _ := value.(bool); enabled {
+			return "playground"
+		}
+	}
+	if value, ok := c.Get("evergate.protocol"); ok {
+		if protocol, _ := value.(string); protocol == responsesProtocol {
+			return "responses"
+		}
+	}
+	return "chat"
 }
 
 // requestSource 标记请求来源；Playground 请求没有下游令牌，用于日志区分。
@@ -518,17 +609,37 @@ func (r *Relay) settleTokenUsage(c *gin.Context, hit *hitRecord) (string, string
 }
 
 // attemptOne 执行一次上游尝试并分类处置。
-func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord, timeoutOverride *reqconfig.Timeouts) attemptOutcome {
+func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord, timeoutOverride *reqconfig.Timeouts) (out attemptOutcome) {
 	ch := cand.Channel
 	nativeResponses := isResponsesRequest(c) && isResponsesNative(c)
 	connect, firstToken, overall := resolveTimeouts(ch, r.currentDefaults())
 	connect, firstToken, overall = applyTimeoutOverride(connect, firstToken, overall, timeoutOverride)
+	spanCtx, span := telemetry.StartSpan(c.Request.Context(), r.opt.Tracer, "relay.attempt", telemetry.KindClient,
+		telemetry.String("evergate.channel_id", strconv.FormatInt(ch.ID, 10)),
+		telemetry.String("gen_ai.request.model", cand.UpstreamModel),
+	)
+	traceLen := len(*trace)
+	defer func() {
+		result := "success"
+		var spanErr error
+		if len(*trace) > traceLen {
+			last := (*trace)[len(*trace)-1]
+			if last.ErrorType != "" {
+				result = last.ErrorType
+				spanErr = errors.New(last.ErrorType)
+			}
+		}
+		span.SetAttr(telemetry.String("evergate.result", result))
+		span.SetAttr(telemetry.String("evergate.outcome", outcomeName(out)))
+		span.End(spanErr)
+	}()
 	appendTrace := func(status int, errType, errMsg string, attemptStart time.Time) {
 		*trace = append(*trace, store.RetryAttempt{
 			ChannelID: ch.ID, ChannelName: ch.Name, KeyID: key.ID,
 			Attempt: len(*trace) + 1, ErrorType: errType, ErrorMessage: errMsg,
 			ElapsedMS: r.opt.Now().Sub(attemptStart).Milliseconds(),
 		})
+		r.metricAttempt(ch.ID, cand.UpstreamModel, errType)
 	}
 
 	plainKey, err := store.Decrypt(key.KeyCipher, r.opt.MasterKey)
@@ -546,7 +657,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		return outcomeNextKey
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), overall)
+	ctx, cancel := context.WithTimeout(spanCtx, overall)
 	defer cancel()
 
 	upstreamPath := "/chat/completions"
@@ -598,7 +709,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		}
 		r.reportKeySuccess(key.ID)
 		appendTrace(http.StatusOK, "", "", start)
-		recordHit(hit, ch, key, cand.UpstreamModel, r.opt.Now().Sub(start))
+		r.recordHit(c, hit, ch, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 		parseUsage(data, hit)
 		ct := resp.Header.Get("Content-Type")
 		if ct == "" {
@@ -679,6 +790,36 @@ func (r *Relay) reportKeySuccess(keyID int64) {
 	r.persistKeyAttempt(keyID, true, "")
 }
 
+// metricAttempt 记录一次上游尝试结果；渠道/模型标签经基数上限保护。
+func (r *Relay) metricAttempt(channelID int64, upstreamModel, errType string) {
+	if r.opt.Metrics == nil {
+		return
+	}
+	result := errType
+	if result == "" {
+		result = "success"
+	}
+	r.opt.Metrics.UpstreamAttempts.Inc(
+		r.opt.Metrics.LowCardinality("channel", strconv.FormatInt(channelID, 10)),
+		r.opt.Metrics.LowCardinality("model", upstreamModel),
+		r.opt.Metrics.LowCardinality("result", result),
+	)
+	if errType != "" {
+		r.opt.Metrics.UpstreamErrors.Inc(r.opt.Metrics.LowCardinality("upstream_error", errType))
+	}
+}
+
+func outcomeName(out attemptOutcome) string {
+	switch out {
+	case outcomeDone:
+		return "done"
+	case outcomeNextKey:
+		return "next_key"
+	default:
+		return "next_channel"
+	}
+}
+
 // reportKeyFailure 按分类驱动状态机并持久化请求级失败统计。
 func (r *Relay) reportKeyFailure(keyID int64, class retry.Classification, message string) {
 	r.opt.Pool.ReportFailure(keyID, class)
@@ -712,13 +853,16 @@ func (r *Relay) persistKeyAttempt(keyID int64, success bool, message string) {
 	}
 }
 
-// recordHit 记录成功命中的渠道/key（供请求日志）。
-func recordHit(hit *hitRecord, ch *store.Channel, key *store.ChannelKey, upstreamModel string, firstTokenLatency time.Duration) {
+// recordHit 记录成功命中的渠道/key（供请求日志）并观测首 token 延迟。
+func (r *Relay) recordHit(c *gin.Context, hit *hitRecord, ch *store.Channel, key *store.ChannelKey, upstreamModel string, firstTokenLatency time.Duration) {
 	hit.channelID = ch.ID
 	hit.channelName = ch.Name
 	hit.keyID = key.ID
 	hit.upstreamModel = upstreamModel
 	hit.firstTokenMS = firstTokenLatency.Milliseconds()
+	if r.opt.Metrics != nil {
+		r.opt.Metrics.FirstToken.Observe(firstTokenLatency.Seconds(), protocolLabel(c))
+	}
 }
 
 // transport 按连接超时缓存 Transport（渠道可覆盖 connect 超时）。

@@ -20,12 +20,14 @@ import (
 	"evergate/internal/browser"
 	"evergate/internal/config"
 	"evergate/internal/health"
+	"evergate/internal/metrics"
 	"evergate/internal/pool"
 	"evergate/internal/relay"
 	"evergate/internal/router"
 	"evergate/internal/server"
 	"evergate/internal/settings"
 	"evergate/internal/store"
+	"evergate/internal/telemetry"
 	"evergate/internal/update"
 	"evergate/internal/usage"
 	"evergate/web"
@@ -47,6 +49,25 @@ func run() error {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
+	// T26：OTLP 默认关闭；仅标准环境变量存在时启用，且只支持 OTLP/HTTP JSON。
+	otelCfg := telemetry.FromEnv()
+	if otelCfg.Endpoint != "" && telemetry.ProtocolUnsupported() {
+		logger.Warn("unsupported OTEL protocol, tracing disabled; only http/json is supported")
+		otelCfg = telemetry.Config{}
+	}
+	otelCfg.ServiceVersion = version
+	tracer := telemetry.New(otelCfg, logger)
+	if tracer.Enabled() {
+		logger.Info("otel tracing enabled", slog.String("endpoint", otelCfg.Endpoint))
+		defer func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := tracer.Shutdown(ctx); err != nil {
+				logger.Warn("otel shutdown failed", slog.Any("error", err))
+			}
+		}()
+	}
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
@@ -137,6 +158,11 @@ func run() error {
 	logWriter := relay.NewLogWriter(db, 256, logger)
 	defer logWriter.Close()
 
+	metricsReg := metrics.New()
+	metricsReg.AddCollector(func() []metrics.Sample {
+		return health.ChannelMetricSamples(db, poolMgr)
+	})
+
 	routerInst := router.New(time.Now().UnixNano())
 	relayHandler := relay.New(relay.Options{
 		DB:        db,
@@ -149,6 +175,8 @@ func run() error {
 		LogWriter: logWriter,
 		Settings:  settingsMgr,
 		Usage:     usageMgr,
+		Metrics:   metricsReg,
+		Tracer:    tracer,
 	})
 	adminAPI := admin.New(admin.Options{
 		DB:         db,
@@ -166,6 +194,8 @@ func run() error {
 		BasePath: cfg.Server.BasePath,
 		DB:       db,
 		Logger:   logger,
+		Metrics:  metricsReg,
+		Tracer:   tracer,
 		SetupRoutes: func(r gin.IRoutes) {
 			r.POST("/v1/chat/completions", relay.TokenAuth(db, logWriter), relayHandler.HandleChatCompletions)
 			r.POST("/v1/responses", relay.TokenAuth(db, logWriter), relayHandler.HandleResponses)

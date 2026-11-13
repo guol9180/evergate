@@ -61,7 +61,7 @@ func (r *Relay) streamNativeResponsesResponse(c *gin.Context, resp *http.Respons
 
 	r.reportKeySuccess(key.ID)
 	appendTrace(http.StatusOK, "", "")
-	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(attemptStart))
+	r.recordHit(c, hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(attemptStart))
 	parseResponsesEventUsage(first.data, hit)
 
 	w := newSSEWriter(c.Writer)

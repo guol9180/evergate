@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.21
+
+- 新增 Prometheus `/metrics`（仅 loopback 直连可抓取，非本机 403）：暴露请求/错误/并发数、首 token 延迟直方图、上游尝试与错误分类，以及渠道健康与 key 状态
+- relay 成功/失败路径统一记录首 token 与上游尝试指标；渠道、模型、错误类型标签带基数上限，指标不含 key、令牌或请求正文
+- 新增可选 OTLP/HTTP JSON 链路导出：设置 `OTEL_EXPORTER_OTLP_ENDPOINT`（或 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`）后生成 `http.request` / `relay.request` / `relay.attempt` 父子 span；默认完全关闭，不创建后台 goroutine 或外部请求
+- 导出失败只记录 warning 不影响请求；进程优雅退出时排空待导出 span；未引入 Prometheus/OTel SDK，保持单二进制体积约束
+
 ## v0.1.20
 
 - 管理台全页面排版统一：Dashboard / 渠道 / 令牌 / 请求日志 / Playground / 用量成本 / 系统设置统一使用 PageHeader 与一致的标题、描述字号

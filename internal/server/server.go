@@ -3,13 +3,18 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+
+	"evergate/internal/metrics"
+	"evergate/internal/telemetry"
 )
 
 // Options 是服务装配依赖。
@@ -21,6 +26,10 @@ type Options struct {
 	SetupRoutes func(r gin.IRoutes)
 	// WebFS 嵌入的前端构建产物（nil 表示不服务管理台）。
 	WebFS fs.FS
+	// Metrics 为 /metrics 指标端点；nil 表示不挂载。
+	Metrics *metrics.Registry
+	// Tracer 为可选 OTLP 链路导出；nil 或禁用态不产生 span。
+	Tracer *telemetry.Tracer
 }
 
 // New 构建带 recovery 与请求日志的 Gin 引擎。
@@ -35,12 +44,17 @@ func New(opts Options) *gin.Engine {
 	_ = r.SetTrustedProxies(nil)
 	r.Use(gin.Recovery()) // 红线：每个 handler 必须有 recovery
 	r.Use(requestLogger(logger))
+	r.Use(traceMiddleware(opts.Tracer))
 
 	var root gin.IRoutes = r
 	if opts.BasePath != "" {
 		root = r.Group(opts.BasePath)
 	}
 	root.GET("/healthz", healthz(opts.DB))
+	if opts.Metrics != nil {
+		// 仅 loopback 可抓取（T26 验收 #1）；路由本身仍受全局 recovery 保护。
+		root.GET("/metrics", gin.WrapH(opts.Metrics))
+	}
 	if opts.SetupRoutes != nil {
 		opts.SetupRoutes(root)
 	}
@@ -48,6 +62,30 @@ func New(opts Options) *gin.Engine {
 		r.NoRoute(spaHandler(opts.WebFS))
 	}
 	return r
+}
+
+// traceMiddleware 为管理台/API 请求生成服务端 span；/healthz 与 /metrics 跳过。
+func traceMiddleware(tracer *telemetry.Tracer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if tracer == nil || !tracer.Enabled() || strings.HasSuffix(path, "/healthz") || strings.HasSuffix(path, "/metrics") {
+			c.Next()
+			return
+		}
+		ctx, span := tracer.Start(c.Request.Context(), "http.request", telemetry.KindServer,
+			telemetry.String("http.method", c.Request.Method),
+		)
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+		span.SetAttr(telemetry.String("http.route", c.FullPath()))
+		status := c.Writer.Status()
+		span.SetAttr(telemetry.Int("http.status_code", int64(status)))
+		var spanErr error
+		if status >= http.StatusInternalServerError {
+			spanErr = fmt.Errorf("http %d", status)
+		}
+		span.End(spanErr)
+	}
 }
 
 // requestLogger 用 slog 记录每条请求（运行日志，区别于入库的请求日志）。

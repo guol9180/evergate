@@ -36,6 +36,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 			Attempt: len(*trace) + 1, ErrorType: errType, ErrorMessage: errMsg,
 			ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
 		})
+		r.metricAttempt(cand.Channel.ID, cand.UpstreamModel, errType)
 	}
 
 	br := bufio.NewReaderSize(resp.Body, 32*1024)
@@ -72,7 +73,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 	// === 红线：首 chunk 即写给客户端，此后不再重试 ===
 	r.reportKeySuccess(key.ID)
 	appendTrace("", "")
-	recordHit(hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
+	r.recordHit(c, hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 
 	w := newSSEWriter(c.Writer)
 	w.header()

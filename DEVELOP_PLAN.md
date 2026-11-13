@@ -571,9 +571,14 @@
   4. 关闭 OTel 时无外部网络请求、无导出 goroutine 泄漏；开启时导出失败只记录 warning，不影响请求成功；优雅停机 flush/退出；
   5. 单元/集成测试覆盖 loopback 限制、核心指标增量、SSE 首 token 指标、OTel 禁用默认值；README 修正 `/metrics` 实际暴露方式；新增依赖理由记录；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
 - 边界：不引入 Jaeger/Collector/监控 SaaS 依赖；不导出请求/响应正文与密钥；不做日志采集管道；Prometheus 与 OTel 配置优先使用标准 env/本地设置，不做多租户隔离
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：README 当前描述了 `/metrics`，但实现尚未提供该端点；本卡同时补齐任务书 OTel 可选导出，避免继续文档超前
+  - 2026-11-13 执行 新增 `internal/metrics`：进程内 counter/gauge/固定桶直方图 + Prometheus 文本曝光，`/metrics` 仅 loopback（非本机 403）；指标含 requests/errors/active、first_token 直方图、upstream attempts/errors，抓取时由 `health.ChannelMetricSamples` 采集渠道状态与 key 状态
+  - 2026-11-13 执行 新增 `internal/telemetry`：OTLP/HTTP JSON 父子 span 导出，默认关闭；仅标准 `OTEL_EXPORTER_OTLP_ENDPOINT`/`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` 存在时创建 goroutine，导出失败只 warning，退出时排空队列；relay 产生 `relay.request`/`relay.attempt` span，属性不含 key/令牌/正文
+  - 2026-11-13 依赖 未新增 Go 依赖：官方 Prometheus/OTel SDK 会使二进制明显超出 <30MB 红线；手写固定指标集与 OTLP JSON 更可控，已在 AGENTS 记录约束
+  - 2026-11-13 验证 `go test ./internal/metrics ./internal/telemetry ./internal/relay ./internal/server ./internal/health -count=1` 通过；覆盖 loopback 403、指标增量、SSE 首 token、OTel 默认禁用/父子 span/导出失败告警
+  - 2026-11-13 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`go test -p 1 ./... -count=1` 全绿、`make build` 成功；二进制 27.63MB（<30MB）。隔离端口 18919 冒烟：`/healthz` 200、`/metrics` 200 且格式正确、`OTEL_EXPORTER_OTLP_ENDPOINT` 设置后日志出现 `otel tracing enabled`（未设置时不建 goroutine）
 
 ### T27: README 开源优化与仓库公开（P0，用户指令）
 
