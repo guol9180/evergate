@@ -9,18 +9,17 @@
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white&style=flat-square)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
 
-**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供三平台单二进制（Windows x64 / Linux x64 / macOS Apple Silicon），推送 `v*` tag 自动构建。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
+**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供三平台单二进制（Windows x64 / Linux x64 / macOS Apple Silicon）。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
-## 功能
+## 能力概览
 
-- **统一入口**：OpenAI Chat Completions / Responses 与 `/v1/models`；上游支持任意 OpenAI 兼容端点，Responses 渠道可原生透传，其余自动桥接
-- **故障切换**：渠道 + key 池调度、错误分类重试与 cooldown；SSE 首个 chunk 前可无感切换，之后不重试
-- **管理台**：渠道/key、下游令牌、请求日志、Playground、用量成本、系统设置
-- **治理与成本**：令牌额度、有效期、模型/IP 白名单；价格快照与 UTC 日聚合
-- **单二进制交付**：1 个可执行文件 + 1 个 SQLite 数据文件，无需 Docker / Redis / 外部数据库
-- **可观测与更新**：Prometheus `/metrics`、可选 OTLP、一键更新；配置见 [运维配置](./docs/运维配置.md)
+- **统一入口**：OpenAI 兼容的 Chat Completions 与 Responses API
+- **高可用**：多渠道与 key 池调度，故障自动切换
+- **管理台**：渠道、下游令牌、请求日志、调试与用量
+- **轻量交付**：单二进制 + SQLite，无需 Docker / Redis / 外部数据库
+- **可运维**：指标观测与一键更新
 
-协议、调度与验收细节见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)；下游协议调研见 [协议生态调研](./docs/协议生态调研-ChatCompletions与Responses.md)。
+能力边界、协议矩阵与验收细节见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md) 与 [AGENTS.md](./AGENTS.md)；配置与运维详见 [docs/运维配置.md](./docs/运维配置.md)。
 
 ## 快速开始
 
@@ -38,22 +37,18 @@ make build-all          # 三平台交叉编译：windows/amd64、linux/amd64、
 go run ./cmd/evergate   # 开发态直接运行
 ```
 
-npm 安装会自动选择本平台子包，实际运行仍是原生单二进制；Node 仅用于启动垫片。国内网络可用 `npm i -g @heguoliang/evergate --registry=https://registry.npmmirror.com`。
+npm 安装会自动选择本平台子包，实际运行仍是原生单二进制。国内网络可用 `npm i -g @heguoliang/evergate --registry=https://registry.npmmirror.com`。
 
 1. 复制配置模板：`cp evergate.yml.example evergate.yml`（密钥留空则首次启动自动生成并写回）
 2. 启动后访问管理台 `http://localhost:8787/`（初始账号 `admin/admin123`，仅用于本机初始化，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`
-3. 管理台添加渠道（Base URL + 上游 key，支持多行批量导入）并创建下游令牌；可按需配置 token 额度、有效期、模型白名单与 IP 白名单
+3. 在管理台添加渠道并创建下游令牌
 4. 客户端只需改 base_url 为 `http://localhost:8787/v1` 并使用下游令牌
 
-存活检查 `GET /healthz`。默认端口 `8787`，避开常用 8080，修改只需改 `evergate.yml` 的 `server.port`。
-
-## 运维与配置
-
-运行时设置、Prometheus/OTLP、一键更新与环境变量见 [docs/运维配置.md](./docs/运维配置.md)。
+存活检查 `GET /healthz`。默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改。
 
 ## 安全模型
 
-- 上游 key 以 AES-GCM 加密存储，主密钥仅在 `evergate.yml`（已 gitignore）；下游令牌仅存 SHA-256
+- 上游 key 加密存储（主密钥仅在 `evergate.yml`，已 gitignore），管理台接口不回显明文；下游令牌仅存哈希
 - 管理台与 API 同端口，面向本地 / 内网可信环境；公网暴露前请自行加 TLS 与访问控制
 - 初始 `admin/admin123` 仅用于首次登录并会强制改密
 
@@ -61,16 +56,12 @@ npm 安装会自动选择本平台子包，实际运行仍是原生单二进制�
 
 单进程 Go 服务：
 
-1. `/v1/*`：下游令牌鉴权 → 路由 → key 池调度 → 错误分类重试 → relay/SSE
+1. `/v1/*`：下游令牌鉴权 → 路由调度 → relay/SSE 透传
 2. `/admin/api/*`：管理台 API（session 鉴权）
-3. SQLite（WAL）：渠道、令牌、请求日志、用量与运行时设置的事实源
-4. React 管理台构建产物 go:embed 进同一二进制；`/healthz` 与 `/metrics` 为运维端点
+3. SQLite（WAL）：业务数据与运行时设置的唯一事实源
+4. React 管理台构建产物 go:embed 进同一二进制
 
 技术栈：Go 1.24+ / Gin / GORM / 纯 Go SQLite；React 19 / TypeScript / Vite / TanStack Query / Tailwind 4。
-
-## 路线图
-
-当前阶段、已完成与后续任务见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)。Anthropic Messages 入口延后。
 
 ## 参与开发
 
@@ -80,8 +71,7 @@ npm --prefix web run build   # 前端构建（改前端后执行并提交 dist�
 make build                   # 提交前完整构建
 ```
 
-- 开发规范：[AGENTS.md](./AGENTS.md)；需求与设计：[docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)；协议调研：[docs/协议生态调研-ChatCompletions与Responses.md](./docs/协议生态调研-ChatCompletions与Responses.md)
-- 运维与配置：[docs/运维配置.md](./docs/运维配置.md)；参考项目与许可证边界见 [AGENTS.md](./AGENTS.md)
+提交前验证流程与代码规范见 [AGENTS.md](./AGENTS.md)；当前阶段与后续任务见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)；需求与协议调研见 [docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)、[docs/协议生态调研-ChatCompletions与Responses.md](./docs/协议生态调研-ChatCompletions与Responses.md)。
 
 ## License
 
@@ -89,4 +79,4 @@ make build                   # 提交前完整构建
 
 ---
 
-**关键词 / Keywords**：AI 网关 · LLM Gateway · OpenAI Compatible · OpenAI Proxy · Chat Completions · Responses API · Codex · API 聚合 · 多渠道负载均衡 · 故障切换 failover · key 池调度 · 限流冷却 · SSE 流式透传 · 自托管 self-hosted · Go · Gin · React · SQLite
+**关键词 / Keywords**：AI 网关 · LLM Gateway · OpenAI 兼容 · Responses API · 故障切换 failover · key 池 · SSE 流式 · 自托管 self-hosted · Go · React · SQLite
