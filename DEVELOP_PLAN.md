@@ -713,6 +713,7 @@
   - 2026-11-13 执行 卡片 `flex h-full flex-col`，图表容器窄屏 clamp 高度、xl 用 `flex-1` 填满；修复 flex-basis 覆盖显式高度导致窄屏 SVG 不渲染的问题；Usage 路由 `React.lazy` 分包
   - 2026-11-13 验证 无头 Chrome 测量：390→244×224、768→607×246、1152→991×360、1280→507×360、1600→642×360；图表底部到卡片底部均为 17px 内边距，页面无横向溢出；截图复核 1152/1280/390
   - 2026-11-13 验证 首屏 JS gzip 117.21KB（改动前 118.50KB），Usage chunk 119.10KB gzip；`npm --prefix web run build` 通过，单二进制 28.02MB（<30MB）
+  - 2026-11-13 交付 提交 1d6c5c4、tag v0.1.22；Release Action 43362447944 成功（2m54s），4 个 assets 与 CHANGELOG 正文齐全；下载 Windows exe SHA256 与 checksums 一致（7b9145…），隔离端口 18921 冒烟 index/healthz/metrics 200，主 chunk 正确引用 `Usage-D9nm6yRf.js` 且包含 recharts
 
 ## 状态枚举
 
