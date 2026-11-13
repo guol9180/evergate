@@ -1,5 +1,5 @@
 {
-  "name": "evergate",
+  "name": "@heguoliang/evergate",
   "version": "0.0.0",
   "description": "Self-hosted OpenAI-compatible LLM gateway with key-pool failover and zero-buffer SSE streaming",
   "keywords": [
@@ -32,8 +32,8 @@
     "node": ">=18"
   },
   "optionalDependencies": {
-    "evergate-win32-x64": "0.0.0",
-    "evergate-linux-amd64": "0.0.0",
-    "evergate-darwin-arm64": "0.0.0"
+    "@heguoliang/evergate-win32-x64": "0.0.0",
+    "@heguoliang/evergate-linux-amd64": "0.0.0",
+    "@heguoliang/evergate-darwin-arm64": "0.0.0"
   }
 }

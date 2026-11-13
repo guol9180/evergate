@@ -2,12 +2,12 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
-## v0.1.23
+## v0.1.24
 
-- 新增 npm 安装渠道：`npm i -g evergate` 自动按 `os`/`cpu` 选择 `evergate-win32-x64` / `evergate-linux-amd64` / `evergate-darwin-arm64` 平台子包
+- 新增 npm 安装渠道：`npm i -g @heguoliang/evergate` 自动按 `os`/`cpu` 选择 `@heguoliang/evergate-win32-x64` / `@heguoliang/evergate-linux-amd64` / `@heguoliang/evergate-darwin-arm64` 平台子包
 - 主包仅含 KB 级启动垫片，不打包二进制；实际运行仍是原生单二进制，Node 仅用于解析平台包并转发参数
 - 发版流水线在 GitHub Release 之外同步发布 4 个 npm 包：平台子包先行、主包最后，已发布版本幂等跳过；支持 npmmirror 自动同步
-- `NPM_TOKEN` 仅存 GitHub Actions secret；npm 安装说明已加入 README 快速开始
+- 使用 npm scoped 包名避开未占用包名的垃圾包名风控；`NPM_TOKEN` 仅存 GitHub Actions secret
 
 ## v0.1.22
 

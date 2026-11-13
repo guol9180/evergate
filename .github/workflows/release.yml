@@ -60,11 +60,12 @@ jobs:
         run: |
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
           VERSION="${GITHUB_REF_NAME#v}"
-          for pkg in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
+          for dir in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
+            pkg=$(node -p "require('./dist-npm/$dir/package.json').name")
             if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
               echo "$pkg@$VERSION already published; skipping"
             else
-              (cd "dist-npm/$pkg" && npm publish --access public)
+              npm publish "./dist-npm/$dir" --access public
             fi
           done
 

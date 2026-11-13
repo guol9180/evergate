@@ -7,9 +7,9 @@ const { spawn } = require('node:child_process')
 const path = require('node:path')
 
 const PACKAGES = {
-  'win32-x64': { name: 'evergate-win32-x64', binary: 'evergate.exe' },
-  'linux-x64': { name: 'evergate-linux-amd64', binary: 'evergate' },
-  'darwin-arm64': { name: 'evergate-darwin-arm64', binary: 'evergate' },
+  'win32-x64': { name: '@heguoliang/evergate-win32-x64', binary: 'evergate.exe' },
+  'linux-x64': { name: '@heguoliang/evergate-linux-amd64', binary: 'evergate' },
+  'darwin-arm64': { name: '@heguoliang/evergate-darwin-arm64', binary: 'evergate' },
 }
 
 const key = `${process.platform}-${process.arch}`
@@ -27,7 +27,7 @@ try {
   binary = path.join(pkgRoot, 'bin', target.binary)
 } catch {
   console.error(`evergate: platform package ${target.name} is missing`)
-  console.error('Reinstall with: npm i -g evergate')
+  console.error('Reinstall with: npm i -g @heguoliang/evergate')
   process.exit(1)
 }
 

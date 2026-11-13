@@ -22,11 +22,12 @@ if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
 
 const binaryDir = path.resolve(args[1])
 const outputDir = path.resolve(args[2])
+const SCOPE = '@heguoliang'
 
 const platforms = [
-  { name: 'evergate-win32-x64', os: 'win32', cpu: 'x64', source: 'evergate-windows-amd64.exe', binary: 'evergate.exe' },
-  { name: 'evergate-linux-amd64', os: 'linux', cpu: 'x64', source: 'evergate-linux-amd64', binary: 'evergate' },
-  { name: 'evergate-darwin-arm64', os: 'darwin', cpu: 'arm64', source: 'evergate-darwin-arm64', binary: 'evergate' },
+  { dir: 'evergate-win32-x64', name: `${SCOPE}/evergate-win32-x64`, os: 'win32', cpu: 'x64', source: 'evergate-windows-amd64.exe', binary: 'evergate.exe' },
+  { dir: 'evergate-linux-amd64', name: `${SCOPE}/evergate-linux-amd64`, os: 'linux', cpu: 'x64', source: 'evergate-linux-amd64', binary: 'evergate' },
+  { dir: 'evergate-darwin-arm64', name: `${SCOPE}/evergate-darwin-arm64`, os: 'darwin', cpu: 'arm64', source: 'evergate-darwin-arm64', binary: 'evergate' },
 ]
 
 const platformTemplate = JSON.parse(await readFile(path.join(root, 'npm/platform/package.json'), 'utf8'))
@@ -38,7 +39,7 @@ await mkdir(outputDir, { recursive: true })
 for (const platform of platforms) {
   const source = path.join(binaryDir, platform.source)
   await stat(source)
-  const dir = path.join(outputDir, platform.name)
+  const dir = path.join(outputDir, platform.dir)
   await mkdir(path.join(dir, 'bin'), { recursive: true })
   const target = path.join(dir, 'bin', platform.binary)
   await cp(source, target)
@@ -70,5 +71,5 @@ for (const name of Object.keys(wrapper.optionalDependencies)) {
   wrapper.optionalDependencies[name] = version
 }
 await writeFile(path.join(wrapperDir, 'package.json'), `${JSON.stringify(wrapper, null, 2)}\n`)
-console.log(`staged evergate@${version}`)
+console.log(`staged ${wrapper.name}@${version}`)
 console.log(`output: ${outputDir}`)

@@ -634,6 +634,9 @@
   - 2026-11-13 blocked 等待用户配置：npm 账号开启 2FA 并创建可绕过 2FA 的 Automation token，写入 GitHub secret `NPM_TOKEN`；之后推 tag 才能验证验收 #1/#2/#4/#5（自动发布、三平台安装、镜像同步）；当前不影响现有 GitHub Release
   - 2026-11-13 执行 用户已配置 `NPM_TOKEN`（granular token：All packages 读写 + bypass 2FA，30 天有效）；README 增加 npm 安装方式，准备 tag v0.1.23 验证自动发布
   - 2026-11-13 验证 推送 v0.1.23 tag：Build/Stage/鉴权均通过，但 npm 对 `evergate-win32-x64` 返回 403 `Package name triggered spam detection`（名称级风控，同类项目确认重试无效，需 npm support 解除或改用 scoped 包名）；v0.1.23 GitHub Release 未创建，README 已回退 npm 安装说明避免宣传不可用渠道
+  - 2026-11-13 执行 通过 `npm whoami` 确认 npm 用户 `heguoliang`，改用 `@heguoliang/*` scoped 包名；stage 脚本、启动垫片、包模板与 workflow 发布循环全部改为从 package.json 读取实际包名，发布目录保持无 scope 便于 CI 定位
+  - 2026-11-13 验证 本地 v0.1.24 staging：主包 2.2KB、win32 11.2MB；安装两个 tgz 后经 `@heguoliang/evergate` 垫片启动，18923 `/healthz` 200、`/metrics` 200
+  - 2026-11-13 说明 v0.1.23 tag 因名称风控失败且无 Release/资产，不移动旧 tag；本次改发 v0.1.24 验证 scoped 发布
 
 ### T30: 一键自动更新（P1，用户指令）
 
