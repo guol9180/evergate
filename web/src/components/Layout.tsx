@@ -42,9 +42,11 @@ export default function Layout() {
   return (
     <div className="flex h-full">
       <aside className="flex w-[72px] shrink-0 flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur xl:w-56">
-        <div className="flex items-center gap-3 px-4 py-5 xl:px-5">
-          <img src="/logo.svg" alt="" width={20} height={20} className="shrink-0" />
-          <div className="hidden xl:block">
+        <div className="flex items-center gap-3 px-3 py-5">
+          <div className="flex w-12 shrink-0 items-center justify-center xl:w-auto xl:justify-start xl:pl-3">
+            <img src="/logo.svg" alt="" width={20} height={20} className="shrink-0" />
+          </div>
+          <div className="hidden min-w-0 xl:block">
             <div className="text-sm font-bold text-slate-900">EverGate</div>
             <div className="text-[10px] text-slate-400">AI 网关管理台</div>
           </div>
