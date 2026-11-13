@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.17
+
+- 管理台新增 Playground：选择模型与 Chat Completions / Responses 协议，编辑 system/user 消息并切换流式，直接验证渠道与协议兼容性，无需创建或复制下游令牌
+- 请求复用网关调度内核（含 retry/cooldown/亲和规则），流式响应逐段渲染，可中途停止；完成后展示命中渠道、上游模型、首 token、总耗时、usage 与重试轨迹
+- Playground 请求写入 request_logs 并标记 `source=playground`，不暴露任何上游或下游 key；消息长度与请求体有后端上限，前端同步限制
+- 修复 Playground 包装 writer 与 admin 响应共用 header 导致 Content-Length 污染、非流式响应为空的问题
+
 ## v0.1.16
 
 - 新增请求级 `X-EverGate-Config` 覆盖：支持超时（connect/first_token/overall）、重试预算（渠道数/每渠道 key 数/总时长）、候选渠道 id 列表与 `session_affinity` 开关，覆盖只对当前请求生效

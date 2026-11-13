@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronLeft, ChevronRight, Search, ScrollText } from 'lucide-react'
 import { useLogs } from '../api/hooks'
 import { Badge, Button, Card, Drawer, Empty, Input, Spinner, Td, Th } from '../components/ui'
+import RetryTimeline from '../components/RetryTimeline'
 import type { RequestLog } from '../api/types'
 import { fmtInt, fmtMs, fmtTime, kindText, statusTone } from '../lib/format'
 
@@ -53,7 +54,10 @@ export default function Logs() {
               {logs.data?.items.map((l) => (
                 <tr key={l.id} className="cursor-pointer hover:bg-slate-50/50" onClick={() => setSelected(l)}>
                   <Td className="whitespace-nowrap text-xs text-slate-500">{fmtTime(l.created_at)}</Td>
-                  <Td className="font-medium">{l.model}</Td>
+                  <Td className="font-medium">
+                    {l.model}
+                    {l.source === 'playground' && <Badge tone="bg-indigo-100 text-indigo-700 ml-2">Playground</Badge>}
+                  </Td>
                   <Td className="text-slate-500">{l.channel_name || '—'}</Td>
                   <Td className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</Td>
                   <Td>{fmtMs(l.first_token_ms || undefined)}</Td>
@@ -103,6 +107,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
               ['cached tokens', fmtInt(log.cached_tokens || 0)],
               ['reasoning tokens', fmtInt(log.reasoning_tokens || 0)],
               ['令牌', log.token_name || '—'],
+              ['来源', log.source === 'playground' ? 'Playground' : 'API'],
               ['客户端 IP', log.ip || '—'],
             ].map(([k, v]) => (
               <div key={String(k)} className="flex justify-between border-b border-slate-50 py-1">
@@ -121,40 +126,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
 
           <div>
             <h4 className="mb-3 text-sm font-semibold">重试轨迹</h4>
-            {(log.retry_trace?.length ?? 0) === 0 ? (
-              <p className="text-xs text-slate-400">无尝试记录</p>
-            ) : (
-              <div className="space-y-0">
-                {log.retry_trace!.map((a, i) => {
-                  const ok = !a.error_type && !a.error_message
-                  return (
-                    <div key={i} className="flex gap-3">
-                      {/* 时间线竖线 */}
-                      <div className="flex flex-col items-center">
-                        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                        {i < log.retry_trace!.length - 1 && <span className="w-px flex-1 bg-slate-200" />}
-                      </div>
-                      <div className="flex-1 pb-5">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="font-medium">尝试 {a.attempt}</span>
-                          <span className="text-slate-500">→ {a.channel_name} · key #{a.key_id}</span>
-                          {!!a.status_code && <span className="text-xs text-slate-400">HTTP {a.status_code}</span>}
-                          <span className="ml-auto text-xs text-slate-400">{a.elapsed_ms}ms</span>
-                        </div>
-                        {ok ? (
-                          <div className="mt-0.5 text-xs text-emerald-600">成功</div>
-                        ) : (
-                          <div className="mt-0.5 text-xs">
-                            <Badge tone="bg-red-100 text-red-700">{kindText(a.error_type)}</Badge>
-                            <span className="ml-2 break-all text-slate-500">{a.error_message?.slice(0, 120)}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            <RetryTimeline attempts={log.retry_trace} />
           </div>
         </div>
       )}

@@ -16,7 +16,7 @@
 - **统一入口**：OpenAI Chat Completions `/v1/chat/completions`（SSE 流式 + tool calls 透传）、OpenAI Responses `/v1/responses`、`/v1/models`；Anthropic Messages 延后支持（见路线图）
 - **不中断**（本项目存在的第一理由）：key 池调度 + cooldown 状态机 + 错误分类重试（重试 → 换 key → 换渠道）；SSE 场景下「首个 chunk 写给客户端之前」可无感切换，之后绝不重试
 - **双协议上游**：Chat Completions 全渠道支持；渠道级声明 Responses 能力后 `/v1/responses` 原生透传保真，未声明渠道自动 R→CC 桥接兜底
-- **Web 管理台**：登录 / Dashboard / 渠道与 key 池管理 / 下游令牌 / 请求日志（重试轨迹可视化）/ 系统设置热更新，内置新版本检查
+- **Web 管理台**：登录 / Dashboard / 渠道与 key 池管理 / 下游令牌 / 请求日志（重试轨迹可视化）/ Playground / 系统设置热更新，内置新版本检查
 - **令牌治理**：下游 token 支持额度、有效期、模型白名单与 IP 白名单（精确 IP / CIDR）；成功响应按实际输入 + 输出 token 扣减额度
 - **会话亲和**：请求携带 `X-Session-Id` 时，同一下游令牌 + 模型的后续请求在 10 分钟内优先复用上次成功的渠道与 key；记录仅存 SHA-256 指纹于进程内存，重启后自然重建，故障时仍按原有重试与健康规则切换
 - **用量成本**：可配置全局与渠道+模型每百万 token 单价；请求完成时按价格快照计价，后台按 UTC 日幂等聚合，管理台提供日期/渠道/模型/令牌筛选和 Top 维度
@@ -79,7 +79,7 @@ go run ./cmd/evergate   # 开发态直接运行
 单进程 Go 服务，自上而下：
 
 1. **`/v1/*` OpenAI 兼容入口**：下游令牌鉴权 → 路由器（模型 → 候选渠道，priority 升序 + 同级 weight 加权随机；`X-Session-Id` 命中亲和时在最高优先级组内提前粘性渠道）→ key 池调度（渠道内加权轮询，亲和优先同 key，跳过 cooldown/disabled）→ 错误分类重试控制器 → relay（SSE 零缓冲 flush 透传，首 token 超时属可重试错误）
-2. **`/admin/api/*` 管理台 API**（session 鉴权）：渠道 / 凭据 / 令牌 / 请求日志 / 系统设置管理
+2. **`/admin/api/*` 管理台 API**（session 鉴权）：渠道 / 凭据 / 令牌 / 请求日志 / Playground / 系统设置管理
 3. **SQLite（WAL 模式）**：channels / channel_keys / tokens / request_logs / usage_daily / model_prices / admins / runtime_settings，业务数据唯一事实源；后台 goroutine 负责健康探测、冷却恢复、成本聚合与日志清理
 4. **React 管理台**：构建产物经 go:embed 嵌入同一二进制
 

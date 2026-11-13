@@ -105,6 +105,7 @@ type RequestLog struct {
 	CreatedAt        time.Time      `gorm:"index" json:"created_at"`
 	TokenID          int64          `gorm:"index" json:"token_id"`
 	TokenName        string         `gorm:"size:100" json:"token_name"`
+	Source           string         `gorm:"size:16;not null;default:''" json:"source,omitempty"` // api / playground
 	ChannelID        int64          `gorm:"index" json:"channel_id"`
 	ChannelName      string         `gorm:"size:100" json:"channel_name"`
 	KeyID            int64          `json:"key_id"`

@@ -151,14 +151,15 @@ func run() error {
 		Usage:     usageMgr,
 	})
 	adminAPI := admin.New(admin.Options{
-		DB:        db,
-		MasterKey: cfg.Security.MasterKey,
-		Pool:      poolMgr,
-		Session:   admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
-		Update:    update.NewChecker(version, update.DefaultAPIURL, time.Now),
-		Settings:  settingsMgr,
-		Health:    prober,
-		Usage:     usageMgr,
+		DB:         db,
+		MasterKey:  cfg.Security.MasterKey,
+		Pool:       poolMgr,
+		Session:    admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
+		Update:     update.NewChecker(version, update.DefaultAPIURL, time.Now),
+		Settings:   settingsMgr,
+		Health:     prober,
+		Usage:      usageMgr,
+		Playground: relayHandler.HandlePlayground,
 	})
 
 	engine := server.New(server.Options{

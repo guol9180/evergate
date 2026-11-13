@@ -57,7 +57,11 @@ func newEnv(t *testing.T) *testEnv {
 	if err != nil {
 		t.Fatalf("load usage: %v", err)
 	}
-	api := New(Options{DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour), Settings: settingMgr, Health: prober, Usage: usageMgr})
+	api := New(Options{
+		DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour),
+		Settings: settingMgr, Health: prober, Usage: usageMgr,
+		Playground: func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true, "data": gin.H{"stub": true}}) },
+	})
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	api.RegisterRoutes(e)
@@ -153,6 +157,22 @@ func TestSystemUpdateStatusRequiresAuth(t *testing.T) {
 	code, _, _ := env.req(t, "GET", "/admin/api/system/update", "", "")
 	if code != http.StatusUnauthorized {
 		t.Fatalf("update status without session = %d, want 401", code)
+	}
+}
+
+func TestPlaygroundRequiresAdminSession(t *testing.T) {
+	env := newEnv(t)
+	if code, _, _ := env.req(t, "POST", "/admin/api/playground", "", `{"model":"m","prompt":"hi"}`); code != http.StatusUnauthorized {
+		t.Fatalf("未登录调用 playground = %d, want 401", code)
+	}
+	// 关闭首登改密标记，验证已登录会话可进入 Playground handler。
+	if err := env.db.Model(&store.Admin{}).Where("username = ?", "admin").Update("must_change_password", false).Error; err != nil {
+		t.Fatalf("update admin: %v", err)
+	}
+	cookie, _ := login(t, env, "admin", "admin123")
+	code, body, _ := env.req(t, "POST", "/admin/api/playground", cookie, `{"model":"m","prompt":"hi"}`)
+	if code != http.StatusOK || !strings.Contains(body, `"stub":true`) {
+		t.Fatalf("登录后 playground = %d %s", code, body)
 	}
 }
 

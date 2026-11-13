@@ -12,6 +12,7 @@ import Tokens from './pages/Tokens'
 import Logs from './pages/Logs'
 import Settings from './pages/Settings'
 import Usage from './pages/Usage'
+import Playground from './pages/Playground'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="/channels" element={<Channels />} />
             <Route path="/tokens" element={<Tokens />} />
             <Route path="/logs" element={<Logs />} />
+            <Route path="/playground" element={<Playground />} />
             <Route path="/usage" element={<Usage />} />
             <Route path="/settings" element={<Settings />} />
           </Route>

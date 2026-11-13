@@ -58,6 +58,8 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 会话亲和只能在最高优先级组内提升候选渠道，且粘性 key 必须重新通过 enabled/cooldown/探测名额校验；不得绕过 priority 主备层级、健康状态或重试预算。
 - 请求级 `X-EverGate-Config` 只允许 timeouts / retry / channels / session_affinity 白名单字段，必须在 TokenAuth 与令牌治理之后解析；未知字段与敏感字段（api_key/model/allowed_models 等）一律 400 并带字段路径，禁止静默忽略或放宽。
 - 请求级覆盖不得绕过鉴权、模型白名单、额度、IP 限制或上游 key 加密；渠道 id 必须校验存在、启用且支持当前模型；摘要只允许脱敏生效字段（≤512B）落请求日志，禁止保存原始 header。
+- 管理台 Playground 只能由 admin 会话中间件保护，禁止为其签发或要求下游 token；执行必须复用 relay 公共 dispatch，不得另写一套调度/重试逻辑，请求日志必须标记 `source=playground`。
+- Playground 流式输出必须逐段转发且不得整段缓冲；命中摘要只能包含渠道/模型/耗时/usage/重试轨迹，禁止输出任何上游或下游 key 明文。前端消息长度上限必须与后端校验一致。
 - 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 

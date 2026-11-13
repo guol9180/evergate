@@ -534,9 +534,24 @@
   4. 请求完成后展示命中渠道、上游模型、first_token_ms、total_ms、状态码、usage 与重试轨迹；请求进入 request_logs 并标记为 Playground 来源；
   5. 使用 mock 上游覆盖 CC 非流式/流式、Responses 非流式/流式、上游 500 切换、无效模型；前端构建与 1280×800 / 390×844 无横向破版；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不做多模态上传、对话持久化、Prompt 模板库、自动评测或模型广场；不绕过 T20/T21/T24 的调度与健康规则；第一版不做导出
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-11 计划 P1 建卡：补齐任务书“好用”核心管理台体验，同时作为 T18 协议矩阵的真实人工调试入口
+  - 2026-11-13 执行 新增 `POST /admin/api/playground`（仅 admin 会话中间件保护，不签发下游 token）：
+    复用 relay 公共 dispatch；支持 Chat Completions / Responses 与流式开关；非流式返回
+    `{response, meta}` 信封，流式实时转发 SSE 并以 `evergate.meta` 事件回传命中链路；
+    prompt/system/model/body 均有后端上限；请求日志新增 `source` 列并标记 `playground`
+  - 2026-11-13 执行 前端新增 Playground 页（模型选择、协议切换、system/user 编辑、流式开关、
+    中断、命中链路与重试轨迹），从渠道列表聚合模型；抽取 `RetryTimeline` 供请求日志与 Playground 复用；
+    请求日志列表/详情显示 Playground 来源徽标
+  - 2026-11-13 验证 修复包装 writer 与 admin writer 共用 header 导致 gin Data 的 Content-Length
+    污染外层响应（非流式空 body）；改为独立 header map，仅 SSE 时复制到 admin 响应，并新增真实
+    httptest HTTP 回归测试
+  - 2026-11-13 验证 `go test -p 1 ./... -count=1` 全包通过（Playground 覆盖 CC/Responses 非流式与
+    流式、500 切换、无效模型 503、输入上限、admin 会话 401、真实 HTTP 空响应回归）；
+    `go vet ./...`、`npm --prefix web run build`、`make build` 通过
+  - 2026-11-13 验证 无头 Chrome 实测 1280×800 与 390×844：`scrollWidth == innerWidth`（无横向破版）；
+    非流式与流式请求均渲染正文、usage、首 token/总耗时与重试轨迹；`request_logs.source=playground` 已确认
 
 ### T26: Prometheus 指标与 OpenTelemetry 可选导出（P1）
 

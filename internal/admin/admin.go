@@ -38,6 +38,8 @@ type Options struct {
 	Settings  *settings.Manager
 	Health    *health.Prober
 	Usage     *usage.Manager
+	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
+	Playground gin.HandlerFunc
 }
 
 // API 管理台接口集合。
@@ -81,6 +83,16 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.DELETE("/admin/api/tokens/:id", a.sessionMiddleware(), a.deleteToken)
 	r.GET("/admin/api/logs", a.sessionMiddleware(), a.listLogs)
 	r.GET("/admin/api/logs/:id", a.sessionMiddleware(), a.getLog)
+	r.POST("/admin/api/playground", a.sessionMiddleware(), a.playground)
+}
+
+// playground 仅负责会话保护；具体调度与流式输出由 relay 提供。
+func (a *API) playground(c *gin.Context) {
+	if a.opt.Playground == nil {
+		fail(c, http.StatusNotImplemented, "Playground 未启用")
+		return
+	}
+	a.opt.Playground(c)
 }
 
 // ---------- 会话 ----------

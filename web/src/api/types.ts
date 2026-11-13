@@ -149,6 +149,7 @@ export interface RequestLog {
   created_at: string
   token_id: number
   token_name: string
+  source?: string
   channel_id: number
   channel_name: string
   key_id: number

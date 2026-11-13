@@ -374,6 +374,7 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 	costMicros, costStatus := r.requestCost(status, hit)
 	r.opt.LogWriter.Submit(&store.RequestLog{
 		TokenID: tokenID, TokenName: tokenName,
+		Source:    requestSource(c),
 		ChannelID: hit.channelID, ChannelName: hit.channelName, KeyID: hit.keyID,
 		Model: firstNonEmpty(hitLoggedModel(c), ""), UpstreamModel: hit.upstreamModel,
 		Stream:     isStreamRequest(c),
@@ -386,6 +387,16 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 		ConfigOverride: configSummaryFromContext(c),
 	})
+}
+
+// requestSource 标记请求来源；Playground 请求没有下游令牌，用于日志区分。
+func requestSource(c *gin.Context) string {
+	if value, ok := c.Get(ctxPlayground); ok {
+		if enabled, _ := value.(bool); enabled {
+			return "playground"
+		}
+	}
+	return ""
 }
 
 // configSummaryFromContext 返回已脱敏且有界的覆盖摘要；原始 header 永不落库。

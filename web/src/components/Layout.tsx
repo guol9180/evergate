@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3 } from 'lucide-react'
+import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
 import { Spinner } from './ui'
 
@@ -9,6 +9,7 @@ const nav = [
   { to: '/channels', label: '渠道管理', icon: Waypoints },
   { to: '/tokens', label: '令牌管理', icon: KeyRound },
   { to: '/logs', label: '请求日志', icon: ScrollText },
+  { to: '/playground', label: 'Playground', icon: FlaskConical },
   { to: '/usage', label: '用量成本', icon: BarChart3 },
   { to: '/settings', label: '系统设置', icon: Settings },
 ]
