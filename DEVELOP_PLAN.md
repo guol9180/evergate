@@ -617,6 +617,7 @@
   - 2026-11-13 执行 新增 `web/src/lib/channelPresets.ts`：OpenAI / DeepSeek / Kimi / BigModel 常规 / BigModel Coding / Z.ai Coding 六条内置模板，含显示名、Base URL、类型、Responses 能力、说明与 Coding 避坑提示，无任何 key/账号信息；`Channels.tsx` 名称未手动修改时同步填充默认渠道名，模型输入框使用预设示例占位符
   - 2026-11-13 验证 无头 Chrome 实测：选择 Z.ai Coding 后 Base URL 自动为 `https://api.z.ai/api/coding/paas/v4`、名称 `zai-coding`、HTTP 503 避坑提示可见；1280×800 与 390×844 两种视口下 `scrollWidth == innerWidth`（1280/1280、390/390）；选择 DeepSeek 预设保存后 `/admin/api/channels` 返回 type=deepseek、base_url=`https://api.deepseek.com`、supports_responses=true、models=[deepseek-chat]
   - 2026-11-13 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`go test -p 1 ./... -count=1` 全部 ok；`npm --prefix web run build` 与 `make build` 通过，二进制 28.14MB（<30MB），`web/dist` 已更新；README 无厂商基址清单（仅定位段提及厂商名）
+  - 2026-11-13 交付 提交 da50a7c、tag v0.1.26；Release Action 43404446836 成功（2m56s），4 个 assets 与 CHANGELOG 正文齐全；下载 Windows exe SHA256 与 checksums.txt 一致（d3614342…），隔离端口 18941 冒烟 `/`、`/healthz`、`/metrics` 均 200；npm 4 个包（主包 + win32/linux/darwin 子包）均为 0.1.26
 
 ### T29: npm 平台包发布流水线（P1，用户指令）
 
@@ -780,7 +781,7 @@
 |---|---|---|
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
-| P2（当前阶段） | T28 渠道预设供应商模板（已建卡待排期）；Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | T28 按上方任务卡验收；其余项开工前再拆任务卡 |
+| P2（当前阶段） | T28 渠道预设供应商模板（done）；Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | T28 已按任务卡验收并随 v0.1.26 发布；其余项开工前再拆任务卡 |
 
 ## 验收清单
 
