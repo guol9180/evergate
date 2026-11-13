@@ -5,7 +5,7 @@
   "homepage": "https://github.com/guol9180/evergate",
   "repository": {
     "type": "git",
-    "url": "https://github.com/guol9180/evergate.git"
+    "url": "git+https://github.com/guol9180/evergate.git"
   },
   "license": "MIT",
   "os": [],

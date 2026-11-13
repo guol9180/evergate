@@ -14,7 +14,7 @@
   "homepage": "https://github.com/guol9180/evergate",
   "repository": {
     "type": "git",
-    "url": "https://github.com/guol9180/evergate.git"
+    "url": "git+https://github.com/guol9180/evergate.git"
   },
   "bugs": {
     "url": "https://github.com/guol9180/evergate/issues"
