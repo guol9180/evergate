@@ -616,17 +616,17 @@
 
 ### T29: npm 平台包发布流水线（P1，用户指令）
 
-- 目标：tag 发版时除 GitHub Release 外同步发布 npm 平台包——主包 `evergate`（命令引导）+ `evergate-win32-x64` / `evergate-linux-amd64` / `evergate-darwin-arm64` 三个平台子包，`optionalDependencies` + `os`/`cpu` 字段按平台自动安装，registry 可被 npmmirror 同步
+- 目标：tag 发版时除 GitHub Release 外同步发布 npm 平台包——主包 `@heguoliang/evergate`（命令引导）+ `@heguoliang/evergate-win32-x64` / `@heguoliang/evergate-linux-amd64` / `@heguoliang/evergate-darwin-arm64` 三个平台子包，`optionalDependencies` + `os`/`cpu` 字段按平台自动安装，registry 可被 npmmirror 同步
 - 动机：GitHub Releases 在中国网络下载慢/失败；npm registry + 镜像可达，并为一键自动更新（T30）提供内建 integrity 的下载通道。前置实测：npm 包名 `evergate` 未占用、`registry.npmmirror.com` 连通
 - 验收标准：
   1. WHEN 推送 `v*` tag THEN CI 自动产出并发布 1 主包 + 3 平台子包，版本号与 git tag 一致，无人工发布步骤；
-  2. WHEN 在 Windows / Linux / macOS 分别执行 `npm i -g evergate` THEN 仅安装本平台子包，`evergate` 命令可启动且 `GET /healthz` 返回 200（os/cpu 生效）；
+  2. WHEN 在 Windows / Linux / macOS 分别执行 `npm i -g @heguoliang/evergate` THEN 仅安装本平台子包，`evergate` 命令可启动且 `GET /healthz` 返回 200（os/cpu 生效）；
   3. 主包不含平台二进制（KB 级体积）；各包含 LICENSE 与 README 摘要；
   4. npm 账号开启 2FA；NPM_TOKEN 仅存 GitHub Secrets，不落仓库与日志；
   5. 发布后可经 `https://registry.npmmirror.com` 安装（或实测记录同步延迟为可接受）；
   6. `go test ./...`、`make build`、GitHub Release 三平台产物不受影响。
 - 边界：不改动 GitHub Releases 现有产物与 changelog 事实源；不做 brew/scoop/winget 等其他包管理器；provenance 为可选加分项不设为验收；不宣传 npx 免安装为长期使用方式
-- 状态：blocked
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-12 计划 用户指令确认建卡；前置准备（npm 账号注册 + 2FA + 仓库 NPM_TOKEN secret）待开工时配置
   - 2026-11-13 执行 新增 `npm/wrapper`（主包 + 启动垫片，不含二进制）、`npm/platform`（子包模板）与 `scripts/stage-npm.mjs`；Release workflow 在构建后 staging，按「三个平台子包 → 主包」顺序发布，已发布版本自动跳过，NPM_TOKEN 缺失时跳过并提示
@@ -637,6 +637,10 @@
   - 2026-11-13 执行 通过 `npm whoami` 确认 npm 用户 `heguoliang`，改用 `@heguoliang/*` scoped 包名；stage 脚本、启动垫片、包模板与 workflow 发布循环全部改为从 package.json 读取实际包名，发布目录保持无 scope 便于 CI 定位
   - 2026-11-13 验证 本地 v0.1.24 staging：主包 2.2KB、win32 11.2MB；安装两个 tgz 后经 `@heguoliang/evergate` 垫片启动，18923 `/healthz` 200、`/metrics` 200
   - 2026-11-13 说明 v0.1.23 tag 因名称风控失败且无 Release/资产，不移动旧 tag；本次改发 v0.1.24 验证 scoped 发布
+  - 2026-11-13 交付 tag v0.1.24；Release Action 43390088852 成功（2m27s），4 个 npm 包发布成功：`@heguoliang/evergate` 与三个平台子包，版本均为 0.1.24；主包 registry 元数据有约数分钟处理延迟，之后 `npm view` 全部返回 0.1.24
+  - 2026-11-13 验证 从 registry `npm install -g --prefix <tmp> @heguoliang/evergate@0.1.24` 安装 2 个包（主包 + win32 子包），生成 `evergate.cmd`/`evergate.ps1` 垫片，启动后 18924 `/healthz` 200、`/metrics` 200；同命令经 npmmirror 安装并在 18925 启动 `/healthz` 200
+  - 2026-11-13 验证 GitHub Release v0.1.24 正文取自 CHANGELOG，4 个资产齐全；下载 Windows exe SHA256 与 checksums 一致（572c733b…）；README 已加入 `npm i -g @heguoliang/evergate` 安装方式
+  - 2026-11-13 后续 建议在首次发布稳定后切换到 Trusted Publishing（四个包分别绑定 GitHub Actions），移除 30 天有效期的 `NPM_TOKEN`；T30 自动更新默认使用 npm registry 的 integrity 校验
 
 ### T30: 一键自动更新（P1，用户指令）
 
