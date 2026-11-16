@@ -58,6 +58,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          set -euo pipefail
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
           VERSION="${GITHUB_REF_NAME#v}"
           for dir in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
@@ -66,6 +67,14 @@ jobs:
               echo "$pkg@$VERSION already published; skipping"
             else
               npm publish "./dist-npm/$dir" --access public
+            fi
+          done
+          for dir in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
+            pkg=$(node -p "require('./dist-npm/$dir/package.json').name")
+            got=$(npm view "$pkg@$VERSION" version)
+            if [ "$got" != "$VERSION" ]; then
+              echo "::error::$pkg@$VERSION is missing after publish (got: $got)"
+              exit 1
             fi
           done
 
