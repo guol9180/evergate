@@ -817,6 +817,7 @@
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户决策 P2 范围调整：移除多用户与语义缓存，本卡与 T37/T38 一并建立
+  - 2026-11-16 执行 前置调研完成并落盘 docs/P2调研-按预算模型降级.md：TensorZero（Apache-2.0 已核实）三层降级语义（provider 路由→variant 重试→variant 级联）、LiteLLM model_group+fallbacks 与 Budget Routing（超预算是拦截而非降级）、gpt-load 无模型级降级链；确认 T36 语义为「预算/耗尽触发 + 有序降级链 + 原始/实际模型双记录」
 
 ### T37: Anthropic 原生协议打通（P2，用户指令；吸收 T13）
 
@@ -833,6 +834,7 @@
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户决策 P2 范围调整：本卡吸收 T13（下游入口）并扩展原生上游，T13 状态转 canceled
+  - 2026-11-16 执行 前置调研完成并落盘 docs/P2调研-Anthropic原生协议.md：官方 Messages schema/SSE 事件序（无 [DONE]、ping 穿插、流后错误可断连）/鉴权头与 count_tokens 端点；DeepSeek(/anthropic) 与 Kimi(/anthropic) 兼容上游及三家 Base URL+"/v1/messages" 对齐；Claude Code 网关接入要求（ANTHROPIC_BASE_URL、模型名需含 claude/anthropic、官方不支持路由到非 Claude 模型）；thinking/cache_control 定为不可桥接显式 400；anthropic-version 默认值与 count_tokens 是否被调用留实现时实测
 
 ### T38: Gemini 原生协议打通（P2，用户指令）
 
@@ -849,6 +851,7 @@
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户决策 P2 范围调整建卡
+  - 2026-11-16 执行 前置调研完成并落盘 docs/P2调研-Gemini原生协议.md：官方 python-genai SDK 证实 REST 路径（模型在 URL、alt=sse）与 schema（system_instruction/safetySettings/functionCall part/usageMetadata 含 thoughts 与 tool_use token）；G→CC 映射表与 usage 计价口径（candidates+thoughts 计输出）成稿；ai.google.dev 本网络不可达，兼容层差异与 SSE 首帧细节列为实现时实测项；鉴权统一 x-goog-api-key header 禁 query 传 key
 ## 状态枚举
 
 
