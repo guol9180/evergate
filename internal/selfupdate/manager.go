@@ -1,7 +1,8 @@
 // Package selfupdate 实现管理台一键更新：下载、校验、替换与重启编排。
 //
-// 下载通道优先 npm registry（平台子包 tarball + dist.integrity），失败时回退
-// GitHub Releases + checksums.txt。替换引擎只做同目录改名交换，不依赖外部工具。
+// 下载通道优先 npm registry（默认 npmmirror → 官方 registry，平台子包 tarball +
+// dist.integrity），均失败时回退 GitHub Releases + checksums.txt。替换引擎只做
+// 同目录改名交换，不依赖外部工具。
 package selfupdate
 
 import (
@@ -28,8 +29,12 @@ const (
 	StageRestarting  = "restarting"
 	StageFailed      = "failed"
 
-	defaultRegistry = "https://registry.npmjs.org"
-	jobTimeout      = 10 * time.Minute
+	registryMirror   = "https://registry.npmmirror.com"
+	registryOfficial = "https://registry.npmjs.org"
+	jobTimeout       = 10 * time.Minute
+
+	defaultMetadataTimeout = 8 * time.Second
+	defaultTarballTimeout  = 90 * time.Second
 )
 
 var versionPattern = regexp.MustCompile(`^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$`)
@@ -43,14 +48,18 @@ type Options struct {
 	Executable     string // 为空时取 os.Executable()
 	Args           []string
 	WorkDir        string
-	Registry       string // npm registry，可配 npmmirror
-	Latest         func(context.Context) (update.Status, error)
-	Client         *http.Client
-	Logger         *slog.Logger
-	Now            func() time.Time
-	RequestRestart func()
-	GOOS           string
-	GOARCH         string
+	// Registries 是 npm 下载链，按顺序尝试；为空时使用 npmmirror → 官方 registry。
+	// 显式配置（如 EVERGATE_NPM_REGISTRY）时传单元素切片即可只走该源。
+	Registries      []string
+	MetadataTimeout time.Duration // 每个 registry 的元数据请求超时，默认 8s
+	TarballTimeout  time.Duration // 每个 registry 的 tarball 下载超时，默认 90s
+	Latest          func(context.Context) (update.Status, error)
+	Client          *http.Client
+	Logger          *slog.Logger
+	Now             func() time.Time
+	RequestRestart  func()
+	GOOS            string
+	GOARCH          string
 }
 
 // Capability 描述当前安装是否允许自更新，用于管理台提前提示。
@@ -111,10 +120,19 @@ func New(opt Options) *Manager {
 	if opt.Now == nil {
 		opt.Now = time.Now
 	}
-	if opt.Registry == "" {
-		opt.Registry = defaultRegistry
+	if len(opt.Registries) == 0 {
+		opt.Registries = defaultRegistries()
 	}
-	opt.Registry = strings.TrimSuffix(opt.Registry, "/")
+	opt.Registries = normalizeRegistries(opt.Registries)
+	if len(opt.Registries) == 0 {
+		opt.Registries = defaultRegistries()
+	}
+	if opt.MetadataTimeout <= 0 {
+		opt.MetadataTimeout = defaultMetadataTimeout
+	}
+	if opt.TarballTimeout <= 0 {
+		opt.TarballTimeout = defaultTarballTimeout
+	}
 	if opt.Client == nil {
 		opt.Client = &http.Client{Timeout: downloadTimeout}
 	}
@@ -136,6 +154,26 @@ func New(opt Options) *Manager {
 	}
 	opt.Args = append([]string(nil), opt.Args...)
 	return &Manager{opt: opt}
+}
+
+// defaultRegistries 返回默认 npm 下载链：国内镜像优先，官方 registry 兜底。
+func defaultRegistries() []string {
+	return []string{registryMirror, registryOfficial}
+}
+
+// normalizeRegistries 去掉空项、末尾斜杠与重复项，保持声明顺序。
+func normalizeRegistries(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, registry := range in {
+		registry = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(registry), "/"))
+		if registry == "" || seen[registry] {
+			continue
+		}
+		seen[registry] = true
+		out = append(out, registry)
+	}
+	return out
 }
 
 // Capability 返回当前安装的可更新能力；不可用时 Reason 给出可操作提示。

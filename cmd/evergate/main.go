@@ -173,10 +173,15 @@ func run() error {
 	updateChecker := update.NewChecker(version, updateAPIURL, time.Now)
 	restartCh := make(chan struct{})
 	var restartOnce sync.Once
+	// npm 自更新下载链：默认 npmmirror → 官方 registry；显式配置时只走该源。
+	var npmRegistries []string
+	if customRegistry := os.Getenv("EVERGATE_NPM_REGISTRY"); customRegistry != "" {
+		npmRegistries = []string{customRegistry}
+	}
 	updater := selfupdate.New(selfupdate.Options{
 		CurrentVersion: version,
 		Args:           os.Args[1:],
-		Registry:       os.Getenv("EVERGATE_NPM_REGISTRY"),
+		Registries:     npmRegistries,
 		Latest:         updateChecker.Check,
 		Logger:         logger,
 		Now:            time.Now,

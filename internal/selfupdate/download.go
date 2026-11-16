@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -34,21 +35,20 @@ const (
 func (m *Manager) download(ctx context.Context, target, source string) ([]byte, string, error) {
 	switch source {
 	case "npm":
-		binary, err := m.downloadNPM(ctx, target)
-		return binary, "npm", err
+		return m.downloadNPMChain(ctx, target)
 	case "github":
 		binary, err := m.downloadGitHub(ctx, target)
 		return binary, "github", err
 	default:
-		binary, err := m.downloadNPM(ctx, target)
+		binary, used, err := m.downloadNPMChain(ctx, target)
 		if err == nil {
-			return binary, "npm", nil
+			return binary, used, nil
 		}
 		m.opt.Logger.Warn("npm update channel failed, falling back to GitHub",
 			"error", err, "target", target)
 		binary, ghErr := m.downloadGitHub(ctx, target)
 		if ghErr != nil {
-			return nil, "", fmt.Errorf("npm: %v; github: %w", err, ghErr)
+			return nil, "", fmt.Errorf("%v; github: %w", err, ghErr)
 		}
 		return binary, "github", nil
 	}
@@ -61,13 +61,45 @@ type npmVersionMeta struct {
 	} `json:"dist"`
 }
 
-func (m *Manager) downloadNPM(ctx context.Context, target string) ([]byte, error) {
+// downloadNPMChain 按配置顺序尝试 npm registry，成功时返回 "npm:<host>" 作为来源标识。
+func (m *Manager) downloadNPMChain(ctx context.Context, target string) ([]byte, string, error) {
+	failures := make([]string, 0, len(m.opt.Registries))
+	for _, registry := range m.opt.Registries {
+		binary, err := m.downloadNPMFrom(ctx, registry, target)
+		if err == nil {
+			return binary, "npm:" + registryHost(registry), nil
+		}
+		m.opt.Logger.Warn("npm update source failed",
+			slog.String("registry", registry), slog.String("target", target), slog.Any("error", err))
+		failures = append(failures, fmt.Sprintf("%s: %v", registryHost(registry), err))
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	if len(failures) == 0 {
+		return nil, "", errors.New("npm 下载链为空")
+	}
+	return nil, "", fmt.Errorf("npm（%s）", strings.Join(failures, "；"))
+}
+
+func registryHost(raw string) string {
+	if u, err := url.Parse(raw); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return raw
+}
+
+// downloadNPMFrom 从单个 registry 查询版本元数据并下载、校验平台 tarball。
+// 元数据与 tarball 分别使用独立超时，避免挂掉的镜像占满整个更新预算。
+func (m *Manager) downloadNPMFrom(ctx context.Context, registry, target string) ([]byte, error) {
 	pkg, binPath, err := platformPackage(m.opt.GOOS, m.opt.GOARCH)
 	if err != nil {
 		return nil, err
 	}
-	metaURL := m.opt.Registry + "/" + pkg + "/" + url.PathEscape(target)
-	body, err := httpGet(ctx, m.opt.Client, metaURL, maxMetadataSize)
+	metaURL := registry + "/" + pkg + "/" + url.PathEscape(target)
+	metaCtx, cancelMeta := context.WithTimeout(ctx, m.opt.MetadataTimeout)
+	body, err := httpGet(metaCtx, m.opt.Client, metaURL, maxMetadataSize)
+	cancelMeta()
 	if err != nil {
 		return nil, fmt.Errorf("查询 npm 包 %s@%s 失败: %w", pkg, target, err)
 	}
@@ -82,7 +114,9 @@ func (m *Manager) downloadNPM(ctx context.Context, target string) ([]byte, error
 	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
 		return nil, fmt.Errorf("npm tarball 地址不合法: %q", meta.Dist.Tarball)
 	}
-	tarball, err := httpGet(ctx, m.opt.Client, meta.Dist.Tarball, maxTarballSize)
+	tarCtx, cancelTar := context.WithTimeout(ctx, m.opt.TarballTimeout)
+	tarball, err := httpGet(tarCtx, m.opt.Client, meta.Dist.Tarball, maxTarballSize)
+	cancelTar()
 	if err != nil {
 		return nil, fmt.Errorf("下载 npm tarball 失败: %w", err)
 	}

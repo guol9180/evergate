@@ -756,6 +756,42 @@
   - 2026-11-13 验证 复核 README 章节结构与相对链接（LICENSE/CHANGELOG/AGENTS/DEVELOP_PLAN/docs×3）全部存在；全文不再出现任务号与实现机制描述
   - 2026-11-13 执行 里程碑表 `P0（本次）` 措辞过期（源自任务书「P0 — 可用（本次开发必须全部完成）」），改为 `P0（已完成）`，与 P1 已完成、P2 当前阶段的状态一致
 
+### T35a: 自更新下载链 npmmirror 优先（P1，用户指令）
+
+- 目标：自更新 npm 通道改为 `npmmirror → registry.npmjs.org → GitHub Releases` 的顺序回退，每个源独立超时，成功源写入任务状态；显式 `EVERGATE_NPM_REGISTRY` 时只走该源再回退 GitHub
+- 动机：平台子包约 10–11MB，国内无代理直连官方 registry 慢且易断；npmmirror 自动同步已验证可用（v0.1.26 四个包均同步）。单纯换顺序会让挂掉的镜像吃满 3 分钟单请求超时，必须同时拆超时预算
+- 验收标准：
+  1. 未配置环境变量时依次尝试 `https://registry.npmmirror.com`、`https://registry.npmjs.org`，均失败后再走 GitHub Releases；成功源以 `npm:<host>` / `github` 写入 `Job.Source` 并在管理台展示；
+  2. 任一源出现 404、5xx、连接超时或 integrity 校验失败时进入下一源，不直接中止；
+  3. 每源元数据请求超时 ≤8s、tarball 下载超时 ≤90s，单源故障不得占满 10 分钟任务预算；
+  4. 设置 `EVERGATE_NPM_REGISTRY` 后只尝试该源（失败再回退 GitHub），不触碰默认链；
+  5. 管理台更新弹窗文案与通道徽标反映实际顺序与命中的 registry；
+  6. 单测覆盖镜像成功、镜像失败转官方、integrity 失败转官方、超时转官方、两源失败转 GitHub、显式覆盖；`go test ./...`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不改版本检查来源（T35b）、不改替换/重启引擎、不引入新的下载依赖或第三方自更新库
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户确认按「npmmirror → 官方 registry → GitHub」实施，并同意拆成 T35a 下载链与 T35b 版本检查两张卡
+  - 2026-11-16 执行 开始 T35a：`selfupdate.Options.Registry` 改为 `Registries` 链，新增每源元数据/tarball 超时配置，默认链与显式覆盖语义按验收标准落地
+  - 2026-11-16 执行 `internal/selfupdate`：默认链 `registry.npmmirror.com → registry.npmjs.org`，每个源独立 8s 元数据 / 90s tarball 超时；任一源 404/5xx/超时/integrity 失败即进入下一源，两源均失败回退 GitHub；成功源记录为 `npm:<host>`；`EVERGATE_NPM_REGISTRY` 收窄为单源链
+  - 2026-11-16 执行 管理台更新弹窗文案改为「npmmirror → 官方 → GitHub」，下载通道徽标显示实际 registry 并支持长主机名截断；`docs/运维配置.md` 与 AGENTS 一键更新规范同步更新
+  - 2026-11-16 验证 新增单测：默认链顺序、registry 规范化去重、镜像 502 转官方、镜像 integrity 失败转官方、镜像 800ms 延迟在 100ms 元数据超时后转官方（总耗时 <700ms）、显式单源不触碰默认链、两源失败转 GitHub；`go test ./internal/selfupdate -count=1` 与全量 `go test -p 1 ./... -count=1` 通过
+  - 2026-11-16 验证 真实链路端到端：临时 v0.1.25 二进制（18942）经管理台 API 触发更新，`job.source=npm:registry.npmmirror.com`，版本变为 v0.1.26，`/healthz` 200，新 exe SHA256 `d3614342…` 与 Release checksums 一致，旧版本 `.bak-0.1.26-20261116T011614` 保留
+  - 2026-11-16 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 通过，二进制 28.14MB（<30MB），`web/dist` 已更新
+
+### T35b: 版本检查改用 npm dist-tags 优先（P1，用户指令）
+
+- 目标：更新检测不再只依赖 GitHub Releases API，改为 npm `dist-tags.latest`（npmmirror → 官方）为主、GitHub Release 为辅，保证国内无代理环境也能发现新版本
+- 动机：下载链优化后，若检测仍被 GitHub API 阻塞，用户根本看不到更新提示；npm registry 的 dist-tags 与发布流水线同源，国内可达性更好
+- 验收标准：
+  1. WHEN 检查更新 THEN 先读取 npm 平台子包/主包 dist-tags，npmmirror 失败再走官方 registry；两源均失败才回退 GitHub Releases API；
+  2. 检测结果仍包含 current/latest/update_available/checked_at；GitHub 可达时补充 release_url、published_at 与资产列表，不可达时以 npm 版本为准并标记说明来源；
+  3. 更新弹窗不因缺少 GitHub 元数据而禁用「立即更新」；
+  4. 单测覆盖镜像命中、镜像失败转官方、两源失败转 GitHub、版本比较与 dev 版本短路；`go test ./...`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不改变 GitHub Release 正文与资产发布流程；不新增版本号格式；不做增量/灰度通道
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户确认拆卡；T35a 完成并验证后再开工
+
 ## 状态枚举
 
 | 状态 | 含义 |
@@ -781,6 +817,7 @@
 |---|---|---|
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
+| P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（下一张） | T35a 已验收；T35b 按任务卡验收后再发版 |
 | P2（当前阶段） | T28 渠道预设供应商模板（done）；Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | T28 已按任务卡验收并随 v0.1.26 发布；其余项开工前再拆任务卡 |
 
 ## 验收清单

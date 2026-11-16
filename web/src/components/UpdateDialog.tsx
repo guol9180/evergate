@@ -14,6 +14,13 @@ const stageLabel: Record<string, string> = {
 
 const busyStages = new Set(['downloading', 'verifying', 'replacing', 'restarting'])
 
+function sourceLabel(source?: string) {
+  if (!source) return ''
+  if (source === 'github') return 'GitHub Releases'
+  if (source.startsWith('npm:')) return `npm · ${source.slice(4)}`
+  return source
+}
+
 export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose: () => void; status?: UpdateStatus }) {
   const [source, setSource] = useState('auto')
   const [started, setStarted] = useState(false)
@@ -109,7 +116,9 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
           {job?.source && (
             <div className="mt-2 flex items-center justify-between gap-3">
               <span className="text-slate-500">下载通道</span>
-              <Badge tone="bg-indigo-100 text-indigo-700">{job.source}</Badge>
+              <Badge tone="bg-indigo-100 text-indigo-700">
+                <span className="max-w-[220px] truncate" title={sourceLabel(job.source)}>{sourceLabel(job.source)}</span>
+              </Badge>
             </div>
           )}
         </div>
@@ -122,10 +131,10 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
         )}
 
         {!started && (
-          <Field label="下载通道" hint="自动模式先走 npm registry，失败后回退 GitHub Releases。">
+          <Field label="下载通道" hint="自动模式依次尝试 npmmirror、官方 npm registry，最后回退 GitHub Releases。">
             <Select value={source} onChange={(e) => setSource(e.target.value)}>
-              <option value="auto">自动（npm → GitHub）</option>
-              <option value="npm">npm registry</option>
+              <option value="auto">自动（npmmirror → 官方 → GitHub）</option>
+              <option value="npm">仅 npm（镜像优先）</option>
               <option value="github">GitHub Releases</option>
             </Select>
           </Field>

@@ -71,10 +71,10 @@ func TestDownloadNPMVerifiesIntegrityAndExtractsBinary(t *testing.T) {
 	srv := npmServer(t, tarball, sha512Integrity(tarball))
 
 	m := New(Options{
-		CurrentVersion: "v0.1.24", Registry: srv.URL, Client: srv.Client(),
+		CurrentVersion: "v0.1.24", Registries: []string{srv.URL}, Client: srv.Client(),
 		Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
 	})
-	got, err := m.downloadNPM(context.Background(), "0.1.25")
+	got, err := m.downloadNPMFrom(context.Background(), srv.URL, "0.1.25")
 	if err != nil {
 		t.Fatalf("download npm: %v", err)
 	}
@@ -87,10 +87,10 @@ func TestDownloadNPMRejectsBadIntegrity(t *testing.T) {
 	tarball := buildTarball(t, "package/bin/evergate.exe", []byte("content"))
 	srv := npmServer(t, tarball, "sha512-AAAA")
 	m := New(Options{
-		CurrentVersion: "v0.1.24", Registry: srv.URL, Client: srv.Client(),
+		CurrentVersion: "v0.1.24", Registries: []string{srv.URL}, Client: srv.Client(),
 		Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
 	})
-	if _, err := m.downloadNPM(context.Background(), "0.1.25"); err == nil || !strings.Contains(err.Error(), "integrity") {
+	if _, err := m.downloadNPMFrom(context.Background(), srv.URL, "0.1.25"); err == nil || !strings.Contains(err.Error(), "integrity") {
 		t.Fatalf("err = %v, want integrity failure", err)
 	}
 }
@@ -191,7 +191,7 @@ func TestStartSuccessReplacesAndRequestsRestart(t *testing.T) {
 	restarted := make(chan struct{}, 1)
 	m := New(Options{
 		CurrentVersion: "v0.1.24", Executable: exe, Args: []string{"-config", "x"}, WorkDir: dir,
-		Registry: srv.URL, Client: srv.Client(), Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
+		Registries: []string{srv.URL}, Client: srv.Client(), Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
 		RequestRestart: func() { restarted <- struct{}{} },
 	})
 	if _, err := m.Start("0.1.25", "npm"); err != nil {
@@ -209,6 +209,9 @@ func TestStartSuccessReplacesAndRequestsRestart(t *testing.T) {
 	job := m.Snapshot()
 	if job == nil || job.Stage != StageRestarting || job.BackupPath == "" {
 		t.Fatalf("job = %#v", job)
+	}
+	if !strings.HasPrefix(job.Source, "npm:") {
+		t.Fatalf("job source = %q, want npm:<host>", job.Source)
 	}
 	if _, err := os.Stat(job.BackupPath); err != nil {
 		t.Fatalf("backup missing: %v", err)
@@ -230,7 +233,7 @@ func TestStartIntegrityFailureKeepsOldBinary(t *testing.T) {
 	restarted := make(chan struct{}, 1)
 	m := New(Options{
 		CurrentVersion: "v0.1.24", Executable: exe, WorkDir: dir,
-		Registry: srv.URL, Client: srv.Client(), Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
+		Registries: []string{srv.URL}, Client: srv.Client(), Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
 		RequestRestart: func() { restarted <- struct{}{} },
 	})
 	if _, err := m.Start("0.1.25", "npm"); err != nil {
@@ -317,7 +320,7 @@ func TestDownloadAutoFallsBackToGitHub(t *testing.T) {
 	}))
 	defer srv.Close()
 	m := New(Options{
-		CurrentVersion: "v0.1.24", Registry: srv.URL, Client: srv.Client(), Logger: discardLogger(),
+		CurrentVersion: "v0.1.24", Registries: []string{srv.URL}, Client: srv.Client(), Logger: discardLogger(),
 		GOOS: "windows", GOARCH: "amd64",
 		Latest: func(context.Context) (update.Status, error) {
 			return update.Status{
@@ -335,5 +338,111 @@ func TestDownloadAutoFallsBackToGitHub(t *testing.T) {
 	}
 	if source != "github" || !bytes.Equal(got, binary) {
 		t.Fatalf("source=%s binary=%q", source, got)
+	}
+}
+
+func TestDefaultRegistriesPreferMirrorThenOfficial(t *testing.T) {
+	m := New(Options{CurrentVersion: "v0.1.24", Logger: discardLogger()})
+	if len(m.opt.Registries) != 2 || m.opt.Registries[0] != registryMirror || m.opt.Registries[1] != registryOfficial {
+		t.Fatalf("registries = %#v", m.opt.Registries)
+	}
+}
+
+func TestNormalizeRegistriesDedupesAndTrims(t *testing.T) {
+	got := normalizeRegistries([]string{" https://a.example/ ", "", "https://a.example", "https://b.example"})
+	if len(got) != 2 || got[0] != "https://a.example" || got[1] != "https://b.example" {
+		t.Fatalf("normalized = %#v", got)
+	}
+}
+
+func TestDownloadNPMChainFallsBackToSecondRegistry(t *testing.T) {
+	content := []byte("mirror-binary")
+	tarball := buildTarball(t, "package/bin/evergate.exe", content)
+	good := npmServer(t, tarball, sha512Integrity(tarball))
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "mirror down", http.StatusBadGateway)
+	}))
+	defer bad.Close()
+
+	m := New(Options{
+		CurrentVersion: "v0.1.24", Registries: []string{bad.URL, good.URL}, Client: good.Client(),
+		Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
+	})
+	binary, source, err := m.downloadNPMChain(context.Background(), "0.1.25")
+	if err != nil {
+		t.Fatalf("download chain: %v", err)
+	}
+	if !bytes.Equal(binary, content) {
+		t.Fatalf("binary = %q", binary)
+	}
+	if want := "npm:" + registryHost(good.URL); source != want {
+		t.Fatalf("source = %q, want %q", source, want)
+	}
+}
+
+func TestDownloadNPMChainIntegrityFailureFallsBack(t *testing.T) {
+	content := []byte("official-binary")
+	tarball := buildTarball(t, "package/bin/evergate.exe", content)
+	good := npmServer(t, tarball, sha512Integrity(tarball))
+	corrupt := npmServer(t, tarball, "sha512-AAAA")
+
+	m := New(Options{
+		CurrentVersion: "v0.1.24", Registries: []string{corrupt.URL, good.URL}, Client: good.Client(),
+		Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
+	})
+	binary, source, err := m.downloadNPMChain(context.Background(), "0.1.25")
+	if err != nil {
+		t.Fatalf("download chain: %v", err)
+	}
+	if !bytes.Equal(binary, content) || source != "npm:"+registryHost(good.URL) {
+		t.Fatalf("binary=%q source=%q", binary, source)
+	}
+}
+
+func TestDownloadNPMChainMetadataTimeoutFallsBack(t *testing.T) {
+	content := []byte("fast-binary")
+	tarball := buildTarball(t, "package/bin/evergate.exe", content)
+	good := npmServer(t, tarball, sha512Integrity(tarball))
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(800 * time.Millisecond)
+		http.Error(w, "too late", http.StatusGatewayTimeout)
+	}))
+	defer slow.Close()
+
+	m := New(Options{
+		CurrentVersion: "v0.1.24", Registries: []string{slow.URL, good.URL}, Client: good.Client(),
+		MetadataTimeout: 100 * time.Millisecond, Logger: discardLogger(), GOOS: "windows", GOARCH: "amd64",
+	})
+	start := time.Now()
+	binary, source, err := m.downloadNPMChain(context.Background(), "0.1.25")
+	if err != nil {
+		t.Fatalf("download chain: %v", err)
+	}
+	if !bytes.Equal(binary, content) || source != "npm:"+registryHost(good.URL) {
+		t.Fatalf("binary=%q source=%q", binary, source)
+	}
+	if elapsed := time.Since(start); elapsed > 700*time.Millisecond {
+		t.Fatalf("timeout fallback took %v", elapsed)
+	}
+}
+
+func TestExplicitRegistryDoesNotUseDefaultChain(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "custom registry down", http.StatusBadGateway)
+	}))
+	defer bad.Close()
+	m := New(Options{
+		CurrentVersion: "v0.1.24", Registries: []string{bad.URL}, Client: bad.Client(), Logger: discardLogger(),
+		GOOS: "windows", GOARCH: "amd64",
+		Latest: func(context.Context) (update.Status, error) {
+			return update.Status{}, fmt.Errorf("github unavailable")
+		},
+	})
+	_, _, err := m.download(context.Background(), "0.1.25", "auto")
+	if err == nil || !strings.Contains(err.Error(), registryHost(bad.URL)) {
+		t.Fatalf("err = %v, want only custom registry failure", err)
+	}
+	if strings.Contains(err.Error(), "npmmirror") || strings.Contains(err.Error(), "registry.npmjs.org") {
+		t.Fatalf("default chain should not be used: %v", err)
 	}
 }
