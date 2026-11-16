@@ -825,6 +825,7 @@
   - 2026-11-16 验证 管理台 API 测试覆盖降级链整体替换、读取、重复/空值/负数校验与非法输入不落库，令牌 disable_fallback 创建/编辑往返；无头 Chrome 1280×800 与 390×844 截图复核设置、令牌、日志列表/详情 7 个画面，均无页面级横向溢出
   - 2026-11-16 验证 端到端实例（18946 + mock 上游 18947）：expensive 渠道 503 后自动落到 cheap，客户端 200；日志 `original_model=expensive-show`、`model=cheap-show`、trace 3 条且含 channel_exhausted；`gofmt`、`go vet`、`go test -p 1 ./... -count=1`、`npm --prefix web run build`、`make build` 通过，二进制 28.18MB（<30MB）
   - 2026-11-16 验证 按 init-project-docs 五条规范复审三件套：AGENTS 补齐第五条「精准修改」与 `internal/npmregistry` 目录说明；README 移除尚未交付的 Anthropic/Gemini 供应商标识；三文档相对链接有效，任务状态均在枚举内，README 未新增功能细节
+  - 2026-11-16 验证 按最新 init-project-docs 标准条目复审：AGENTS 第五条补充「注释只写代码装不下的信息」约束，五条通用规范与最新标准条目一致；三文档职责归属、相对链接、README 功能细节与任务状态复核通过
 
 ### T37: Anthropic 原生协议打通（P2，用户指令；吸收 T13）
 
