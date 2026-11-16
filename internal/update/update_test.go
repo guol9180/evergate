@@ -2,10 +2,13 @@ package update
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"evergate/internal/npmregistry"
 )
 
 func TestVersionCompare(t *testing.T) {
@@ -44,7 +47,12 @@ func TestCheckerFetchesLatestRelease(t *testing.T) {
 	}))
 	defer server.Close()
 
-	checker := NewChecker("v0.1.3", server.URL+"/repos/guol9180/evergate/releases/latest", func() time.Time { return now })
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.3",
+		APIURL:         server.URL + "/repos/guol9180/evergate/releases/latest",
+		Registries:     []string{},
+		Now:            func() time.Time { return now },
+	})
 	status, err := checker.Check(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -54,6 +62,9 @@ func TestCheckerFetchesLatestRelease(t *testing.T) {
 	}
 	if len(status.Assets) != 1 || status.Assets[0].Name != "evergate-windows-amd64.exe" {
 		t.Fatalf("unexpected assets: %+v", status.Assets)
+	}
+	if status.Source != "github" {
+		t.Fatalf("source = %q, want github", status.Source)
 	}
 	if !status.CheckedAt.Equal(now) {
 		t.Fatalf("CheckedAt = %v, want %v", status.CheckedAt, now)
@@ -76,7 +87,7 @@ func TestCheckerRejectsInvalidVersion(t *testing.T) {
 		_, _ = w.Write([]byte(`{"tag_name":"not-a-version","html_url":"https://example/release"}`))
 	}))
 	defer server.Close()
-	checker := NewChecker("v0.1.3", server.URL, time.Now)
+	checker := NewCheckerWithOptions(Options{CurrentVersion: "v0.1.3", APIURL: server.URL, Registries: []string{}, Now: time.Now})
 	if _, err := checker.Check(context.Background()); err == nil {
 		t.Fatal("invalid tag should fail")
 	}
@@ -95,7 +106,12 @@ func TestCheckerFallsBackToAtomWhenRateLimited(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	checker := NewChecker("v0.1.3", server.URL+"/repos/guol9180/evergate/releases/latest", time.Now)
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.3",
+		APIURL:         server.URL + "/repos/guol9180/evergate/releases/latest",
+		Registries:     []string{},
+		Now:            time.Now,
+	})
 	status, err := checker.Check(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -105,5 +121,144 @@ func TestCheckerFallsBackToAtomWhenRateLimited(t *testing.T) {
 	}
 	if len(status.Assets) != 1 || status.Assets[0].URL != "https://github.com/guol9180/evergate/releases/download/v0.1.4/evergate-windows-amd64.exe" {
 		t.Fatalf("fallback should derive Windows asset: %+v", status.Assets)
+	}
+}
+
+func npmRegistryServer(t *testing.T, version string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/@heguoliang/evergate/latest" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = fmt.Fprintf(w, `{"version":%q}`, version)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func githubReleaseServer(t *testing.T, tag, htmlURL string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"tag_name":%q,"html_url":%q,"published_at":"2026-11-16T00:00:00Z","assets":[{"name":"evergate-windows-amd64.exe","browser_download_url":%q,"size":123}]}`, tag, htmlURL, htmlURL+"/bin")
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestCheckPrefersNPMAndEnrichesGitHub(t *testing.T) {
+	npm := npmRegistryServer(t, "0.1.27")
+	gh := githubReleaseServer(t, "v0.1.27", "https://example/release")
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.26", APIURL: gh.URL, Registries: []string{npm.URL}, Now: time.Now,
+	})
+	status, err := checker.Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.LatestVersion != "0.1.27" || !status.UpdateAvailable {
+		t.Fatalf("status = %+v", status)
+	}
+	if want := "npm:" + npmregistry.Host(npm.URL); status.Source != want {
+		t.Fatalf("source = %q, want %q", status.Source, want)
+	}
+	if status.ReleaseURL != "https://example/release" || len(status.Assets) != 1 {
+		t.Fatalf("github metadata not enriched: %+v", status)
+	}
+}
+
+func TestCheckFallsBackToOfficialRegistry(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "mirror down", http.StatusBadGateway)
+	}))
+	defer bad.Close()
+	good := npmRegistryServer(t, "0.1.27")
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.26",
+		APIURL:         "http://127.0.0.1:1/unreachable",
+		Registries:     []string{bad.URL, good.URL},
+		GitHubTimeout:  300 * time.Millisecond,
+		Now:            time.Now,
+	})
+	status, err := checker.Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.LatestVersion != "0.1.27" || !status.UpdateAvailable {
+		t.Fatalf("status = %+v", status)
+	}
+	if want := "npm:" + npmregistry.Host(good.URL); status.Source != want {
+		t.Fatalf("source = %q, want %q", status.Source, want)
+	}
+	if status.ReleaseURL != "" || status.Assets != nil {
+		t.Fatalf("unreachable github should not add metadata: %+v", status)
+	}
+}
+
+func TestCheckFallsBackToGitHubWhenNPMFails(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "npm down", http.StatusServiceUnavailable)
+	}))
+	defer bad.Close()
+	gh := githubReleaseServer(t, "v0.1.27", "https://example/release")
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.26", APIURL: gh.URL, Registries: []string{bad.URL}, Now: time.Now,
+	})
+	status, err := checker.Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.LatestVersion != "v0.1.27" || status.Source != "github" || len(status.Assets) != 1 {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestCheckSkipsGitHubWhenNoUpdate(t *testing.T) {
+	npm := npmRegistryServer(t, "0.1.26")
+	githubHits := 0
+	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		githubHits++
+		http.Error(w, "should not be called", http.StatusInternalServerError)
+	}))
+	defer gh.Close()
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.26", APIURL: gh.URL, Registries: []string{npm.URL}, Now: time.Now,
+	})
+	status, err := checker.Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.UpdateAvailable || githubHits != 0 {
+		t.Fatalf("status = %+v githubHits = %d", status, githubHits)
+	}
+}
+
+func TestCheckPrefersNewerGitHubRelease(t *testing.T) {
+	npm := npmRegistryServer(t, "0.1.26")
+	gh := githubReleaseServer(t, "v0.1.27", "https://example/release")
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.25", APIURL: gh.URL, Registries: []string{npm.URL}, Now: time.Now,
+	})
+	status, err := checker.Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.LatestVersion != "v0.1.27" || status.Source != "github" || !status.UpdateAvailable {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestCheckFallsBackToGitHubForInvalidNPMVersion(t *testing.T) {
+	npm := npmRegistryServer(t, "not-a-version")
+	gh := githubReleaseServer(t, "v0.1.27", "https://example/release")
+	checker := NewCheckerWithOptions(Options{
+		CurrentVersion: "v0.1.26", APIURL: gh.URL, Registries: []string{npm.URL}, Now: time.Now,
+	})
+	status, err := checker.Check(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.LatestVersion != "v0.1.27" || status.Source != "github" {
+		t.Fatalf("status = %+v", status)
 	}
 }

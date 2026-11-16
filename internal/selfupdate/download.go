@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"evergate/internal/npmregistry"
 	"evergate/internal/update"
 )
 
@@ -83,10 +84,7 @@ func (m *Manager) downloadNPMChain(ctx context.Context, target string) ([]byte, 
 }
 
 func registryHost(raw string) string {
-	if u, err := url.Parse(raw); err == nil && u.Host != "" {
-		return u.Host
-	}
-	return raw
+	return npmregistry.Host(raw)
 }
 
 // downloadNPMFrom 从单个 registry 查询版本元数据并下载、校验平台 tarball。

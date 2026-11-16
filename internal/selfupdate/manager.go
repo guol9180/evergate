@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"evergate/internal/npmregistry"
 	"evergate/internal/update"
 )
 
@@ -29,8 +30,8 @@ const (
 	StageRestarting  = "restarting"
 	StageFailed      = "failed"
 
-	registryMirror   = "https://registry.npmmirror.com"
-	registryOfficial = "https://registry.npmjs.org"
+	registryMirror   = npmregistry.Mirror
+	registryOfficial = npmregistry.Official
 	jobTimeout       = 10 * time.Minute
 
 	defaultMetadataTimeout = 8 * time.Second
@@ -158,22 +159,12 @@ func New(opt Options) *Manager {
 
 // defaultRegistries 返回默认 npm 下载链：国内镜像优先，官方 registry 兜底。
 func defaultRegistries() []string {
-	return []string{registryMirror, registryOfficial}
+	return npmregistry.Default()
 }
 
 // normalizeRegistries 去掉空项、末尾斜杠与重复项，保持声明顺序。
 func normalizeRegistries(in []string) []string {
-	seen := make(map[string]bool, len(in))
-	out := make([]string, 0, len(in))
-	for _, registry := range in {
-		registry = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(registry), "/"))
-		if registry == "" || seen[registry] {
-			continue
-		}
-		seen[registry] = true
-		out = append(out, registry)
-	}
-	return out
+	return npmregistry.Normalize(in)
 }
 
 // Capability 返回当前安装的可更新能力；不可用时 Reason 给出可操作提示。

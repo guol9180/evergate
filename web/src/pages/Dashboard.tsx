@@ -49,9 +49,11 @@ export default function Dashboard() {
       <Button size="sm" onClick={() => setUpdateOpen(true)}>
         <Download size={14} /> 立即更新
       </Button>
-      <a href={update.data.release_url} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-700 hover:underline">
-        查看更新说明
-      </a>
+      {update.data.release_url && (
+        <a href={update.data.release_url} target="_blank" rel="noreferrer" className="text-xs font-medium text-indigo-700 hover:underline">
+          查看更新说明
+        </a>
+      )}
     </div>
   ) : null
 

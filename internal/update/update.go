@@ -1,4 +1,5 @@
-// Package update checks EverGate releases published on GitHub.
+// Package update 检查 EverGate 最新版本：优先 npm dist-tags（npmmirror → 官方
+// registry），两源均不可用时回退 GitHub Releases；GitHub 可达时补充更新说明与资产。
 package update
 
 import (
@@ -13,12 +14,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"evergate/internal/npmregistry"
 )
 
 const (
-	DefaultAPIURL  = "https://api.github.com/repos/guol9180/evergate/releases/latest"
-	DefaultAtomURL = "https://github.com/guol9180/evergate/releases.atom"
-	userAgent      = "EverGate-Update-Checker"
+	DefaultAPIURL   = "https://api.github.com/repos/guol9180/evergate/releases/latest"
+	DefaultAtomURL  = "https://github.com/guol9180/evergate/releases.atom"
+	userAgent       = "EverGate-Update-Checker"
+	maxResponseSize = 1 << 20
+
+	defaultNPMTimeout    = 3 * time.Second
+	defaultGitHubTimeout = 3 * time.Second
 )
 
 var versionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$`)
@@ -30,21 +37,28 @@ type Asset struct {
 }
 
 type Status struct {
-	CurrentVersion  string    `json:"current_version"`
-	LatestVersion   string    `json:"latest_version,omitempty"`
-	ReleaseURL      string    `json:"release_url,omitempty"`
-	PublishedAt     time.Time `json:"published_at,omitempty"`
-	UpdateAvailable bool      `json:"update_available"`
-	Development     bool      `json:"development,omitempty"`
-	CheckedAt       time.Time `json:"checked_at"`
-	Assets          []Asset   `json:"assets,omitempty"`
+	CurrentVersion  string     `json:"current_version"`
+	LatestVersion   string     `json:"latest_version,omitempty"`
+	ReleaseURL      string     `json:"release_url,omitempty"`
+	PublishedAt     *time.Time `json:"published_at,omitempty"`
+	UpdateAvailable bool       `json:"update_available"`
+	Development     bool       `json:"development,omitempty"`
+	CheckedAt       time.Time  `json:"checked_at"`
+	Assets          []Asset    `json:"assets,omitempty"`
+	// Source 记录版本信息来源：npm:<host> 或 github。
+	Source string `json:"source,omitempty"`
 }
 
 type Checker struct {
 	currentVersion string
 	apiURL         string
+	atomURL        string
+	registries     []string
+	pkg            string
 	now            func() time.Time
 	client         *http.Client
+	npmTimeout     time.Duration
+	githubTimeout  time.Duration
 }
 
 type githubRelease struct {
@@ -56,16 +70,65 @@ type githubRelease struct {
 
 var errRateLimited = errors.New("update endpoint rate limited")
 
+// Options 是版本检查器装配依赖。
+// Registries 为 nil 时使用 npmmirror → 官方 registry；传非 nil 空切片可关闭 npm 检查。
+type Options struct {
+	CurrentVersion string
+	APIURL         string
+	AtomURL        string
+	Registries     []string
+	Package        string
+	Now            func() time.Time
+	Client         *http.Client
+	NPMTimeout     time.Duration
+	GitHubTimeout  time.Duration
+}
+
 func NewChecker(currentVersion, apiURL string, now func() time.Time) *Checker {
+	return NewCheckerWithOptions(Options{CurrentVersion: currentVersion, APIURL: apiURL, Now: now})
+}
+
+func NewCheckerWithOptions(opt Options) *Checker {
+	apiURL := opt.APIURL
 	if apiURL == "" {
 		apiURL = DefaultAPIURL
 	}
+	atomURL := opt.AtomURL
+	if atomURL == "" {
+		atomURL = DefaultAtomURL
+		if apiURL != DefaultAPIURL {
+			atomURL = strings.TrimSuffix(apiURL, "/repos/guol9180/evergate/releases/latest") + "/releases.atom"
+		}
+	}
+	now := opt.Now
 	if now == nil {
 		now = time.Now
 	}
+	registries := opt.Registries
+	if registries == nil {
+		registries = npmregistry.Default()
+	}
+	registries = npmregistry.Normalize(registries)
+	pkg := opt.Package
+	if pkg == "" {
+		pkg = npmregistry.Package
+	}
+	npmTimeout := opt.NPMTimeout
+	if npmTimeout <= 0 {
+		npmTimeout = defaultNPMTimeout
+	}
+	githubTimeout := opt.GitHubTimeout
+	if githubTimeout <= 0 {
+		githubTimeout = defaultGitHubTimeout
+	}
+	client := opt.Client
+	if client == nil {
+		client = &http.Client{Timeout: npmTimeout + githubTimeout + time.Second}
+	}
 	return &Checker{
-		currentVersion: currentVersion, apiURL: apiURL, now: now,
-		client: &http.Client{Timeout: 4 * time.Second},
+		currentVersion: opt.CurrentVersion, apiURL: apiURL, atomURL: atomURL,
+		registries: registries, pkg: pkg, now: now, client: client,
+		npmTimeout: npmTimeout, githubTimeout: githubTimeout,
 	}
 }
 
@@ -75,22 +138,115 @@ func (c *Checker) Check(ctx context.Context) (Status, error) {
 		status.Development = true
 		return status, nil
 	}
-	release, err := c.fetchAPI(ctx)
-	if errors.Is(err, errRateLimited) {
-		release, err = c.fetchAtom(ctx)
+
+	latest, source, npmErr := c.checkNPM(ctx)
+	if npmErr != nil {
+		release, err := c.fetchRelease(ctx)
+		if err != nil {
+			return status, fmt.Errorf("npm: %v; github: %w", npmErr, err)
+		}
+		if !versionPattern.MatchString(release.TagName) {
+			return status, fmt.Errorf("invalid release tag %q", release.TagName)
+		}
+		applyRelease(&status, release)
+		status.Source = "github"
+		return status, nil
 	}
-	if err != nil {
-		return status, err
+
+	status.LatestVersion = latest
+	status.Source = source
+	status.UpdateAvailable = CompareVersions(c.currentVersion, latest) < 0
+	if !status.UpdateAvailable {
+		return status, nil
 	}
-	if !versionPattern.MatchString(release.TagName) {
-		return status, fmt.Errorf("invalid release tag %q", release.TagName)
+
+	// GitHub 仅用于补充更新说明与资产；不可达时不影响 npm 已确认的版本。
+	enrichCtx, cancel := context.WithTimeout(ctx, c.githubTimeout)
+	release, err := c.fetchRelease(enrichCtx)
+	cancel()
+	if err != nil || !versionPattern.MatchString(release.TagName) {
+		return status, nil
 	}
+	switch CompareVersions(release.TagName, latest) {
+	case 0:
+		status.ReleaseURL = release.HTMLURL
+		status.PublishedAt = &release.PublishedAt
+		status.Assets = release.Assets
+	case 1:
+		// GitHub 版本更新说明 npm 尚未同步（或 npm 发布失败），以 GitHub 为准。
+		applyRelease(&status, release)
+		status.Source = "github"
+	}
+	return status, nil
+}
+
+func applyRelease(status *Status, release githubRelease) {
 	status.LatestVersion = release.TagName
 	status.ReleaseURL = release.HTMLURL
-	status.PublishedAt = release.PublishedAt
+	status.PublishedAt = &release.PublishedAt
 	status.Assets = release.Assets
-	status.UpdateAvailable = CompareVersions(c.currentVersion, release.TagName) < 0
-	return status, nil
+	status.UpdateAvailable = CompareVersions(status.CurrentVersion, release.TagName) < 0
+}
+
+// checkNPM 按 chain 顺序读取 npm dist-tags，返回版本与来源标识。
+func (c *Checker) checkNPM(ctx context.Context) (version, source string, err error) {
+	failures := make([]string, 0, len(c.registries))
+	for _, registry := range c.registries {
+		version, err := c.fetchNPMVersion(ctx, registry)
+		if err == nil {
+			return version, "npm:" + npmregistry.Host(registry), nil
+		}
+		failures = append(failures, fmt.Sprintf("%s: %v", npmregistry.Host(registry), err))
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	if len(failures) == 0 {
+		return "", "", errors.New("npm 版本检查未启用或 registry 为空")
+	}
+	return "", "", fmt.Errorf("npm（%s）", strings.Join(failures, "；"))
+}
+
+func (c *Checker) fetchNPMVersion(ctx context.Context, registry string) (string, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, c.npmTimeout)
+	defer cancel()
+	endpoint := registry + "/" + c.pkg + "/latest"
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		return "", fmt.Errorf("npm registry returned %s", resp.Status)
+	}
+	var meta struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseSize)).Decode(&meta); err != nil {
+		return "", fmt.Errorf("解析 npm 版本元数据失败: %w", err)
+	}
+	if !versionPattern.MatchString(meta.Version) {
+		return "", fmt.Errorf("invalid npm version %q", meta.Version)
+	}
+	return meta.Version, nil
+}
+
+func (c *Checker) fetchRelease(ctx context.Context) (githubRelease, error) {
+	apiCtx, cancelAPI := context.WithTimeout(ctx, c.githubTimeout)
+	release, err := c.fetchAPI(apiCtx)
+	cancelAPI()
+	if errors.Is(err, errRateLimited) {
+		atomCtx, cancelAtom := context.WithTimeout(ctx, c.githubTimeout)
+		defer cancelAtom()
+		return c.fetchAtom(atomCtx)
+	}
+	return release, err
 }
 
 func (c *Checker) fetchAPI(ctx context.Context) (githubRelease, error) {
@@ -114,7 +270,7 @@ func (c *Checker) fetchAPI(ctx context.Context) (githubRelease, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		return release, fmt.Errorf("update endpoint returned %s", resp.Status)
 	}
-	return release, json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&release)
+	return release, json.NewDecoder(io.LimitReader(resp.Body, maxResponseSize)).Decode(&release)
 }
 
 func (c *Checker) fetchAtom(ctx context.Context) (githubRelease, error) {
@@ -127,11 +283,7 @@ func (c *Checker) fetchAtom(ctx context.Context) (githubRelease, error) {
 			Updated time.Time `xml:"updated"`
 		} `xml:"entry"`
 	}
-	atomURL := DefaultAtomURL
-	if c.apiURL != DefaultAPIURL {
-		atomURL = strings.TrimSuffix(c.apiURL, "/repos/guol9180/evergate/releases/latest") + "/releases.atom"
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, atomURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.atomURL, nil)
 	if err != nil {
 		return githubRelease{}, err
 	}
@@ -145,7 +297,7 @@ func (c *Checker) fetchAtom(ctx context.Context) (githubRelease, error) {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		return githubRelease{}, fmt.Errorf("update fallback returned %s", resp.Status)
 	}
-	if err := xml.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&feed); err != nil {
+	if err := xml.NewDecoder(io.LimitReader(resp.Body, maxResponseSize)).Decode(&feed); err != nil {
 		return githubRelease{}, err
 	}
 	if len(feed.Entries) == 0 {

@@ -167,7 +167,8 @@ func (a *API) systemUpdate(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "更新检查未配置")
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	// 检查顺序为 npm 双源 → GitHub 兜底，最坏情况需覆盖各源超时预算。
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 14*time.Second)
 	defer cancel()
 	status, err := a.opt.Update.Check(ctx)
 	if err != nil {

@@ -170,14 +170,19 @@ func run() error {
 	if updateAPIURL == "" {
 		updateAPIURL = update.DefaultAPIURL
 	}
-	updateChecker := update.NewChecker(version, updateAPIURL, time.Now)
-	restartCh := make(chan struct{})
-	var restartOnce sync.Once
-	// npm 自更新下载链：默认 npmmirror → 官方 registry；显式配置时只走该源。
+	// npm 版本检查与自更新共用下载链：默认 npmmirror → 官方；显式配置时只走该源。
 	var npmRegistries []string
 	if customRegistry := os.Getenv("EVERGATE_NPM_REGISTRY"); customRegistry != "" {
 		npmRegistries = []string{customRegistry}
 	}
+	updateChecker := update.NewCheckerWithOptions(update.Options{
+		CurrentVersion: version,
+		APIURL:         updateAPIURL,
+		Registries:     npmRegistries,
+		Now:            time.Now,
+	})
+	restartCh := make(chan struct{})
+	var restartOnce sync.Once
 	updater := selfupdate.New(selfupdate.Options{
 		CurrentVersion: version,
 		Args:           os.Args[1:],

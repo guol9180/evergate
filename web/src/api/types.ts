@@ -19,6 +19,7 @@ export interface UpdateStatus {
   update_available: boolean
   development?: boolean
   checked_at: string
+  source?: string
   assets?: UpdateAsset[]
 }
 

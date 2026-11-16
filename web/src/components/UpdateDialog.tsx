@@ -113,6 +113,14 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
             <span className="text-slate-500">目标版本</span>
             <span className="font-medium tabular-nums text-indigo-600">{target || '—'}</span>
           </div>
+          {status?.source && (
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-slate-500">检查来源</span>
+              <Badge tone="bg-slate-100 text-slate-600">
+                <span className="max-w-[220px] truncate" title={sourceLabel(status.source)}>{sourceLabel(status.source)}</span>
+              </Badge>
+            </div>
+          )}
           {job?.source && (
             <div className="mt-2 flex items-center justify-between gap-3">
               <span className="text-slate-500">下载通道</span>

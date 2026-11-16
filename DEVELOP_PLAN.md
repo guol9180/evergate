@@ -788,9 +788,16 @@
   3. 更新弹窗不因缺少 GitHub 元数据而禁用「立即更新」；
   4. 单测覆盖镜像命中、镜像失败转官方、两源失败转 GitHub、版本比较与 dev 版本短路；`go test ./...`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不改变 GitHub Release 正文与资产发布流程；不新增版本号格式；不做增量/灰度通道
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户确认拆卡；T35a 完成并验证后再开工
+  - 2026-11-16 执行 开始 T35b：新增 `internal/npmregistry` 作为版本检查与下载链的共享 registry 定义；`internal/update` 改为 npm dist-tags 优先、GitHub 补充元数据/兜底
+  - 2026-11-16 执行 `internal/update`：先读 npm `dist-tags`（npmmirror → 官方，各 3s 超时），命中后再决定是否请求 GitHub；无更新时不请求 GitHub；GitHub 版本更新时以 GitHub 为准；两源均失败才走 GitHub API/Atom 兜底。`Status.Source` 记录 `npm:<host>` / `github`，缺少 GitHub 元数据时 `release_url`/`assets` 省略
+  - 2026-11-16 执行 新增 `internal/npmregistry`（默认链、规范化、host 解析）供 update 与 selfupdate 共用；管理台 Dashboard 不再渲染空 `release_url` 链接，更新弹窗新增「检查来源」行并保持「立即更新」可用；`/admin/api/system/update` 超时预算调整为 14s 覆盖双源 + GitHub 兜底
+  - 2026-11-16 验证 单测覆盖：npm 命中并补全 GitHub 元数据、镜像失败转官方、GitHub 不可达仍返回 npm 版本、npm 双源失败转 GitHub、无更新不请求 GitHub、GitHub 版本更新时反转来源、npm 非法版本转 GitHub；`go test ./internal/update ./internal/selfupdate ./internal/admin` 与全量 `go test -p 1 ./... -count=1` 通过
+  - 2026-11-16 验证 真实链路（临时 v0.1.25 于 18944）：强制 GitHub API 不可达时返回 `latest=0.1.26`、`source=npm:registry.npmmirror.com`、`update_available=true` 且无 release_url；代理可达 GitHub 时同一版本补充 `release_url` 与资产，来源仍为 npm 镜像
+  - 2026-11-16 验证 无头 Chrome 1280×800 / 390×844：弹窗显示「检查来源 npm · registry.npmmirror.com」，缺少 GitHub 元数据时「立即更新」仍可点击，`scrollWidth == innerWidth` 两种视口均通过
+  - 2026-11-16 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 通过，二进制 28.15MB（<30MB），`web/dist` 已更新
 
 ## 状态枚举
 
@@ -817,7 +824,7 @@
 |---|---|---|
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
-| P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（下一张） | T35a 已验收；T35b 按任务卡验收后再发版 |
+| P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（当前阶段） | T28 渠道预设供应商模板（done）；Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | T28 已按任务卡验收并随 v0.1.26 发布；其余项开工前再拆任务卡 |
 
 ## 验收清单
