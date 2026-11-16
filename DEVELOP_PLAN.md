@@ -777,6 +777,7 @@
   - 2026-11-16 验证 新增单测：默认链顺序、registry 规范化去重、镜像 502 转官方、镜像 integrity 失败转官方、镜像 800ms 延迟在 100ms 元数据超时后转官方（总耗时 <700ms）、显式单源不触碰默认链、两源失败转 GitHub；`go test ./internal/selfupdate -count=1` 与全量 `go test -p 1 ./... -count=1` 通过
   - 2026-11-16 验证 真实链路端到端：临时 v0.1.25 二进制（18942）经管理台 API 触发更新，`job.source=npm:registry.npmmirror.com`，版本变为 v0.1.26，`/healthz` 200，新 exe SHA256 `d3614342…` 与 Release checksums 一致，旧版本 `.bak-0.1.26-20261116T011614` 保留
   - 2026-11-16 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 通过，二进制 28.14MB（<30MB），`web/dist` 已更新
+  - 2026-11-16 交付 提交 37b0c5a；随 v0.1.27 发布（Action 43787376285 成功，2m14s）
 
 ### T35b: 版本检查改用 npm dist-tags 优先（P1，用户指令）
 
@@ -798,6 +799,7 @@
   - 2026-11-16 验证 真实链路（临时 v0.1.25 于 18944）：强制 GitHub API 不可达时返回 `latest=0.1.26`、`source=npm:registry.npmmirror.com`、`update_available=true` 且无 release_url；代理可达 GitHub 时同一版本补充 `release_url` 与资产，来源仍为 npm 镜像
   - 2026-11-16 验证 无头 Chrome 1280×800 / 390×844：弹窗显示「检查来源 npm · registry.npmmirror.com」，缺少 GitHub 元数据时「立即更新」仍可点击，`scrollWidth == innerWidth` 两种视口均通过
   - 2026-11-16 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 通过，二进制 28.15MB（<30MB），`web/dist` 已更新
+  - 2026-11-16 交付 提交 748d94e、tag v0.1.27；Release Action 43787376285 成功（2m14s），4 个 assets 与 CHANGELOG 正文齐全；官方 registry 与 npmmirror 四个包均为 0.1.27；下载 Windows exe SHA256 `8b8e4237…` 与 checksums 一致，隔离端口 18945 冒烟 `/`、`/healthz`、`/metrics` 均 200
 
 ## 状态枚举
 
