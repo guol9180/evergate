@@ -60,15 +60,18 @@ func TokenAuth(db *gorm.DB, logWriter ...*LogWriter) gin.HandlerFunc {
 	}
 }
 
-// downstreamToken 同时接受 OpenAI 的 Authorization: Bearer 与 Anthropic 的 x-api-key；
-// Claude Code 会按 ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY 分别发送这两种头。
+// downstreamToken 同时接受 OpenAI 的 Authorization: Bearer、Anthropic 的 x-api-key
+// 与 Gemini 的 x-goog-api-key；Claude Code 会按凭证类型发送前两种头。
 func downstreamToken(c *gin.Context) string {
 	if raw := c.GetHeader("Authorization"); strings.HasPrefix(raw, "Bearer ") {
 		if key := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer ")); key != "" {
 			return key
 		}
 	}
-	return strings.TrimSpace(c.GetHeader("x-api-key"))
+	if key := strings.TrimSpace(c.GetHeader("x-api-key")); key != "" {
+		return key
+	}
+	return strings.TrimSpace(c.GetHeader("x-goog-api-key"))
 }
 
 func rejectToken(c *gin.Context, writers []*LogWriter, token store.Token, status int, code, message string) {

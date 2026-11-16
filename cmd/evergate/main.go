@@ -231,6 +231,7 @@ func run() error {
 			r.POST("/v1/responses", relay.TokenAuth(db, logWriter), relayHandler.HandleResponses)
 			r.POST("/v1/messages", relay.TokenAuth(db, logWriter), relayHandler.HandleMessages)
 			r.POST("/v1/messages/count_tokens", relay.TokenAuth(db, logWriter), relayHandler.HandleMessagesCountTokens)
+			r.POST("/v1beta/models/*action", relay.RejectQueryKey(), relay.TokenAuth(db, logWriter), relayHandler.HandleGemini)
 			r.GET("/v1/models", relay.TokenAuth(db, logWriter), relayHandler.HandleModels)
 			adminAPI.RegisterRoutes(r)
 		},

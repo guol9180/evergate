@@ -117,6 +117,7 @@ export interface Channel {
   next_probe_at: string | null
   supports_responses: boolean
   supports_anthropic: boolean
+  supports_gemini: boolean
   timeout_config: ChannelTimeouts | null
   key_count: number
   created_at: string

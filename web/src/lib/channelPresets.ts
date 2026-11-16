@@ -5,6 +5,7 @@ export interface ChannelPreset {
   type: string
   supportsResponses: boolean
   supportsAnthropic: boolean
+  supportsGemini?: boolean
   defaultName: string
   description: string
   warning?: string
@@ -115,6 +116,18 @@ export const CHANNEL_PRESETS: ChannelPreset[] = [
     defaultName: 'kimi-anthropic',
     description: 'Moonshot 国际站的 Messages 兼容端点；Base URL 必须包含 /anthropic。',
     modelsPlaceholder: 'kimi-k2-0905-preview',
+  },
+  {
+    id: 'gemini',
+    label: 'Google Gemini 官方',
+    baseUrl: 'https://generativelanguage.googleapis.com',
+    type: 'gemini',
+    supportsResponses: false,
+    supportsAnthropic: false,
+    supportsGemini: true,
+    defaultName: 'gemini-main',
+    description: 'Gemini API 原生端点；网关按 Base URL + /v1beta/models/{model} 透传。',
+    modelsPlaceholder: 'gemini-2.5-pro\ngemini-2.5-flash',
   },
 ]
 

@@ -51,9 +51,10 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 ## 代码风格
 
 - Go：提交前 `gofmt` 无 diff、`go vet` 通过；错误必须处理或显式 `//nolint` 注明理由。
-- 客户端接入协议矩阵当前交付范围为 OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses` 与 Anthropic Messages `/v1/messages`（含 `/v1/messages/count_tokens`）；Gemini 原生入口仍在 P2 计划（T38，开工前先回任务卡确认范围）。新增接入能力必须说明既有入口的可用性，不能只验证单一协议。
+- 客户端接入协议矩阵当前交付范围为 OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses`、Anthropic Messages `/v1/messages`（含 `count_tokens`）与 Gemini `/v1beta/models/{model}:generateContent|streamGenerateContent|countTokens`。新增接入能力必须说明既有入口的可用性，不能只验证单一协议。
 - Responses 原生能力是渠道级声明：声明渠道的 `/v1/responses` 必须仅改写鉴权、base_url 与模型映射并原样转发 JSON/SSE；未声明渠道才允许 R→CC 桥接。不可桥接的状态字段必须显式 400，不得静默丢弃。
 - Anthropic 原生能力是渠道级声明：声明渠道的 `/v1/messages` 与 `count_tokens` 必须仅改写鉴权、base_url 与模型映射并原样转发 JSON/SSE；下游鉴权同时接受 Bearer 与 `x-api-key`，上游统一注入 `x-api-key` 并透传 `anthropic-version` / `anthropic-beta`。Messages SSE 以 `message_stop` + EOF 结束、无 `[DONE]`，`ping` 必须原样转发；M→CC 桥接只能承载可等价表达的字段，`thinking` / `cache_control` 等必须显式 400。
+- Gemini 原生能力是渠道级声明：模型位于 URL 路径，声明渠道必须改写路径模型并注入 `x-goog-api-key`，禁止 `?key=` 鉴权；G→G 透传保留 `systemInstruction` / `safetySettings` / `tools` / `generationConfig`，SSE 为 data-only、无 `[DONE]`、以 EOF 终止。G→CC 桥接的 `functionCall.args` 必须对象↔JSON 字符串往返并保持调用 id 配对；`safetySettings` / `thinkingConfig` / `inlineData` / `fileData` / `topK` / `responseSchema` 必须显式 400。Gemini usage 输入含 `toolUsePromptTokenCount`，输出含 `thoughtsTokenCount`，成本口径不得漏计。
 - 所有时间以 UTC 存储，仅展示层转本地时区。
 - 对外错误响应统一 OpenAI 格式 `{error:{message,type,code}}`；全部渠道耗尽返回 503。
 - Responses 下游的 `function` / `custom` 工具转换必须保留客户端声明的工具语义，custom grammar 只能降级为提示不能声称硬约束；新增 Responses 工具或事件前先对照 OpenAI 官方 schema 与允许参考项目，并用公共 HTTP 边界写回归测试。

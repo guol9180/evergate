@@ -40,10 +40,12 @@ type Channel struct {
 	// SupportsResponses 表示该渠道可原生接收 /responses；否则 /v1/responses 走 CC 桥接。
 	SupportsResponses bool `gorm:"not null;default:false" json:"supports_responses"`
 	// SupportsAnthropic 表示该渠道可原生接收 /v1/messages；否则 /v1/messages 走 CC 桥接。
-	SupportsAnthropic bool            `gorm:"not null;default:false" json:"supports_anthropic"`
-	Timeouts          ChannelTimeouts `gorm:"column:timeout_config;serializer:json" json:"timeout_config"`
-	CreatedAt         time.Time       `json:"created_at"`
-	UpdatedAt         time.Time       `json:"updated_at"`
+	SupportsAnthropic bool `gorm:"not null;default:false" json:"supports_anthropic"`
+	// SupportsGemini 表示该渠道可原生接收 /v1beta/models/*；否则 Gemini 入口走 CC 桥接。
+	SupportsGemini bool            `gorm:"not null;default:false" json:"supports_gemini"`
+	Timeouts       ChannelTimeouts `gorm:"column:timeout_config;serializer:json" json:"timeout_config"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
 }
 
 // ChannelTimeouts 渠道级超时覆盖（秒；nil 表示跟随全局默认）。

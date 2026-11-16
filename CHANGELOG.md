@@ -2,6 +2,14 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.29
+
+- 新增 Gemini 原生入口 `POST /v1beta/models/{model}:generateContent`、`:streamGenerateContent` 与 `:countTokens`；模型从 URL 路径解析，下游支持 `x-goog-api-key` 鉴权，`?key=` query 鉴权会被拒绝
+- 渠道新增「原生支持 Gemini API」能力声明：声明渠道仅改写路径模型与鉴权，原样透传 `systemInstruction`、`safetySettings`、`tools`、`generationConfig` 与 data-only SSE
+- 未声明能力的渠道自动桥接 Chat Completions，支持文本、`functionCall` / `functionResponse`、工具声明与基础生成参数；`safetySettings`、`thinkingConfig`、`inlineData` / `fileData`、`topK`、`responseSchema` 显式返回 400
+- Gemini usage 按输入 `promptTokenCount + toolUsePromptTokenCount`、输出 `candidatesTokenCount + thoughtsTokenCount` 归一计价，流式与非流式一致
+- 渠道预设新增 Google Gemini 官方模板；渠道列表以紧凑徽标同时展示 Responses / Messages / Gemini 能力
+
 ## v0.1.28
 
 - 新增 Anthropic Messages 原生入口 `POST /v1/messages` 与 `POST /v1/messages/count_tokens`；下游鉴权同时接受 `Authorization: Bearer` 与 `x-api-key`，可直接承接 Claude Code 的 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`

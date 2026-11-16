@@ -79,10 +79,11 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
         <Td>
           <div className="flex flex-col gap-1">
             <span className="inline-block max-w-[96px] truncate text-slate-500" title={c.type}>{c.type}</span>
-            {(c.supports_responses || c.supports_anthropic) && (
+            {(c.supports_responses || c.supports_anthropic || c.supports_gemini) && (
               <div className="flex items-center gap-1 whitespace-nowrap">
-                {c.supports_responses && <Badge tone="bg-sky-100 text-sky-700">Responses</Badge>}
-                {c.supports_anthropic && <Badge tone="bg-violet-100 text-violet-700">Messages</Badge>}
+                {c.supports_responses && <Badge compact tone="bg-sky-100 text-sky-700">Responses</Badge>}
+                {c.supports_anthropic && <Badge compact tone="bg-violet-100 text-violet-700">Messages</Badge>}
+                {c.supports_gemini && <Badge compact tone="bg-emerald-100 text-emerald-700">Gemini</Badge>}
               </div>
             )}
           </div>
@@ -213,6 +214,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [weight, setWeight] = useState(String(channel?.weight ?? 1))
   const [supportsResponses, setSupportsResponses] = useState(channel?.supports_responses ?? false)
   const [supportsAnthropic, setSupportsAnthropic] = useState(channel?.supports_anthropic ?? false)
+  const [supportsGemini, setSupportsGemini] = useState(channel?.supports_gemini ?? false)
   const [models, setModels] = useState((channel?.models || []).join('\n'))
   const [mapping, setMapping] = useState(channel?.model_mapping ? JSON.stringify(channel.model_mapping, null, 2) : '')
   const preset = findChannelPreset(presetId)
@@ -225,6 +227,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     setBaseUrl(next.baseUrl)
     setSupportsResponses(next.supportsResponses)
     setSupportsAnthropic(next.supportsAnthropic)
+    setSupportsGemini(next.supportsGemini ?? false)
     if (!nameTouched) setName(next.defaultName)
   }
 
@@ -251,6 +254,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         model_mapping: modelMapping,
         supports_responses: supportsResponses,
         supports_anthropic: supportsAnthropic,
+        supports_gemini: supportsGemini,
       },
       { onSuccess: onClose },
     )
@@ -296,11 +300,11 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           <Field label="名称"><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
           <Field label="类型">
             <Select value={type} onChange={(e) => setType(e.target.value)}>
-              {['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic', 'anthropic-compatible', 'gemini-compat'].map((t) => <option key={t}>{t}</option>)}
+              {['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic', 'anthropic-compatible', 'gemini', 'gemini-compat'].map((t) => <option key={t}>{t}</option>)}
             </Select>
           </Field>
         </div>
-        <Field label="Base URL" hint={`上游 API 根地址；网关按能力拼接 ${supportsAnthropic ? '/v1/messages、' : ''}${supportsResponses ? '/responses、' : ''}/chat/completions`}>
+        <Field label="Base URL" hint={`上游 API 根地址；网关按能力拼接 ${supportsAnthropic ? '/v1/messages、' : ''}${supportsResponses ? '/responses、' : ''}${supportsGemini ? '/v1beta/models/{model}、' : ''}/chat/completions`}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
         </Field>
         <div className="space-y-2">
@@ -317,6 +321,13 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               <div className="text-xs text-slate-400">开启后 /v1/messages 透传；关闭时转换为 Chat Completions</div>
             </div>
             <Switch checked={supportsAnthropic} onChange={setSupportsAnthropic} label="原生支持 Anthropic Messages" />
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-sm text-slate-700">原生支持 Gemini API</div>
+              <div className="text-xs text-slate-400">开启后 /v1beta/models/* 透传；关闭时转换为 Chat Completions</div>
+            </div>
+            <Switch checked={supportsGemini} onChange={setSupportsGemini} label="原生支持 Gemini API" />
           </div>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

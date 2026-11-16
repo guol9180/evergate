@@ -72,8 +72,9 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   )
 }
 
-export function Badge({ tone = 'bg-slate-100 text-slate-600', children }: { tone?: string; children: ReactNode }) {
-  return <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>{children}</span>
+export function Badge({ tone = 'bg-slate-100 text-slate-600', compact = false, children }: { tone?: string; compact?: boolean; children: ReactNode }) {
+  const size = compact ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs'
+  return <span className={`inline-flex items-center whitespace-nowrap rounded-full font-medium ${size} ${tone}`}>{children}</span>
 }
 
 export function Card({ className = '', children }: { className?: string; children: ReactNode }) {

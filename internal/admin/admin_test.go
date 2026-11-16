@@ -242,7 +242,7 @@ func TestChannelAndKeyManagement(t *testing.T) {
 	cookie, _ = login(t, env, "admin", "newpass123")
 
 	// 创建渠道
-	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie, `{"name":"test-ch","type":"openai-compatible","base_url":"https://api.example.com/v1/","models":["gpt-x","gpt-y"],"priority":1,"weight":2,"supports_responses":true,"supports_anthropic":true}`)
+	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie, `{"name":"test-ch","type":"openai-compatible","base_url":"https://api.example.com/v1/","models":["gpt-x","gpt-y"],"priority":1,"weight":2,"supports_responses":true,"supports_anthropic":true,"supports_gemini":true}`)
 	if code != 200 || !strings.Contains(body, `"id":1`) {
 		t.Fatalf("create channel: %d %s", code, body)
 	}
@@ -251,6 +251,9 @@ func TestChannelAndKeyManagement(t *testing.T) {
 	}
 	if !strings.Contains(body, `"supports_anthropic":true`) {
 		t.Fatalf("create channel should expose Anthropic capability: %s", body)
+	}
+	if !strings.Contains(body, `"supports_gemini":true`) {
+		t.Fatalf("create channel should expose Gemini capability: %s", body)
 	}
 	// 批量导入 key（多行）
 	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-plaintext-aaa\r\nsk-plaintext-bbb\n\n  \r\nsk-plaintext-ccc"}`)
@@ -273,7 +276,7 @@ func TestChannelAndKeyManagement(t *testing.T) {
 		t.Fatalf("key 应含状态: %s", body)
 	}
 	// 更新渠道
-	if code, body, _ = env.req(t, "PUT", "/admin/api/channels/1", cookie, `{"name":"test-ch","type":"openai-compatible","base_url":"https://api.example.com/v1","models":["gpt-z"],"priority":0,"weight":1,"supports_responses":false,"supports_anthropic":false}`); code != 200 || !strings.Contains(body, `"supports_responses":false`) || !strings.Contains(body, `"supports_anthropic":false`) {
+	if code, body, _ = env.req(t, "PUT", "/admin/api/channels/1", cookie, `{"name":"test-ch","type":"openai-compatible","base_url":"https://api.example.com/v1","models":["gpt-z"],"priority":0,"weight":1,"supports_responses":false,"supports_anthropic":false,"supports_gemini":false}`); code != 200 || !strings.Contains(body, `"supports_responses":false`) || !strings.Contains(body, `"supports_anthropic":false`) || !strings.Contains(body, `"supports_gemini":false`) {
 		t.Fatal("update channel failed")
 	}
 	// 启停

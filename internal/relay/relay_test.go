@@ -82,6 +82,7 @@ func newEnv(t *testing.T) *testEnv {
 	e.POST("/v1/chat/completions", rel.HandleChatCompletions)
 	e.POST("/v1/responses", rel.HandleResponses)
 	e.GET("/v1/models", rel.HandleModels)
+	e.POST("/v1beta/models/*action", RejectQueryKey(), rel.HandleGemini)
 	gw := httptest.NewServer(e)
 	t.Cleanup(gw.Close)
 	t.Cleanup(logs.Close)
@@ -102,19 +103,23 @@ func (e *testEnv) addResponsesChannel(t *testing.T, name, baseURL string, priori
 }
 
 func (e *testEnv) addAnthropicChannel(t *testing.T, name, baseURL string, priority int, models []string, mapping map[string]string, keys ...string) {
-	e.addChannelCaps(t, name, baseURL, priority, false, true, models, mapping, keys...)
+	e.addChannelCaps(t, name, baseURL, priority, false, true, false, models, mapping, keys...)
+}
+
+func (e *testEnv) addGeminiChannel(t *testing.T, name, baseURL string, priority int, models []string, mapping map[string]string, keys ...string) {
+	e.addChannelCaps(t, name, baseURL, priority, false, false, true, models, mapping, keys...)
 }
 
 func (e *testEnv) addProtocolChannel(t *testing.T, name, baseURL string, priority int, supportsResponses bool, models []string, mapping map[string]string, keys ...string) {
-	e.addChannelCaps(t, name, baseURL, priority, supportsResponses, false, models, mapping, keys...)
+	e.addChannelCaps(t, name, baseURL, priority, supportsResponses, false, false, models, mapping, keys...)
 }
 
-func (e *testEnv) addChannelCaps(t *testing.T, name, baseURL string, priority int, supportsResponses, supportsAnthropic bool, models []string, mapping map[string]string, keys ...string) {
+func (e *testEnv) addChannelCaps(t *testing.T, name, baseURL string, priority int, supportsResponses, supportsAnthropic, supportsGemini bool, models []string, mapping map[string]string, keys ...string) {
 	t.Helper()
 	ch := &store.Channel{
 		Name: name, Type: "openai-compatible", BaseURL: baseURL, Priority: priority, Weight: 1,
 		Models: models, ModelMapping: mapping, Enabled: true, Status: store.ChannelStatusActive,
-		SupportsResponses: supportsResponses, SupportsAnthropic: supportsAnthropic,
+		SupportsResponses: supportsResponses, SupportsAnthropic: supportsAnthropic, SupportsGemini: supportsGemini,
 	}
 	if err := e.db.Create(ch).Error; err != nil {
 		t.Fatalf("create channel: %v", err)

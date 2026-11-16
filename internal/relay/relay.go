@@ -182,7 +182,7 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
 		return nil, http.StatusBadRequest, "invalid_request_error", "缺少 model 字段"
 	}
-	if isMessagesCountTokens(c) {
+	if isMessagesCountTokens(c) || isGeminiCountTokens(c) {
 		stream = false
 	}
 	c.Set("evergate.model", model)
@@ -289,7 +289,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, trace []store.RetryAttempt, status int, errType, errMsg string) {
 	r.updateAffinity(c, hit, status, errType)
 	r.recordRequestMetrics(c, status, errType)
-	if status >= http.StatusOK && status < http.StatusBadRequest && errType == "" && !isMessagesCountTokens(c) {
+	if status >= http.StatusOK && status < http.StatusBadRequest && errType == "" && !isMessagesCountTokens(c) && !isGeminiCountTokens(c) {
 		usageErrType, usageErrMsg := r.settleTokenUsage(c, hit)
 		if usageErrType != "" {
 			errType, errMsg = usageErrType, usageErrMsg
@@ -345,6 +345,8 @@ func protocolLabel(c *gin.Context) string {
 			return "responses"
 		} else if protocol == messagesProtocol {
 			return "messages"
+		} else if protocol == geminiProtocol {
+			return "gemini"
 		}
 	}
 	return "chat"
@@ -484,6 +486,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	ch := cand.Channel
 	nativeResponses := isResponsesRequest(c) && isResponsesNative(c)
 	nativeMessages := isMessagesRequest(c) && isMessagesNative(c)
+	nativeGemini := isGeminiRequest(c) && isGeminiNative(c)
 	connect, firstToken, overall := resolveTimeouts(ch, r.currentDefaults())
 	connect, firstToken, overall = applyTimeoutOverride(connect, firstToken, overall, timeoutOverride)
 	spanCtx, span := telemetry.StartSpan(c.Request.Context(), r.opt.Tracer, "relay.attempt", telemetry.KindClient,
@@ -523,26 +526,35 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		return outcomeNextKey
 	}
 
-	upBody, err := replaceModel(body, cand.UpstreamModel)
-	if err != nil {
-		start := r.opt.Now()
-		appendTrace(0, "internal", "重构上游请求体失败: "+err.Error(), start)
-		return outcomeNextKey
+	upBody := body
+	if !nativeGemini {
+		var err error
+		upBody, err = replaceModel(body, cand.UpstreamModel)
+		if err != nil {
+			start := r.opt.Now()
+			appendTrace(0, "internal", "重构上游请求体失败: "+err.Error(), start)
+			return outcomeNextKey
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(spanCtx, overall)
 	defer cancel()
 
-	upstreamPath := "/chat/completions"
-	switch {
-	case isMessagesRequest(c) && isMessagesCountTokens(c):
-		upstreamPath = "/v1/messages/count_tokens"
-	case nativeMessages:
-		upstreamPath = "/v1/messages"
-	case nativeResponses:
-		upstreamPath = "/responses"
+	var url string
+	if nativeGemini || isGeminiCountTokens(c) {
+		url = geminiRequestURL(ch.BaseURL, cand.UpstreamModel, geminiMethod(c))
+	} else {
+		upstreamPath := "/chat/completions"
+		switch {
+		case isMessagesRequest(c) && isMessagesCountTokens(c):
+			upstreamPath = "/v1/messages/count_tokens"
+		case nativeMessages:
+			upstreamPath = "/v1/messages"
+		case nativeResponses:
+			upstreamPath = "/responses"
+		}
+		url = strings.TrimSuffix(ch.BaseURL, "/") + upstreamPath
 	}
-	url := strings.TrimSuffix(ch.BaseURL, "/") + upstreamPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(upBody))
 	if err != nil {
 		start := r.opt.Now()
@@ -550,7 +562,9 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		return outcomeNextKey
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if nativeMessages || isMessagesCountTokens(c) {
+	if nativeGemini || isGeminiCountTokens(c) {
+		req.Header.Set("x-goog-api-key", plainKey)
+	} else if nativeMessages || isMessagesCountTokens(c) {
 		req.Header.Set("x-api-key", plainKey)
 		version := strings.TrimSpace(c.GetHeader("anthropic-version"))
 		if version == "" {
@@ -584,6 +598,12 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 
 	if resp.StatusCode == http.StatusOK {
 		if stream {
+			if nativeGemini {
+				return r.streamNativeGeminiResponse(c, resp, key, cand, firstToken, cancel, trace, hit, start)
+			}
+			if isGeminiRequest(c) {
+				return r.streamGeminiBridgeResponse(c, resp, key, cand, firstToken, cancel, trace, hit, model, start)
+			}
 			if nativeMessages {
 				return r.streamNativeMessagesResponse(c, resp, key, cand, firstToken, cancel, trace, hit, start)
 			}
@@ -606,7 +626,11 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		r.reportKeySuccess(key.ID)
 		appendTrace(http.StatusOK, "", "", start)
 		r.recordHit(c, hit, ch, key, cand.UpstreamModel, r.opt.Now().Sub(start))
-		parseUsage(data, hit)
+		if nativeGemini {
+			parseGeminiUsage(data, hit)
+		} else {
+			parseUsage(data, hit)
+		}
 		ct := resp.Header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/json"
@@ -626,6 +650,16 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			if cerr != nil {
 				appendTrace(0, "internal", "转换 Messages 响应失败: "+cerr.Error(), start)
 				writeOpenAIError(c, http.StatusBadGateway, "server_error", "messages_conversion_failed", cerr.Error())
+				return outcomeDone
+			}
+			data = converted
+			ct = "application/json"
+		}
+		if isGeminiRequest(c) && !nativeGemini {
+			converted, cerr := convertChatCompletionToGemini(data, model)
+			if cerr != nil {
+				appendTrace(0, "internal", "转换 Gemini 响应失败: "+cerr.Error(), start)
+				writeOpenAIError(c, http.StatusBadGateway, "server_error", "gemini_conversion_failed", cerr.Error())
 				return outcomeDone
 			}
 			data = converted
@@ -663,6 +697,10 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		msg := upstreamErrorMessage(resp.StatusCode, errBody)
 		r.recordKeyFailure(key.ID, msg)
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
+		if isGeminiRequest(c) {
+			writeGeminiUpstreamError(c, resp.StatusCode, errBody)
+			return outcomeDone
+		}
 		if isMessagesRequest(c) {
 			writeMessagesUpstreamError(c, resp.StatusCode, errBody)
 			return outcomeDone

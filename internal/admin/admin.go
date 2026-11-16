@@ -313,6 +313,7 @@ type channelDTO struct {
 	NextProbeAt         *time.Time            `json:"next_probe_at"`
 	SupportsResponses   bool                  `json:"supports_responses"`
 	SupportsAnthropic   bool                  `json:"supports_anthropic"`
+	SupportsGemini      bool                  `json:"supports_gemini"`
 	Timeouts            store.ChannelTimeouts `json:"timeout_config"`
 	KeyCount            int64                 `json:"key_count"`
 	CreatedAt           time.Time             `json:"created_at"`
@@ -324,7 +325,7 @@ func (a *API) toChannelDTO(ch *store.Channel, keyCount, availableKeyCount int64,
 		ID: ch.ID, Name: ch.Name, Type: ch.Type, BaseURL: ch.BaseURL,
 		Priority: ch.Priority, Weight: ch.Weight, Models: ch.Models, ModelMapping: ch.ModelMapping,
 		Enabled: ch.Enabled, Status: status, SupportsResponses: ch.SupportsResponses,
-		SupportsAnthropic: ch.SupportsAnthropic,
+		SupportsAnthropic: ch.SupportsAnthropic, SupportsGemini: ch.SupportsGemini,
 		AvailableKeyCount: availableKeyCount,
 		LastProbeAt:       ch.LastProbeAt, LastProbeResult: ch.LastProbeResult,
 		LastProbeStatusCode: ch.LastProbeStatusCode, LastProbeLatencyMS: ch.LastProbeLatencyMS,
@@ -378,6 +379,7 @@ type channelReq struct {
 	ModelMapping      map[string]string     `json:"model_mapping"`
 	SupportsResponses *bool                 `json:"supports_responses"`
 	SupportsAnthropic *bool                 `json:"supports_anthropic"`
+	SupportsGemini    *bool                 `json:"supports_gemini"`
 	Timeouts          store.ChannelTimeouts `json:"timeout_config"`
 }
 
@@ -393,6 +395,7 @@ func (a *API) createChannel(c *gin.Context) {
 		Models: req.Models, ModelMapping: req.ModelMapping,
 		Enabled: true, Status: store.ChannelStatusActive, SupportsResponses: derefBool(req.SupportsResponses, false),
 		SupportsAnthropic: derefBool(req.SupportsAnthropic, false),
+		SupportsGemini:    derefBool(req.SupportsGemini, false),
 		Timeouts:          req.Timeouts,
 	}
 	if err := a.opt.DB.Create(ch).Error; err != nil {
@@ -440,6 +443,7 @@ func (a *API) updateChannel(c *gin.Context) {
 	ch.Models, ch.ModelMapping, ch.Timeouts = req.Models, req.ModelMapping, req.Timeouts
 	ch.SupportsResponses = derefBool(req.SupportsResponses, ch.SupportsResponses)
 	ch.SupportsAnthropic = derefBool(req.SupportsAnthropic, ch.SupportsAnthropic)
+	ch.SupportsGemini = derefBool(req.SupportsGemini, ch.SupportsGemini)
 	if err := a.opt.DB.Save(ch).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "更新失败")
 		return

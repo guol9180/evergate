@@ -865,10 +865,15 @@
   5. 回归矩阵公共 HTTP 边界测试覆盖 G→G 透传与 G→CC 桥接（非流式/SSE/工具），并说明 CC/R 两种既有入口的可用性；
   6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不做 CC→G / R→G / M→G 反向转换；不做 Vertex AI（仅 Gemini API developer key）；多模态输入按现有 CC/R 入口能力对齐，不新增图片/文件处理链路
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户决策 P2 范围调整建卡
   - 2026-11-16 执行 前置调研完成并落盘 docs/P2调研-Gemini原生协议.md：官方 python-genai SDK 证实 REST 路径（模型在 URL、alt=sse）与 schema（system_instruction/safetySettings/functionCall part/usageMetadata 含 thoughts 与 tool_use token）；G→CC 映射表与 usage 计价口径（candidates+thoughts 计输出）成稿；ai.google.dev 本网络不可达，兼容层差异与 SSE 首帧细节列为实现时实测项；鉴权统一 x-goog-api-key header 禁 query 传 key
+  - 2026-11-16 执行 按调研结论开工：下游 `/v1beta/models/{model}:generateContent|streamGenerateContent|countTokens`，模型从路径解析；原生渠道改写路径模型并注入 `x-goog-api-key`，未声明渠道走 G→CC 桥接
+  - 2026-11-16 执行 新增渠道 `supports_gemini` 能力声明与管理台开关/徽标；G→G 透传只改写路径模型与鉴权，保留 systemInstruction/safetySettings/tools/generationConfig；G→CC 桥接支持文本、functionCall/functionResponse、工具声明与基础 generationConfig；不可桥接字段显式 400；usage 按 prompt+toolUse 输入、candidates+thoughts 输出归一
+  - 2026-11-16 验证 公共 HTTP 边界回归 11 组：G→G 非流式状态字段保真与 usage、G→G SSE（无 [DONE]/EOF）、首帧 503 错误切换、首帧后不重试、G→CC 非流式工具调用与 response 转换、G→CC SSE 事件与函数调用聚合、safetySettings/thinkingConfig/inlineData 400 且不触达上游、x-goog-api-key 鉴权与 query key 拒绝、countTokens 仅原生、Gemini 错误体转 OpenAI 信封
+  - 2026-11-16 验证 无头浏览器 1280×800 / 390×844 复核三协议徽标与渠道表单：桌面表格 scrollWidth 991 = 容器 991、三枚紧凑徽标同排且无横向滚动；移动端页面 scrollWidth=390、表单三开关正常换行
+  - 2026-11-16 执行 运维配置补充 Gemini 协议矩阵、Base URL、鉴权与桥接边界；README 能力概览与 AGENTS 协议矩阵同步为四协议
 ## 状态枚举
 
 
@@ -896,7 +901,7 @@
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
-| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（下一张）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；默认执行顺序 T36 → T37 → T38 |
+| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
 
 ## 验收清单
 
