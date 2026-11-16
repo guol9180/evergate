@@ -939,6 +939,7 @@
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户反馈首次运行会把存储路径留在当前位置；核查确认当前默认 `evergate.yml` 与 `./data/evergate.db` 均相对 cwd，发布资产只有 portable exe、无安装器；建立本卡待确认
   - 2026-11-16 计划 用户要求安装时配置目录与数据目录都支持选择；卡面更新为“默认统一根目录 + 高级分别设置”，路径写入 `HKCU\Software\EverGate`，并补充共享/同步/UNC 目录风险校验
+  - 2026-11-16 执行 安装 Inno Setup 7.1.1 x64 到 `D:\dev\environment\innosetup`；`ISCC.exe` 最小脚本编译成功（2.1MB setup 产物）并清理冒烟文件；编译器未输入授权时显示 Non-commercial use only，官方许可证允许商业用途但请求商用用户购买授权，个人/开源项目可按非商业模式使用
 - 实施步骤（确认后执行）：
   - T40a 路径解析：新增 `internal/appdir` 与配置发现顺序（含 Windows 注册表）、统一/分离目录、相对 sqlite 路径解析、跨平台目录与测试
   - T40b 启动接线：main 使用新解析器，首次生成配置写到选定配置目录，日志输出实际 config/data 路径
