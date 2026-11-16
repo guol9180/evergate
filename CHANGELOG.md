@@ -2,6 +2,14 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.27
+
+- 一键更新下载链改为 npmmirror → 官方 npm registry → GitHub Releases；每个源独立超时（元数据 8 秒、tarball 90 秒），镜像故障会快速切换而不是占满任务预算
+- 版本检查改为 npm `dist-tags` 优先（npmmirror → 官方 registry），两源均不可用才回退 GitHub Releases；国内无代理环境也能发现新版本
+- GitHub 可达时补充更新说明链接与资产列表，不可达时仍以 npm 版本为准，「立即更新」不会因缺少 GitHub 元数据而不可用
+- 管理台更新弹窗新增「检查来源」，下载通道徽标显示实际命中的 registry；缺少更新说明链接时不再渲染空链接
+- `EVERGATE_NPM_REGISTRY` 现在同时收窄版本检查与下载链为指定 npm registry
+
 ## v0.1.26
 
 - 新建渠道支持供应商预设：OpenAI / DeepSeek / Kimi / 智谱 BigModel 常规 / BigModel Coding / Z.ai Coding 六种模板，选中后自动填充类型、Base URL、原生 Responses 能力与默认渠道名
