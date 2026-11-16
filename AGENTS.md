@@ -49,7 +49,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 ## 代码风格
 
 - Go：提交前 `gofmt` 无 diff、`go vet` 通过；错误必须处理或显式 `//nolint` 注明理由。
-- 客户端接入协议矩阵当前范围为 OpenAI Chat Completions `/v1/chat/completions` 与 OpenAI Responses `/v1/responses`（上游、下游均为此两种）；Anthropic Messages `/v1/messages` 已明确延后（T13，重启前先回任务卡更新范围）。新增接入能力必须说明两种入口的可用性，不能只验证单一协议。
+- 客户端接入协议矩阵当前交付范围为 OpenAI Chat Completions `/v1/chat/completions` 与 OpenAI Responses `/v1/responses`（上游、下游均为此两种）；Anthropic Messages `/v1/messages` 与 Gemini 原生入口已列入 P2 计划（T37/T38，开工前先回任务卡确认范围）。新增接入能力必须说明两种既有入口的可用性，不能只验证单一协议。
 - Responses 原生能力是渠道级声明：声明渠道的 `/v1/responses` 必须仅改写鉴权、base_url 与模型映射并原样转发 JSON/SSE；未声明渠道才允许 R→CC 桥接。不可桥接的状态字段必须显式 400，不得静默丢弃。
 - 所有时间以 UTC 存储，仅展示层转本地时区。
 - 对外错误响应统一 OpenAI 格式 `{error:{message,type,code}}`；全部渠道耗尽返回 503。

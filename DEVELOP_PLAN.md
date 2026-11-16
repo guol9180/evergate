@@ -257,7 +257,7 @@
   - 2026-11-10 交付 T12 验收标准满足；完整 Go 测试、前端构建与 `make build` 通过
   - 2026-11-10 发版 v0.1.5：Release Action 2m30s 成功；重新下载 Release Windows exe 后实测 healthz=200、`POST /v1/responses` 未带令牌返回 401、`GET /admin/api/system/update` 未登录返回 401，确认新入口与更新接口已进入远程产物；三平台二进制 + checksums.txt 共 4 资产齐全
 
-### T13: Anthropic Messages 入口与三协议接入矩阵（延后，原 P1 用户指令）
+### T13: Anthropic Messages 入口与三协议接入矩阵（已并入 T37，原 P1 用户指令）
 
 - 目标：确立 EverGate 后续客户端接入的默认协议矩阵——OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses`、Anthropic Messages `/v1/messages` 三种下游 API 协议均可接入同一模型路由、key 池、重试、cooldown 与请求日志链路；补齐缺失的 Anthropic Messages 入口
 - 验收标准：
@@ -267,10 +267,11 @@
   4. 三种协议共同能力的请求/响应/流式/工具调用有对照测试矩阵，能力差异必须在 README 中显式列明；
   5. `go test ./...`、`go vet ./...`、`npm --prefix web run build`、`make build` 全部通过。
 - 边界：第一版 `/v1/messages` 是下游入口协议转换，上游仍统一走 OpenAI-compatible Chat Completions；不做 Anthropic 原生上游适配器、不做数据库 schema 变更、不做超出客户端所需范围的字段全集，未支持字段显式返回可诊断错误
-- 状态：deferred
+- 状态：canceled
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-10 计划 用户指令确认：以后客户端接入默认覆盖 OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三种 API 协议；当前前两者已由 T0/T10 交付，Anthropic Messages 为本卡待开发项
   - 2026-11-11 计划 用户决策（2026-11-10 作出，因并发会话还原文档而延迟落盘）延后本卡：v1 协议范围收敛为上游/下游均支持 Chat Completions 与 Responses、同协议透传优先（新增 T18 承接）；决策依据见 docs/协议生态调研-ChatCompletions与Responses.md。重启条件：渠道池出现真实需求（如 Anthropic 官方上游或 Claude 系客户端），重启前先回本卡更新范围
+  - 2026-11-16 计划 用户决策 P2 范围调整：Anthropic 改走「原生上游 + 原生下游成对打通」，本卡范围并入 T37，状态转 canceled（并入新卡而非放弃目标）
 
 ### T14: Responses custom tool 兼容修复（P1，用户反馈缺陷）
 
@@ -801,7 +802,55 @@
   - 2026-11-16 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`npm --prefix web run build` 与 `make build` 通过，二进制 28.15MB（<30MB），`web/dist` 已更新
   - 2026-11-16 交付 提交 748d94e、tag v0.1.27；Release Action 43787376285 成功（2m14s），4 个 assets 与 CHANGELOG 正文齐全；官方 registry 与 npmmirror 四个包均为 0.1.27；下载 Windows exe SHA256 `8b8e4237…` 与 checksums 一致，隔离端口 18945 冒烟 `/`、`/healthz`、`/metrics` 均 200
 
+### T36: 按预算自动模型降级（P2，用户指令）
+
+- 目标：当令牌剩余额度低于可配阈值、或目标模型渠道耗尽/冷却时，按管理台可配置的「模型降级链」自动切换到低成本候选模型，在请求日志与 retry_trace 中显式记录降级原因与原始/实际模型；成本按实际命中模型的价格快照计算
+- 动机：T22 已交付价格快照、请求成本与 usage_daily 聚合，降级决策具备完整数据底座；在配额受限与上游故障场景下兼顾成本与可用性
+- 验收标准：
+  1. WHEN 令牌剩余额度低于配置阈值 THEN 按降级链路由到低成本模型，retry_trace 记录 reason=budget_threshold、原模型与实际模型；
+  2. WHEN 目标模型渠道耗尽/冷却且配置了降级链 THEN 自动降级继续服务，retry_trace 记录 reason=channel_exhausted；WHEN 未配置降级链 THEN 维持现状 503 语义不变；
+  3. WHEN 令牌配置为禁止降级 THEN 不降级，保持原模型失败语义；降级只发生在进入上游之前，首 chunk 后禁止重试红线不变；
+  4. WHEN 降级发生 THEN 请求日志记录实际模型与对应成本，管理台可区分原请求模型与实际命中模型；
+  5. WHEN 管理台配置/修改降级链 THEN 保存即热生效，无需重启；
+  6. 公共 HTTP 边界测试覆盖：阈值触发、渠道耗尽触发、禁用降级、无降级链、降级链中断回退；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不做跨请求预算重估（以请求开始时的令牌额度快照为准）；不做质量感知降级；不做按人/按用户组预算（多用户已移除出计划）；降级链为模型→有序候选列表，不做自动价格排序；参考 TensorZero 思想，其许可证核实前不复制任何实现
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户决策 P2 范围调整：移除多用户与语义缓存，本卡与 T37/T38 一并建立
+
+### T37: Anthropic 原生协议打通（P2，用户指令；吸收 T13）
+
+- 目标：下游 Anthropic Messages 原生入口 `POST /v1/messages`（含 SSE 事件流）+ 上游 Anthropic 官方 Messages 原生适配；渠道声明 Anthropic 能力后 M→M 透传（仅改写鉴权、base_url 与模型映射），未声明渠道走 M→CC 桥接（复用 CC 枢轴）
+- 动机：T13 延后条件已由用户决策触发——P2 接入 Anthropic 官方原生上游；Claude 系客户端可直连 EverGate；调研显示 DeepSeek/Kimi 亦提供 Messages 上游兼容
+- 验收标准：
+  1. WHEN `POST /v1/messages` THEN 复用 TokenAuth、令牌治理、模型映射、key 池调度、故障切换、请求日志与 Playground 公共链路；
+  2. WHEN 渠道声明 Anthropic 原生能力 THEN M→M 透传保真：system、thinking、cache_control、tool_use/tool_result、stop_reason 与 SSE 事件序列原样转发，flush 循环不假设终止事件；
+  3. WHEN 未声明能力 THEN M→CC 桥接支持非流式/SSE/工具调用；不可桥接字段（如 cache_control）显式 400 或显式降级并记录，不静默丢弃；
+  4. 错误分类器识别 Anthropic 错误形状（含流内 error 事件）；对外错误统一 OpenAI 格式、渠道耗尽 503 不变；
+  5. 回归矩阵公共 HTTP 边界测试：M→M 透传（非流式/SSE/工具）、M→CC 桥接（非流式/SSE/工具）、首事件前切换、首事件后不重试；同时说明 CC/R 两种既有入口的可用性；
+  6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不做 CC→M / R→M 反向转换（Anthropic 原生渠道暂只服务 `/v1/messages` 入口，跨方向需求出现时再立卡）；不做 prompt caching 计费差异处理（cache_control 透传保真即可）；不做 Claude Code 专属兼容 hack；不做数据库 schema 变更（沿用渠道能力字段模式）
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户决策 P2 范围调整：本卡吸收 T13（下游入口）并扩展原生上游，T13 状态转 canceled
+
+### T38: Gemini 原生协议打通（P2，用户指令）
+
+- 目标：下游 Gemini 原生入口（`POST /v1beta/models/{model}:generateContent` 与 `:streamGenerateContent` SSE）+ 上游 Gemini API 原生适配；渠道声明 Gemini 能力后 G→G 透传，未声明渠道走 G→CC 桥接
+- 动机：Gemini 官方 OpenAI 兼容端点功能受限（systemInstruction、safetySettings、原生多模态等），原生打通后 Google API key 可完整接入并享受同协议零损耗转发
+- 验收标准：
+  1. WHEN Gemini 原生入口请求 THEN 复用 TokenAuth、令牌治理、模型映射、key 池调度、故障切换、请求日志公共链路；
+  2. WHEN 渠道声明 Gemini 原生能力 THEN G→G 透传保真：systemInstruction、safetySettings、tools、generationConfig 与 SSE（alt=sse）事件原样转发；
+  3. WHEN 未声明能力 THEN G→CC 桥接支持基础对话与函数调用；不可桥接字段显式处理，不静默丢弃；
+  4. 错误分类器识别 Gemini 错误形状（含流内 error）；对外错误统一 OpenAI 格式、渠道耗尽 503 不变；
+  5. 回归矩阵公共 HTTP 边界测试覆盖 G→G 透传与 G→CC 桥接（非流式/SSE/工具），并说明 CC/R 两种既有入口的可用性；
+  6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不做 CC→G / R→G / M→G 反向转换；不做 Vertex AI（仅 Gemini API developer key）；多模态输入按现有 CC/R 入口能力对齐，不新增图片/文件处理链路
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户决策 P2 范围调整建卡
 ## 状态枚举
+
 
 | 状态 | 含义 |
 |---|---|
@@ -827,7 +876,7 @@
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
-| P2（当前阶段） | T28 渠道预设供应商模板（done）；Anthropic Messages 下游入口（T13，已延后）、Anthropic 原生上游适配、多用户角色、语义缓存、按预算模型降级、插件钩子 | T28 已按任务卡验收并随 v0.1.26 发布；其余项开工前再拆任务卡 |
+| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级；T37 Anthropic 原生协议打通（吸收 T13）；T38 Gemini 原生协议打通；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；默认执行顺序 T36 → T37 → T38 |
 
 ## 验收清单
 
