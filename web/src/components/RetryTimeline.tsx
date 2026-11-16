@@ -11,16 +11,19 @@ export default function RetryTimeline({ attempts }: { attempts: RetryAttempt[] |
     <div className="space-y-0">
       {attempts.map((a, i) => {
         const ok = !a.error_type && !a.error_message
+        const fallback = !!a.reason
         return (
           <div key={i} className="flex gap-3">
             <div className="flex flex-col items-center">
-              <span className={`mt-1 h-2.5 w-2.5 rounded-full ${ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
+              <span className={`mt-1 h-2.5 w-2.5 rounded-full ${fallback ? 'bg-amber-500' : ok ? 'bg-emerald-500' : 'bg-red-500'}`} />
               {i < attempts.length - 1 && <span className="w-px flex-1 bg-slate-200" />}
             </div>
             <div className={`min-w-0 flex-1 ${i < attempts.length - 1 ? 'pb-5' : 'pb-0'}`}>
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="font-medium">尝试 {a.attempt}</span>
-                <span className="break-all text-slate-500">→ {a.channel_name} · key #{a.key_id}</span>
+                <span className="break-all text-slate-500">
+                  {fallback ? `${a.from_model} → ${a.to_model}` : `→ ${a.channel_name} · key #${a.key_id}`}
+                </span>
                 {!!a.status_code && <span className="text-xs text-slate-400">HTTP {a.status_code}</span>}
                 <span className="ml-auto text-xs text-slate-400">{a.elapsed_ms}ms</span>
               </div>
@@ -28,7 +31,7 @@ export default function RetryTimeline({ attempts }: { attempts: RetryAttempt[] |
                 <div className="mt-0.5 text-xs text-emerald-600">成功</div>
               ) : (
                 <div className="mt-0.5 text-xs">
-                  <Badge tone="bg-red-100 text-red-700">{kindText(a.error_type)}</Badge>
+                  <Badge tone={fallback ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}>{kindText(a.error_type)}</Badge>
                   <span className="ml-2 break-all text-slate-500">{a.error_message?.slice(0, 120)}</span>
                 </div>
               )}

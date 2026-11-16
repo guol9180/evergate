@@ -81,6 +81,15 @@ export interface SystemSettingsResponse {
   }
 }
 
+export interface ModelFallback {
+  id?: number
+  model: string
+  budget_threshold: number
+  fallbacks: string[]
+  created_at?: string
+  updated_at?: string
+}
+
 export interface ChannelTimeouts {
   connect_sec?: number | null
   first_token_sec?: number | null
@@ -158,6 +167,7 @@ export interface Token {
   expired_at: string | null
   allowed_models: string[] | null
   allowed_ips: string[] | null
+  disable_fallback: boolean
   group: string
   created_at: string
 }
@@ -171,6 +181,9 @@ export interface RetryAttempt {
   error_type: string
   error_message: string
   elapsed_ms: number
+  reason?: string
+  from_model?: string
+  to_model?: string
 }
 
 export interface RequestLog {
@@ -182,6 +195,7 @@ export interface RequestLog {
   channel_id: number
   channel_name: string
   key_id: number
+  original_model?: string
   model: string
   upstream_model: string
   stream: boolean

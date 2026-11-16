@@ -67,6 +67,8 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.GET("/admin/api/system/update/progress", a.sessionMiddleware(), a.systemUpdateProgress)
 	r.GET("/admin/api/system/settings", a.sessionMiddleware(), a.getSystemSettings)
 	r.PUT("/admin/api/system/settings", a.sessionMiddleware(), a.updateSystemSettings)
+	r.GET("/admin/api/model-fallbacks", a.sessionMiddleware(), a.listModelFallbacks)
+	r.PUT("/admin/api/model-fallbacks", a.sessionMiddleware(), a.replaceModelFallbacks)
 	r.GET("/admin/api/usage/report", a.sessionMiddleware(), a.getUsageReport)
 	r.GET("/admin/api/usage/prices", a.sessionMiddleware(), a.listUsagePrices)
 	r.PUT("/admin/api/usage/prices/default", a.sessionMiddleware(), a.setDefaultUsagePrice)
@@ -644,18 +646,19 @@ func (a *API) deleteKey(c *gin.Context) {
 // ---------- 下游令牌 ----------
 
 type tokenDTO struct {
-	ID             int64      `json:"id"`
-	Name           string     `json:"name"`
-	Enabled        bool       `json:"enabled"`
-	Quota          int64      `json:"quota"`
-	UsedQuota      int64      `json:"used_quota"`
-	RemainingQuota int64      `json:"remaining_quota"`
-	Status         string     `json:"status"`
-	ExpiredAt      *time.Time `json:"expired_at"`
-	AllowedModels  []string   `json:"allowed_models"`
-	AllowedIPs     []string   `json:"allowed_ips"`
-	Group          string     `json:"group"`
-	CreatedAt      time.Time  `json:"created_at"`
+	ID              int64      `json:"id"`
+	Name            string     `json:"name"`
+	Enabled         bool       `json:"enabled"`
+	Quota           int64      `json:"quota"`
+	UsedQuota       int64      `json:"used_quota"`
+	RemainingQuota  int64      `json:"remaining_quota"`
+	Status          string     `json:"status"`
+	ExpiredAt       *time.Time `json:"expired_at"`
+	AllowedModels   []string   `json:"allowed_models"`
+	AllowedIPs      []string   `json:"allowed_ips"`
+	DisableFallback bool       `json:"disable_fallback"`
+	Group           string     `json:"group"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 func toTokenDTO(t *store.Token) tokenDTO {
@@ -679,7 +682,7 @@ func toTokenDTO(t *store.Token) tokenDTO {
 		ID: t.ID, Name: t.Name, Enabled: t.Enabled, Quota: t.Quota, UsedQuota: t.UsedQuota,
 		RemainingQuota: remaining, Status: status,
 		ExpiredAt: t.ExpiredAt, AllowedModels: t.AllowedModels, AllowedIPs: t.AllowedIPs,
-		Group: t.Group, CreatedAt: t.CreatedAt,
+		DisableFallback: t.DisableFallback, Group: t.Group, CreatedAt: t.CreatedAt,
 	}
 }
 
@@ -736,12 +739,13 @@ func normalizeTokenRules(models, ips []string) ([]string, []string, error) {
 
 func (a *API) createToken(c *gin.Context) {
 	var req struct {
-		Name          string     `json:"name" binding:"required"`
-		Quota         *int64     `json:"quota"`
-		ExpiredAt     *time.Time `json:"expired_at" time_format:"2006-01-02T15:04:05Z07:00"`
-		AllowedModels []string   `json:"allowed_models"`
-		AllowedIPs    []string   `json:"allowed_ips"`
-		Group         string     `json:"group"`
+		Name            string     `json:"name" binding:"required"`
+		Quota           *int64     `json:"quota"`
+		ExpiredAt       *time.Time `json:"expired_at" time_format:"2006-01-02T15:04:05Z07:00"`
+		AllowedModels   []string   `json:"allowed_models"`
+		AllowedIPs      []string   `json:"allowed_ips"`
+		DisableFallback bool       `json:"disable_fallback"`
+		Group           string     `json:"group"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
@@ -773,6 +777,7 @@ func (a *API) createToken(c *gin.Context) {
 		Name: req.Name, KeyHash: hex.EncodeToString(sum[:]), Enabled: true,
 		Quota: quota, ExpiredAt: req.ExpiredAt,
 		AllowedModels: allowedModels, AllowedIPs: allowedIPs, Group: group,
+		DisableFallback: req.DisableFallback,
 	}
 	if err := a.opt.DB.Create(t).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "创建失败")
@@ -794,13 +799,14 @@ func (a *API) updateToken(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name           *string    `json:"name"`
-		Enabled        *bool      `json:"enabled"`
-		Quota          *int64     `json:"quota"`
-		ExpiredAt      *time.Time `json:"expired_at"`
-		ClearExpiredAt bool       `json:"clear_expired_at"`
-		AllowedModels  *[]string  `json:"allowed_models"`
-		AllowedIPs     *[]string  `json:"allowed_ips"`
+		Name            *string    `json:"name"`
+		Enabled         *bool      `json:"enabled"`
+		Quota           *int64     `json:"quota"`
+		ExpiredAt       *time.Time `json:"expired_at"`
+		ClearExpiredAt  bool       `json:"clear_expired_at"`
+		AllowedModels   *[]string  `json:"allowed_models"`
+		AllowedIPs      *[]string  `json:"allowed_ips"`
+		DisableFallback *bool      `json:"disable_fallback"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "参数错误")
@@ -831,6 +837,9 @@ func (a *API) updateToken(c *gin.Context) {
 	}
 	if req.AllowedIPs != nil {
 		updates["allowed_ips"] = *req.AllowedIPs
+	}
+	if req.DisableFallback != nil {
+		updates["disable_fallback"] = *req.DisableFallback
 	}
 	if req.AllowedModels != nil || req.AllowedIPs != nil {
 		models := t.AllowedModels

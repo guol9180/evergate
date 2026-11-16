@@ -631,7 +631,14 @@ func responsesBridgeBody(c *gin.Context) ([]byte, bool) {
 		return nil, false
 	}
 	body, _ := value.([]byte)
+	if body == nil {
+		return nil, false
+	}
 	return body, true
+}
+
+func clearResponsesBridgeBody(c *gin.Context) {
+	c.Set(responsesBridgeBodyKey, []byte(nil))
 }
 
 func anyResponsesNative(candidates []router.Candidate) bool {

@@ -814,10 +814,17 @@
   5. WHEN 管理台配置/修改降级链 THEN 保存即热生效，无需重启；
   6. 公共 HTTP 边界测试覆盖：阈值触发、渠道耗尽触发、禁用降级、无降级链、降级链中断回退；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不做跨请求预算重估（以请求开始时的令牌额度快照为准）；不做质量感知降级；不做按人/按用户组预算（多用户已移除出计划）；降级链为模型→有序候选列表，不做自动价格排序；参考 TensorZero 思想，其许可证核实前不复制任何实现
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户决策 P2 范围调整：移除多用户与语义缓存，本卡与 T37/T38 一并建立
   - 2026-11-16 执行 前置调研完成并落盘 docs/P2调研-按预算模型降级.md：TensorZero（Apache-2.0 已核实）三层降级语义（provider 路由→variant 重试→variant 级联）、LiteLLM model_group+fallbacks 与 Budget Routing（超预算是拦截而非降级）、gpt-load 无模型级降级链；确认 T36 语义为「预算/耗尽触发 + 有序降级链 + 原始/实际模型双记录」
+  - 2026-11-16 执行 用户确认 P2 计划后开始 T36：新增模型降级链 SQLite 配置（模型、预算阈值、有序候选），令牌增加禁用降级开关；请求日志增加 original_model，retry_trace 增加 reason/from/to 模型字段
+  - 2026-11-16 执行 新增 `store.ModelFallback`（源模型、预算阈值、有序候选）与 `relay.dispatchWithFallbacks/dispatchModel` 公共编排：预算触发在令牌治理后、上游前判定；渠道耗尽先穷尽该模型既有渠道/key 重试预算；候选必须通过令牌模型白名单；请求级渠道覆盖与 Responses 原生/桥接能力按每个候选模型重新评估
+  - 2026-11-16 执行 管理台新增 `GET/PUT /admin/api/model-fallbacks` 与系统设置「模型降级」卡片；令牌创建/编辑增加「允许模型降级」开关；请求日志与 RetryTimeline 显示原始模型、实际模型与降级原因
+  - 2026-11-16 验证 公共 HTTP 边界测试：预算阈值触发（跳过原模型且 trace reason=budget_threshold）、原模型失败后按链降级（reason=channel_exhausted）、Responses 入口同链降级、令牌禁用降级保持 503、无降级链保持 503、降级链中途失败继续下一候选、配置更新后无需重启立即生效；日志断言 original_model/model/upstream_model、trace reason 与实际模型成本
+  - 2026-11-16 验证 管理台 API 测试覆盖降级链整体替换、读取、重复/空值/负数校验与非法输入不落库，令牌 disable_fallback 创建/编辑往返；无头 Chrome 1280×800 与 390×844 截图复核设置、令牌、日志列表/详情 7 个画面，均无页面级横向溢出
+  - 2026-11-16 验证 端到端实例（18946 + mock 上游 18947）：expensive 渠道 503 后自动落到 cheap，客户端 200；日志 `original_model=expensive-show`、`model=cheap-show`、trace 3 条且含 channel_exhausted；`gofmt`、`go vet`、`go test -p 1 ./... -count=1`、`npm --prefix web run build`、`make build` 通过，二进制 28.18MB（<30MB）
+  - 2026-11-16 验证 按 init-project-docs 五条规范复审三件套：AGENTS 补齐第五条「精准修改」与 `internal/npmregistry` 目录说明；README 移除尚未交付的 Anthropic/Gemini 供应商标识；三文档相对链接有效，任务状态均在枚举内，README 未新增功能细节
 
 ### T37: Anthropic 原生协议打通（P2，用户指令；吸收 T13）
 
@@ -879,7 +886,7 @@
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
-| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级；T37 Anthropic 原生协议打通（吸收 T13）；T38 Gemini 原生协议打通；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；默认执行顺序 T36 → T37 → T38 |
+| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，下一张）；T38 Gemini 原生协议打通；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；默认执行顺序 T36 → T37 → T38 |
 
 ## 验收清单
 

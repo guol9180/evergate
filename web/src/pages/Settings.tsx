@@ -3,6 +3,7 @@ import { Save } from 'lucide-react'
 import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
 import type { SystemSettings, SystemSettingsValues } from '../api/types'
 import { Badge, Button, Card, ErrorText, Field, Input, PageHeader, Spinner } from '../components/ui'
+import ModelFallbackCard from '../components/ModelFallbackCard'
 import { fmtTime } from '../lib/format'
 
 type FormState = {
@@ -107,6 +108,8 @@ export default function Settings() {
           </div>
         </div>
       </form>
+
+      <ModelFallbackCard />
     </div>
   )
 }

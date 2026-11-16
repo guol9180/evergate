@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, jsonBody } from './client'
-import type { AdminInfo, Channel, ChannelDetail, LogsPage, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, Channel, ChannelDetail, LogsPage, ModelFallback, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -71,6 +71,25 @@ export function useUpdateSystemSettings() {
     onSuccess: (data) => qc.setQueryData<SystemSettingsResponse>(['system-settings'], (current) =>
       current ? { ...current, settings: data.settings } : current,
     ),
+  })
+}
+
+export function useModelFallbacks() {
+  return useQuery({
+    queryKey: ['model-fallbacks'],
+    queryFn: () => api<{ items: ModelFallback[] }>('/admin/api/model-fallbacks'),
+  })
+}
+
+export function useSaveModelFallbacks() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (items: ModelFallback[]) =>
+      api<{ items: ModelFallback[] }>('/admin/api/model-fallbacks', {
+        method: 'PUT',
+        body: JSON.stringify({ items }),
+      }),
+    onSuccess: (data) => qc.setQueryData<{ items: ModelFallback[] }>(['model-fallbacks'], data),
   })
 }
 

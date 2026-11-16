@@ -82,9 +82,11 @@ type Token struct {
 	ExpiredAt     *time.Time `json:"expired_at"`
 	AllowedModels []string   `gorm:"serializer:json" json:"allowed_models"`
 	AllowedIPs    []string   `gorm:"serializer:json" json:"allowed_ips"`
-	Group         string     `gorm:"size:50;not null;default:'default'" json:"group"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	// DisableFallback 为 true 时该令牌不参与模型降级，保持原模型失败语义。
+	DisableFallback bool      `gorm:"not null;default:false" json:"disable_fallback"`
+	Group           string    `gorm:"size:50;not null;default:'default'" json:"group"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // RetryAttempt 是重试轨迹中的一次尝试（存于 RequestLog.RetryTrace）。
@@ -97,6 +99,10 @@ type RetryAttempt struct {
 	ErrorType    string `json:"error_type,omitempty"`
 	ErrorMessage string `json:"error_message,omitempty"`
 	ElapsedMS    int64  `json:"elapsed_ms"`
+	// Reason / FromModel / ToModel 仅在模型降级边界记录，普通上游尝试为空。
+	Reason    string `json:"reason,omitempty"`
+	FromModel string `json:"from_model,omitempty"`
+	ToModel   string `json:"to_model,omitempty"`
 }
 
 // RequestLog 是请求日志（任务书 4.3 request_logs 表，核心调试体验）。
@@ -109,6 +115,7 @@ type RequestLog struct {
 	ChannelID        int64          `gorm:"index" json:"channel_id"`
 	ChannelName      string         `gorm:"size:100" json:"channel_name"`
 	KeyID            int64          `json:"key_id"`
+	OriginalModel    string         `gorm:"size:100" json:"original_model,omitempty"`
 	Model            string         `gorm:"size:100;index" json:"model"`
 	UpstreamModel    string         `gorm:"size:100" json:"upstream_model"`
 	Stream           bool           `json:"stream"`
@@ -161,6 +168,16 @@ type ModelPrice struct {
 	OutputMicrosPerMillion int64     `gorm:"not null;default:0" json:"output_micros_per_million"`
 	CreatedAt              time.Time `json:"created_at"`
 	UpdatedAt              time.Time `json:"updated_at"`
+}
+
+// ModelFallback 是模型降级链：令牌余额低于阈值或原模型渠道耗尽时按序尝试。
+type ModelFallback struct {
+	ID              int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	Model           string    `gorm:"size:100;not null;uniqueIndex" json:"model"`
+	BudgetThreshold int64     `gorm:"not null;default:0" json:"budget_threshold"` // 剩余 token 配额阈值；0 = 不按预算触发
+	Fallbacks       []string  `gorm:"serializer:json" json:"fallbacks"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // RuntimeSetting 是安全运行时配置的 SQLite 单例（ID 固定为 1）。

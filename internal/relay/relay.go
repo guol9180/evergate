@@ -93,6 +93,9 @@ const ctxAffinitySession = "evergate.affinity_session"
 // ctxConfigSummary 保存脱敏后的请求级覆盖摘要，仅用于请求日志落库。
 const ctxConfigSummary = "evergate.config_summary"
 
+// ctxQuotaRemaining 保存请求开始时的令牌剩余额度快照，仅用于预算降级判定。
+const ctxQuotaRemaining = "evergate.quota_remaining"
+
 // hitRecord 记录实际命中的渠道/key 与首个 token 延迟（供请求日志）。
 type hitRecord struct {
 	channelID        int64
@@ -201,146 +204,7 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 		c.Set(ctxConfigSummary, summary)
 	}
 
-	// 会话亲和：只对已通过鉴权与令牌治理的请求生效（tokenID=0 表示未鉴权，直接跳过）。
-	tokenID, _ := tokenFromContext(c)
-	session := affinity.NormalizeSession(c.GetHeader("X-Session-Id"))
-	var sticky affinity.Entry
-	stickyOK := false
-	affinityEnabled := override.SessionAffinity == nil || *override.SessionAffinity
-	if affinityEnabled && session != "" && tokenID != 0 {
-		sticky, stickyOK = r.opt.Affinity.Lookup(tokenID, model, session)
-		// 仅本次请求内使用；不落请求日志、不进下游响应。
-		c.Set(ctxAffinitySession, session)
-	}
-
-	var channels []*store.Channel
-	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
-		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
-		return nil, http.StatusInternalServerError, "server_error", err.Error()
-	}
-	if len(override.ChannelIDs) > 0 {
-		channels, err = filterChannels(channels, model, override.ChannelIDs)
-		if err != nil {
-			msg := err.Error()
-			writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_config", msg)
-			return nil, http.StatusBadRequest, "invalid_request_config", msg
-		}
-	}
-	candidates := r.opt.Router.Route(model, channels)
-	if stickyOK {
-		candidates = promoteSticky(candidates, sticky)
-	}
-	if isResponsesRequest(c) {
-		candidates = preferResponsesNative(candidates)
-		if !anyResponsesNative(candidates) {
-			if responsesNeedsNativeBridge(body) {
-				writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "responses_native_required",
-					"请求携带 previous_response_id/background/store 等 Responses 原生状态字段，但候选渠道均未声明 Responses 能力")
-				return nil, http.StatusBadRequest, "invalid_request_error", "responses_native_required"
-			}
-			converted, toolRegistry, cerr := responsesToChat(body)
-			if cerr != nil {
-				writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", cerr.Error())
-				return nil, http.StatusBadRequest, "invalid_request_error", cerr.Error()
-			}
-			body = converted
-			c.Set(responsesToolIdentitiesKey, toolRegistry)
-			setResponsesBridgeBody(c, converted)
-		} else {
-			setResponsesOriginalBody(c, body)
-		}
-	}
-
-	d := r.currentDefaults()
-	if override.Retry != nil {
-		if override.Retry.Channels != nil {
-			d.RetryBudget.Channels = *override.Retry.Channels
-		}
-		if override.Retry.KeysPerChannel != nil {
-			d.RetryBudget.KeysPerChannel = *override.Retry.KeysPerChannel
-		}
-		if override.Retry.Total != nil {
-			d.RetryBudget.Total = config.Duration{Duration: *override.Retry.Total}
-		}
-	}
-	budget := retry.NewBudget(d.RetryBudget.Channels, d.RetryBudget.KeysPerChannel, d.RetryBudget.Total.Duration, r.opt.Now())
-	trace := make([]store.RetryAttempt, 0, 4)
-
-loop:
-	for ci, cand := range candidates {
-		var keys []*store.ChannelKey
-		if err := r.opt.DB.Where("channel_id = ? AND enabled = ?", cand.Channel.ID, true).Find(&keys).Error; err != nil {
-			continue
-		}
-		usedKeys := make(map[int64]bool)
-		for ki := 1; ki <= d.RetryBudget.KeysPerChannel; ki++ {
-			if !budget.Allow(ci+1, ki, r.opt.Now()) {
-				break loop // 重试预算耗尽
-			}
-			preferredKeyID := int64(0)
-			if stickyOK && cand.Channel.ID == sticky.ChannelID && ki == 1 {
-				preferredKeyID = sticky.KeyID
-			}
-			key := r.opt.Pool.AcquirePreferred(cand.Channel.ID, keys, preferredKeyID)
-			if key == nil || usedKeys[key.ID] {
-				continue loop // 渠道无可用 key（或只剩已试过的 key）→ 换下一候选渠道
-			}
-			usedKeys[key.ID] = true
-			attemptBody := body
-			if isResponsesRequest(c) {
-				if cand.Channel.SupportsResponses {
-					attemptBody = responsesOriginalBody(c)
-					c.Set(responsesNativeKey, true)
-				} else {
-					converted, cached := responsesBridgeBody(c)
-					if !cached {
-						var cerr error
-						var registry *responsesToolRegistry
-						converted, registry, cerr = responsesToChat(responsesOriginalBody(c))
-						if cerr != nil {
-							start := r.opt.Now()
-							trace = append(trace, store.RetryAttempt{
-								ChannelID: cand.Channel.ID, ChannelName: cand.Channel.Name, KeyID: key.ID,
-								Attempt: len(trace) + 1, ErrorType: "responses_bridge", ErrorMessage: cerr.Error(),
-								ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
-							})
-							continue loop
-						}
-						c.Set(responsesToolIdentitiesKey, registry)
-						setResponsesBridgeBody(c, converted)
-					}
-					attemptBody = converted
-					c.Set(responsesNativeKey, false)
-				}
-			}
-			out := r.attemptOne(c, cand, key, attemptBody, model, stream, &trace, hit, override.Timeouts)
-			switch out {
-			case outcomeDone:
-				return trace, c.Writer.Status(), "", ""
-			case outcomeNextChannel:
-				continue loop
-			}
-		}
-	}
-
-	// 全部渠道耗尽 / 预算用尽 → 503 + OpenAI 错误体（验收 #7）
-	msg := "all upstream channels exhausted"
-	errType := "server_error"
-	if n := len(trace); n > 0 {
-		last := trace[n-1]
-		if last.ErrorMessage != "" {
-			msg += ": " + last.ErrorMessage
-		}
-		if last.ErrorType != "" {
-			errType = last.ErrorType
-		}
-	}
-	r.opt.Logger.Warn("relay exhausted",
-		slog.String("model", model),
-		slog.Int("attempts", len(trace)),
-	)
-	writeOpenAIError(c, http.StatusServiceUnavailable, "server_error", "all_channels_exhausted", msg)
-	return trace, http.StatusServiceUnavailable, errType, msg
+	return r.dispatchWithFallbacks(c, hit, body, model, stream, override)
 }
 
 // promoteSticky 把粘性渠道提到候选列表最前，但只在最高优先级组内生效：
@@ -439,8 +303,9 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		Source:    requestSource(c),
 		ChannelID: hit.channelID, ChannelName: hit.channelName, KeyID: hit.keyID,
 		Model: firstNonEmpty(hitLoggedModel(c), ""), UpstreamModel: hit.upstreamModel,
-		Stream:     isStreamRequest(c),
-		StatusCode: status, ErrorType: errType, ErrorMessage: errMsg,
+		OriginalModel: originalLoggedModel(c),
+		Stream:        isStreamRequest(c),
+		StatusCode:    status, ErrorType: errType, ErrorMessage: errMsg,
 		RetryTrace:   trace,
 		FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
 		PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
@@ -562,6 +427,7 @@ func (r *Relay) enforceTokenGovernance(c *gin.Context, model string) (int, strin
 			Scan(&used).Error; err != nil {
 			return http.StatusInternalServerError, "server_error", "query token quota failed", false
 		}
+		c.Set(ctxQuotaRemaining, token.Quota-used)
 		if used >= token.Quota {
 			return http.StatusTooManyRequests, "quota_exceeded", "token quota exceeded", false
 		}
@@ -637,7 +503,8 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		*trace = append(*trace, store.RetryAttempt{
 			ChannelID: ch.ID, ChannelName: ch.Name, KeyID: key.ID,
 			Attempt: len(*trace) + 1, ErrorType: errType, ErrorMessage: errMsg,
-			ElapsedMS: r.opt.Now().Sub(attemptStart).Milliseconds(),
+			StatusCode: status,
+			ElapsedMS:  r.opt.Now().Sub(attemptStart).Milliseconds(),
 		})
 		r.metricAttempt(ch.ID, cand.UpstreamModel, errType)
 	}
@@ -975,6 +842,18 @@ func hitLoggedModel(c *gin.Context) string {
 	v, _ := c.Get("evergate.model")
 	s, _ := v.(string)
 	return s
+}
+
+func originalLoggedModel(c *gin.Context) string {
+	v, _ := c.Get("evergate.original_model")
+	s, _ := v.(string)
+	return s
+}
+
+func quotaRemainingFromContext(c *gin.Context) int64 {
+	v, _ := c.Get(ctxQuotaRemaining)
+	n, _ := v.(int64)
+	return n
 }
 
 // isStreamRequest 判断请求是否流式（dispatch 内解析后写入）。

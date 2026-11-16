@@ -1,11 +1,12 @@
 # 开发规范
 
-## 通用规范（必建四条）
+## 通用规范（必建五条）
 
-1. **复用优先，不过度设计**：同一逻辑或结构出现第二份副本时，立即抽取为公共函数 / 公共样式 / 公共组件；前端页面表现优先组件化；保证代码质量，不为假想的未来需求预先抽象。
+1. **复用优先，不过度设计**：同一逻辑或结构出现第二份副本时，立即抽取为公共函数 / 公共样式 / 公共组件；前端页面表现优先组件化；保证代码质量（可读、可测、可维护）；只为已发生的重复做抽象，不为假想的未来需求预先设计。
 2. **文档同步**：DEVELOP_PLAN.md 随任务同步（进度只追加、状态如实流转）；AGENTS.md 仅在开发规范变化时更新；README.md 仅在项目定位、结构、用法或环境变化时更新——新增功能默认只记录在 DEVELOP_PLAN.md，不逐条追加进 README，README 不是变更日志。文档与代码不同步视为任务未完成。
 3. **计划执行分离**：动手前先在 DEVELOP_PLAN.md 建任务卡（目标、验收标准、边界）并确认；执行中不得顺手扩范围，需求或范围变化先回任务卡更新，再改代码。
 4. **诚实终态**：声明完成必须附实际产出文件与验证证据（执行了什么、结果如何）；未运行的测试或验证不得声称通过；受阻时如实标注 blocked 并写明原因与可否绕行。
+5. **精准修改**：每一行改动都必须能追溯到当前任务；不顺手改进相邻代码、注释或格式，不重构没坏的东西，匹配现有风格；只清理因本次改动产生的孤儿代码（本次改动使其失效的导入 / 变量 / 函数）；发现既有死代码提及而不删，除非任务明确要求。
 
 ## 目录约定
 
@@ -26,10 +27,11 @@ internal/health/       # 周期 /models 轻量探测、key cooldown 持久化与
 internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
 internal/usage/        # 模型价格快照、请求成本、UTC 日幂等聚合与报表查询
 internal/browser/      # 启动后打开管理台的系统浏览器封装
-internal/update/       # GitHub Release 自动更新检查
+internal/update/       # 版本检查：npm dist-tags 优先、GitHub Release 元数据/兜底
 internal/metrics/      # 进程内 Prometheus 注册表、文本曝光与 loopback 限制
 internal/telemetry/    # 可选 OTLP/HTTP JSON 链路导出（无 SDK 依赖，默认关闭）
 internal/selfupdate/   # 一键更新：npm/GitHub 下载、integrity 校验、改名替换与重启编排
+internal/npmregistry/  # npm registry 默认链（npmmirror → 官方）与规范化公共定义
 npm/wrapper/           # npm 主包模板（启动垫片，不含二进制）
 npm/platform/          # npm 平台子包模板（版本/os/cpu 由发布脚本注入）
 scripts/               # 构建与发布辅助脚本（如 stage-npm.mjs）
@@ -74,6 +76,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
 - npm 发布：主包 `evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
 - 一键更新：版本检查与 npm 下载链默认 `npmmirror → registry.npmjs.org`，每个源独立超时，均失败才回退 GitHub；`EVERGATE_NPM_REGISTRY` 只能把链收窄为指定源，不得引入任意下载地址。GitHub 仅用于补充更新说明/资产或兜底，不可达不得阻塞已由 npm 确认的更新。下载必须校验 npm `dist.integrity`（sha512）或 GitHub `checksums.txt`（SHA256）；替换只允许同目录改名交换并保留旧版本备份，失败不得破坏原二进制；重启必须沿用 30s 优雅停机；禁止引入第三方自更新库。
+- 模型降级只能发生在 TokenAuth 与令牌治理之后、进入上游之前：预算触发必须使用请求开始时的剩余额度快照；候选模型必须通过令牌模型白名单；渠道耗尽触发必须先穷尽该模型的现有渠道/key 重试预算。降级边界必须写入 retry_trace（reason/from/to）并在请求日志保留 original_model 与实际 model，成本按实际命中渠道+模型价格快照计算；首 chunk 后禁止因降级重试。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）

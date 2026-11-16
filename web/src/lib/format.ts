@@ -68,6 +68,8 @@ export const kindLabel: Record<string, string> = {
   model_unavailable: '模型不可用',
   non_retryable: '请求错误',
   content_policy: '内容策略',
+  budget_threshold: '预算降级',
+  channel_exhausted: '渠道耗尽降级',
 }
 
 export function kindText(kind: string): string {

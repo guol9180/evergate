@@ -59,6 +59,9 @@ export default function Logs() {
                     <Td className="whitespace-nowrap text-xs text-slate-500">{fmtTime(l.created_at)}</Td>
                     <Td className="font-medium">
                       {l.model}
+                      {l.original_model && l.original_model !== l.model && (
+                        <Badge tone="bg-amber-100 text-amber-700 ml-2">原 {l.original_model}</Badge>
+                      )}
                       {l.source === 'playground' && <Badge tone="bg-indigo-100 text-indigo-700 ml-2">Playground</Badge>}
                     </Td>
                     <Td className="text-slate-500">{l.channel_name || '—'}</Td>
@@ -99,6 +102,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
             {[
               ['时间', fmtTime(log.created_at)],
               ['模型', log.model + (log.upstream_model && log.upstream_model !== log.model ? ` → ${log.upstream_model}` : '')],
+              ['原始模型', log.original_model || '—'],
               ['渠道', log.channel_name || '—'],
               ['key ID', log.key_id || '—'],
               ['状态码', <span className={`font-semibold ${statusTone(log.status_code)}`}>{log.status_code}</span>],

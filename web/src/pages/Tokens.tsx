@@ -67,6 +67,7 @@ export default function Tokens() {
                       <div className="truncate" title={(t.allowed_models || []).join(', ')}>
                         {(t.allowed_models || []).join(', ') || '全部模型'}
                       </div>
+                      {t.disable_fallback && <Badge tone="bg-amber-100 text-amber-700">禁止降级</Badge>}
                     </Td>
                     <Td className="max-w-40 text-xs text-slate-500">
                       <div className="truncate" title={(t.allowed_ips || []).join(', ')}>
@@ -114,6 +115,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   const [expiredAt, setExpiredAt] = useState(toLocalInput(token?.expired_at))
   const [modelsText, setModelsText] = useState((token?.allowed_models || []).join('\n'))
   const [ipsText, setIpsText] = useState((token?.allowed_ips || []).join('\n'))
+  const [disableFallback, setDisableFallback] = useState(token?.disable_fallback ?? false)
   const [copied, setCopied] = useState(false)
 
   if (create.data) {
@@ -148,6 +150,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
       expired_at: expiredAt ? new Date(expiredAt).toISOString() : null,
       allowed_models: splitLines(modelsText),
       allowed_ips: splitLines(ipsText),
+      disable_fallback: disableFallback,
     }
     if (token) {
       update.mutate({ id: token.id, ...payload, clear_expired_at: !expiredAt }, { onSuccess: onClose })
@@ -183,6 +186,13 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
         <Field label="过期时间" hint="留空表示不限；编辑时留空会清除过期时间">
           <Input type="datetime-local" value={expiredAt} onChange={(e) => setExpiredAt(e.target.value)} />
         </Field>
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-sm text-slate-700">允许模型降级</div>
+            <div className="text-xs text-slate-400">关闭后即使配置了降级链，也保持原模型失败语义</div>
+          </div>
+          <Switch checked={!disableFallback} onChange={(enabled) => setDisableFallback(!enabled)} label="允许模型降级" />
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="允许模型（每行一个）" hint="留空表示允许全部模型">
             <Textarea rows={4} value={modelsText} onChange={(e) => setModelsText(e.target.value)} placeholder={'gpt-4o\nglm-4.7'} />
