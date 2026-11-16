@@ -874,6 +874,7 @@
   - 2026-11-16 验证 公共 HTTP 边界回归 11 组：G→G 非流式状态字段保真与 usage、G→G SSE（无 [DONE]/EOF）、首帧 503 错误切换、首帧后不重试、G→CC 非流式工具调用与 response 转换、G→CC SSE 事件与函数调用聚合、safetySettings/thinkingConfig/inlineData 400 且不触达上游、x-goog-api-key 鉴权与 query key 拒绝、countTokens 仅原生、Gemini 错误体转 OpenAI 信封
   - 2026-11-16 验证 无头浏览器 1280×800 / 390×844 复核三协议徽标与渠道表单：桌面表格 scrollWidth 991 = 容器 991、三枚紧凑徽标同排且无横向滚动；移动端页面 scrollWidth=390、表单三开关正常换行
   - 2026-11-16 执行 运维配置补充 Gemini 协议矩阵、Base URL、鉴权与桥接边界；README 能力概览与 AGENTS 协议矩阵同步为四协议
+  - 2026-11-16 交付 T38 验收标准全部满足；实现与三件套提交 42c39d7 已推送 main，剩余差距：无
 ## 状态枚举
 
 
