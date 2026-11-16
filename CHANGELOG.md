@@ -2,6 +2,15 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.1.28
+
+- 新增 Anthropic Messages 原生入口 `POST /v1/messages` 与 `POST /v1/messages/count_tokens`；下游鉴权同时接受 `Authorization: Bearer` 与 `x-api-key`，可直接承接 Claude Code 的 `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY`
+- 渠道新增「原生支持 Anthropic Messages」能力声明：声明渠道仅改写鉴权、Base URL 与模型映射并透传 JSON/SSE；未声明渠道自动桥接 Chat Completions，支持文本、工具调用与 usage，`thinking` / `cache_control` 等无法等价表达的字段返回 400
+- Messages SSE 按 Anthropic 事件序透传：无 `[DONE]`、`ping` 原样转发、以 `message_stop` + EOF 结束；首事件前可故障切换，首事件后不重试
+- 渠道预设新增 Anthropic 官方、DeepSeek Anthropic 兼容、Kimi Anthropic 兼容三种模板；Base URL 按厂商填写后网关统一追加 `/v1/messages`
+- 新增按预算自动模型降级：令牌剩余额度低于阈值或原模型渠道耗尽时，按可配置降级链切换低成本模型；请求日志保留原始/实际模型与降级原因，成本按实际命中模型价格快照计算
+- 模型降级可在令牌级关闭，候选模型必须通过令牌模型白名单；首 chunk 写出后不再因降级重试
+
 ## v0.1.27
 
 - 一键更新下载链改为 npmmirror → 官方 npm registry → GitHub Releases；每个源独立超时（元数据 8 秒、tarball 90 秒），镜像故障会快速切换而不是占满任务预算

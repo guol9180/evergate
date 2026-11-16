@@ -3,12 +3,15 @@ package relay
 import "encoding/json"
 
 type usageWire struct {
-	PromptTokens        int64 `json:"prompt_tokens"`
-	CompletionTokens    int64 `json:"completion_tokens"`
-	TotalTokens         int64 `json:"total_tokens"`
-	InputTokens         int64 `json:"input_tokens"`
-	OutputTokens        int64 `json:"output_tokens"`
-	PromptTokensDetails struct {
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
+	TotalTokens      int64 `json:"total_tokens"`
+	InputTokens      int64 `json:"input_tokens"`
+	OutputTokens     int64 `json:"output_tokens"`
+	// Anthropic Messages usage：prompt caching 明细。
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	PromptTokensDetails      struct {
 		CachedTokens int64 `json:"cached_tokens"`
 	} `json:"prompt_tokens_details"`
 	CompletionTokensDetails struct {
@@ -26,7 +29,7 @@ func (u usageWire) normalize() (prompt, completion, total, cached, reasoning int
 	prompt = firstPositive(u.PromptTokens, u.InputTokens)
 	completion = firstPositive(u.CompletionTokens, u.OutputTokens)
 	total = firstPositive(u.TotalTokens, prompt+completion)
-	cached = firstPositive(u.PromptTokensDetails.CachedTokens, u.InputTokensDetails.CachedTokens)
+	cached = firstPositive(u.PromptTokensDetails.CachedTokens, u.InputTokensDetails.CachedTokens, u.CacheReadInputTokens)
 	reasoning = firstPositive(u.CompletionTokensDetails.ReasoningTokens, u.OutputTokensDetails.ReasoningTokens)
 	return
 }

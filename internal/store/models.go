@@ -38,7 +38,9 @@ type Channel struct {
 	LastProbeError      string            `json:"last_probe_error"`
 	NextProbeAt         *time.Time        `gorm:"index" json:"next_probe_at"`
 	// SupportsResponses 表示该渠道可原生接收 /responses；否则 /v1/responses 走 CC 桥接。
-	SupportsResponses bool            `gorm:"not null;default:false" json:"supports_responses"`
+	SupportsResponses bool `gorm:"not null;default:false" json:"supports_responses"`
+	// SupportsAnthropic 表示该渠道可原生接收 /v1/messages；否则 /v1/messages 走 CC 桥接。
+	SupportsAnthropic bool            `gorm:"not null;default:false" json:"supports_anthropic"`
 	Timeouts          ChannelTimeouts `gorm:"column:timeout_config;serializer:json" json:"timeout_config"`
 	CreatedAt         time.Time       `json:"created_at"`
 	UpdatedAt         time.Time       `json:"updated_at"`

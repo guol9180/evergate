@@ -839,10 +839,16 @@
   5. 回归矩阵公共 HTTP 边界测试：M→M 透传（非流式/SSE/工具）、M→CC 桥接（非流式/SSE/工具）、首事件前切换、首事件后不重试；同时说明 CC/R 两种既有入口的可用性；
   6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不做 CC→M / R→M 反向转换（Anthropic 原生渠道暂只服务 `/v1/messages` 入口，跨方向需求出现时再立卡）；不做 prompt caching 计费差异处理（cache_control 透传保真即可）；不做 Claude Code 专属兼容 hack；不做数据库 schema 变更（沿用渠道能力字段模式）
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户决策 P2 范围调整：本卡吸收 T13（下游入口）并扩展原生上游，T13 状态转 canceled
   - 2026-11-16 执行 前置调研完成并落盘 docs/P2调研-Anthropic原生协议.md：官方 Messages schema/SSE 事件序（无 [DONE]、ping 穿插、流后错误可断连）/鉴权头与 count_tokens 端点；DeepSeek(/anthropic) 与 Kimi(/anthropic) 兼容上游及三家 Base URL+"/v1/messages" 对齐；Claude Code 网关接入要求（ANTHROPIC_BASE_URL、模型名需含 claude/anthropic、官方不支持路由到非 Claude 模型）；thinking/cache_control 定为不可桥接显式 400；anthropic-version 默认值与 count_tokens 是否被调用留实现时实测
+  - 2026-11-16 执行 按更新后的调研结论开工：`/v1/messages` 下游鉴权同时接受 `Authorization: Bearer` 与 `x-api-key`（Claude Code 的 ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY 两种凭证形态）；M→M 统一注入 `x-api-key` 并透传 `anthropic-version` / `anthropic-beta`，同时覆盖 `/v1/messages/count_tokens` 原生透传
+  - 2026-11-16 执行 新增渠道 `supports_anthropic` 能力声明与管理台开关/徽标；下游新增 `/v1/messages`、`/v1/messages/count_tokens`；M→M 仅改写鉴权、base_url 与模型映射并原样转发 JSON/SSE；未声明渠道走 M→CC 桥接（文本、tool_use/tool_result、tool_choice、stop_sequences、usage），thinking/cache_control/图片/文档块显式 400
+  - 2026-11-16 验证 公共 HTTP 边界回归 9 组：M→M 非流式状态字段保真、M→M SSE（ping 透传/无 [DONE]/message_stop）、首事件前 overloaded_error 切换、首事件后断连不重试、M→CC 非流式工具调用、M→CC SSE 事件序与 usage、thinking/cache_control 400 且不触达上游、x-api-key 鉴权、count_tokens 仅原生；`gofmt -l cmd internal` 无输出、`go vet ./...`、`go test -p 1 ./... -count=1`、`npm --prefix web run build`、`make build` 通过
+  - 2026-11-16 验证 无头浏览器 1280×800 / 390×844 复核渠道列表与新建表单：桌面表格 scrollWidth 991 = 容器 991、无横向滚动；移动端页面 scrollWidth=390，仅卡片内横向滚动；修复 Messages 徽标引入的状态/类型换行回归
+  - 2026-11-16 验证 补充 Anthropic 非重试错误体回归：上游 400 invalid_request_error 转为 OpenAI 错误信封，客户端不接触上游错误形状
+  - 2026-11-16 执行 运维配置补充协议矩阵、Anthropic Base URL、Claude Code 环境变量与桥接边界；README 能力概览与 AGENTS 协议矩阵同步为三协议
 
 ### T38: Gemini 原生协议打通（P2，用户指令）
 
@@ -887,7 +893,7 @@
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
-| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，下一张）；T38 Gemini 原生协议打通；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；默认执行顺序 T36 → T37 → T38 |
+| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（下一张）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；默认执行顺序 T36 → T37 → T38 |
 
 ## 验收清单
 

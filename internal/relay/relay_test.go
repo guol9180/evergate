@@ -101,9 +101,21 @@ func (e *testEnv) addResponsesChannel(t *testing.T, name, baseURL string, priori
 	e.addProtocolChannel(t, name, baseURL, priority, true, models, mapping, keys...)
 }
 
+func (e *testEnv) addAnthropicChannel(t *testing.T, name, baseURL string, priority int, models []string, mapping map[string]string, keys ...string) {
+	e.addChannelCaps(t, name, baseURL, priority, false, true, models, mapping, keys...)
+}
+
 func (e *testEnv) addProtocolChannel(t *testing.T, name, baseURL string, priority int, supportsResponses bool, models []string, mapping map[string]string, keys ...string) {
+	e.addChannelCaps(t, name, baseURL, priority, supportsResponses, false, models, mapping, keys...)
+}
+
+func (e *testEnv) addChannelCaps(t *testing.T, name, baseURL string, priority int, supportsResponses, supportsAnthropic bool, models []string, mapping map[string]string, keys ...string) {
 	t.Helper()
-	ch := &store.Channel{Name: name, Type: "openai-compatible", BaseURL: baseURL, Priority: priority, Weight: 1, Models: models, ModelMapping: mapping, Enabled: true, Status: store.ChannelStatusActive, SupportsResponses: supportsResponses}
+	ch := &store.Channel{
+		Name: name, Type: "openai-compatible", BaseURL: baseURL, Priority: priority, Weight: 1,
+		Models: models, ModelMapping: mapping, Enabled: true, Status: store.ChannelStatusActive,
+		SupportsResponses: supportsResponses, SupportsAnthropic: supportsAnthropic,
+	}
 	if err := e.db.Create(ch).Error; err != nil {
 		t.Fatalf("create channel: %v", err)
 	}

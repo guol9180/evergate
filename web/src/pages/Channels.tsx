@@ -31,7 +31,7 @@ export default function Channels() {
               <thead className="border-b border-slate-100 bg-slate-50/50">
                 <tr>
                   <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>权重</Th>
-                  <Th>模型</Th><Th>key / 可用</Th><Th>最近探测</Th><Th>启用</Th><Th>测试</Th><Th className="w-28"><span className="block pr-2.5 text-right">操作</span></Th>
+                  <Th>模型</Th><Th>key / 可用</Th><Th>最近探测</Th><Th>启用</Th><Th>测试</Th><Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -70,16 +70,21 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         </Td>
-        <Td className="font-medium">{c.name}</Td>
+        <Td className="max-w-[170px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
         <Td>
           <Badge tone={stateTone[c.status] || ''}>
             <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
           </Badge>
         </Td>
         <Td>
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="text-slate-500">{c.type}</span>
-            {c.supports_responses && <Badge tone="bg-sky-100 text-sky-700">Responses</Badge>}
+          <div className="flex flex-col gap-1">
+            <span className="inline-block max-w-[96px] truncate text-slate-500" title={c.type}>{c.type}</span>
+            {(c.supports_responses || c.supports_anthropic) && (
+              <div className="flex items-center gap-1 whitespace-nowrap">
+                {c.supports_responses && <Badge tone="bg-sky-100 text-sky-700">Responses</Badge>}
+                {c.supports_anthropic && <Badge tone="bg-violet-100 text-violet-700">Messages</Badge>}
+              </div>
+            )}
           </div>
         </Td>
         <Td>{c.priority}</Td>
@@ -207,6 +212,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [priority, setPriority] = useState(String(channel?.priority ?? 0))
   const [weight, setWeight] = useState(String(channel?.weight ?? 1))
   const [supportsResponses, setSupportsResponses] = useState(channel?.supports_responses ?? false)
+  const [supportsAnthropic, setSupportsAnthropic] = useState(channel?.supports_anthropic ?? false)
   const [models, setModels] = useState((channel?.models || []).join('\n'))
   const [mapping, setMapping] = useState(channel?.model_mapping ? JSON.stringify(channel.model_mapping, null, 2) : '')
   const preset = findChannelPreset(presetId)
@@ -218,6 +224,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     setType(next.type)
     setBaseUrl(next.baseUrl)
     setSupportsResponses(next.supportsResponses)
+    setSupportsAnthropic(next.supportsAnthropic)
     if (!nameTouched) setName(next.defaultName)
   }
 
@@ -243,6 +250,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         models: models.split('\n').map((s) => s.trim()).filter(Boolean),
         model_mapping: modelMapping,
         supports_responses: supportsResponses,
+        supports_anthropic: supportsAnthropic,
       },
       { onSuccess: onClose },
     )
@@ -288,19 +296,28 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           <Field label="名称"><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
           <Field label="类型">
             <Select value={type} onChange={(e) => setType(e.target.value)}>
-              {['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic-compat', 'gemini-compat'].map((t) => <option key={t}>{t}</option>)}
+              {['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic', 'anthropic-compatible', 'gemini-compat'].map((t) => <option key={t}>{t}</option>)}
             </Select>
           </Field>
         </div>
-        <Field label="Base URL" hint={`上游 API 根地址（一般以 /v1 结尾），网关会拼接 ${supportsResponses ? '/responses（Responses 请求）与 /chat/completions（Chat 请求）' : '/chat/completions'}`}>
+        <Field label="Base URL" hint={`上游 API 根地址；网关按能力拼接 ${supportsAnthropic ? '/v1/messages、' : ''}${supportsResponses ? '/responses、' : ''}/chat/completions`}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
         </Field>
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-          <div className="min-w-0">
-            <div className="text-sm text-slate-700">原生支持 Responses API</div>
-            <div className="text-xs text-slate-400">开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions</div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-sm text-slate-700">原生支持 Responses API</div>
+              <div className="text-xs text-slate-400">开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions</div>
+            </div>
+            <Switch checked={supportsResponses} onChange={setSupportsResponses} label="原生支持 Responses API" />
           </div>
-          <Switch checked={supportsResponses} onChange={setSupportsResponses} label="原生支持 Responses API" />
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
+            <div className="min-w-0">
+              <div className="text-sm text-slate-700">原生支持 Anthropic Messages</div>
+              <div className="text-xs text-slate-400">开启后 /v1/messages 透传；关闭时转换为 Chat Completions</div>
+            </div>
+            <Switch checked={supportsAnthropic} onChange={setSupportsAnthropic} label="原生支持 Anthropic Messages" />
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="优先级" hint="越小越优先"><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>

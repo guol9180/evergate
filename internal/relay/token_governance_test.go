@@ -37,6 +37,8 @@ func (e *testEnv) authGateway(t *testing.T) *httptest.Server {
 	engine := gin.New()
 	engine.POST("/v1/chat/completions", TokenAuth(e.db), e.HandleChatCompletions)
 	engine.POST("/v1/responses", TokenAuth(e.db), e.HandleResponses)
+	engine.POST("/v1/messages", TokenAuth(e.db), e.HandleMessages)
+	engine.POST("/v1/messages/count_tokens", TokenAuth(e.db), e.HandleMessagesCountTokens)
 	server := httptest.NewServer(engine)
 	t.Cleanup(server.Close)
 	return server

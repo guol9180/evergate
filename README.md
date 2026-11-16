@@ -1,6 +1,6 @@
 # EverGate
 
-**本地自托管 AI 网关**：把多家 LLM 供应商（OpenAI / DeepSeek / Kimi / 智谱 / 本地 vLLM / 任意 OpenAI 兼容端点）统一为一个 OpenAI 兼容 API；上游或 key 故障时自动切换，客户端无感。*One gate, every model, zero interruption.*
+**本地自托管 AI 网关**：把多家 LLM 供应商（OpenAI / Anthropic / DeepSeek / Kimi / 智谱 / 本地 vLLM / 任意 OpenAI 兼容端点）统一为 OpenAI 兼容 API 与 Anthropic Messages API；上游或 key 故障时自动切换，客户端无感。*One gate, every model, zero interruption.*
 
 > Self-hosted OpenAI-compatible LLM gateway with key-pool failover, multi-provider routing and zero-buffer SSE streaming.
 
@@ -13,7 +13,7 @@
 
 ## 能力概览
 
-- **统一入口**：OpenAI 兼容的 Chat Completions 与 Responses API
+- **统一入口**：OpenAI Chat Completions、OpenAI Responses 与 Anthropic Messages 三种 API 协议
 - **高可用**：多渠道与 key 池调度，故障自动切换
 - **管理台**：渠道、下游令牌、请求日志、调试与用量
 - **轻量交付**：单二进制 + SQLite，无需 Docker / Redis / 外部数据库

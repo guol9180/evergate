@@ -183,6 +183,24 @@ func (r *Relay) dispatchModel(
 	}
 
 	bridgeBody := originalBody
+	if isMessagesRequest(c) {
+		clearMessagesBridgeBody(c)
+		candidates = preferAnthropicNative(candidates)
+		if isMessagesCountTokens(c) {
+			candidates = filterAnthropicNative(candidates)
+			if len(candidates) == 0 {
+				const msg = "count_tokens 只能路由到声明 Anthropic 原生能力的渠道"
+				return modelDispatchResult{status: http.StatusBadRequest, errType: "messages_native_required", errMsg: msg}
+			}
+		} else if !anyAnthropicNative(candidates) {
+			converted, cerr := messagesToChat(originalBody)
+			if cerr != nil {
+				return modelDispatchResult{status: http.StatusBadRequest, errType: "invalid_request_error", errMsg: cerr.Error()}
+			}
+			bridgeBody = converted
+			setMessagesBridgeBody(c, converted)
+		}
+	}
 	if isResponsesRequest(c) {
 		setResponsesOriginalBody(c, originalBody)
 		clearResponsesBridgeBody(c)
@@ -251,6 +269,31 @@ loop:
 					}
 					attemptBody = converted
 					c.Set(responsesNativeKey, false)
+				}
+			}
+			if isMessagesRequest(c) {
+				if cand.Channel.SupportsAnthropic {
+					attemptBody = messagesOriginalBody(c)
+					c.Set(messagesNativeKey, true)
+				} else {
+					converted, cached := messagesBridgeBody(c)
+					if !cached {
+						var cerr error
+						converted, cerr = messagesToChat(messagesOriginalBody(c))
+						if cerr != nil {
+							start := r.opt.Now()
+							*trace = append(*trace, store.RetryAttempt{
+								ChannelID: cand.Channel.ID, ChannelName: cand.Channel.Name, KeyID: key.ID,
+								Attempt: len(*trace) + 1, ErrorType: "messages_bridge", ErrorMessage: cerr.Error(),
+								ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
+							})
+							return modelDispatchResult{status: http.StatusBadRequest, errType: "invalid_request_error", errMsg: cerr.Error()}
+						}
+						setMessagesBridgeBody(c, converted)
+						bridgeBody = converted
+					}
+					attemptBody = converted
+					c.Set(messagesNativeKey, false)
 				}
 			}
 			out := r.attemptOne(c, cand, key, attemptBody, model, stream, trace, hit, override.Timeouts)

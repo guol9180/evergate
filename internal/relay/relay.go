@@ -182,6 +182,9 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
 		return nil, http.StatusBadRequest, "invalid_request_error", "缺少 model 字段"
 	}
+	if isMessagesCountTokens(c) {
+		stream = false
+	}
 	c.Set("evergate.model", model)
 	c.Set("evergate.stream", stream)
 	if status, errType, errMsg, ok := r.enforceTokenGovernance(c, model); !ok {
@@ -286,7 +289,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, trace []store.RetryAttempt, status int, errType, errMsg string) {
 	r.updateAffinity(c, hit, status, errType)
 	r.recordRequestMetrics(c, status, errType)
-	if status >= http.StatusOK && status < http.StatusBadRequest && errType == "" {
+	if status >= http.StatusOK && status < http.StatusBadRequest && errType == "" && !isMessagesCountTokens(c) {
 		usageErrType, usageErrMsg := r.settleTokenUsage(c, hit)
 		if usageErrType != "" {
 			errType, errMsg = usageErrType, usageErrMsg
@@ -340,6 +343,8 @@ func protocolLabel(c *gin.Context) string {
 	if value, ok := c.Get("evergate.protocol"); ok {
 		if protocol, _ := value.(string); protocol == responsesProtocol {
 			return "responses"
+		} else if protocol == messagesProtocol {
+			return "messages"
 		}
 	}
 	return "chat"
@@ -478,6 +483,7 @@ func (r *Relay) settleTokenUsage(c *gin.Context, hit *hitRecord) (string, string
 func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.ChannelKey, body []byte, model string, stream bool, trace *[]store.RetryAttempt, hit *hitRecord, timeoutOverride *reqconfig.Timeouts) (out attemptOutcome) {
 	ch := cand.Channel
 	nativeResponses := isResponsesRequest(c) && isResponsesNative(c)
+	nativeMessages := isMessagesRequest(c) && isMessagesNative(c)
 	connect, firstToken, overall := resolveTimeouts(ch, r.currentDefaults())
 	connect, firstToken, overall = applyTimeoutOverride(connect, firstToken, overall, timeoutOverride)
 	spanCtx, span := telemetry.StartSpan(c.Request.Context(), r.opt.Tracer, "relay.attempt", telemetry.KindClient,
@@ -528,7 +534,12 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	defer cancel()
 
 	upstreamPath := "/chat/completions"
-	if nativeResponses {
+	switch {
+	case isMessagesRequest(c) && isMessagesCountTokens(c):
+		upstreamPath = "/v1/messages/count_tokens"
+	case nativeMessages:
+		upstreamPath = "/v1/messages"
+	case nativeResponses:
 		upstreamPath = "/responses"
 	}
 	url := strings.TrimSuffix(ch.BaseURL, "/") + upstreamPath
@@ -539,7 +550,19 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		return outcomeNextKey
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+plainKey)
+	if nativeMessages || isMessagesCountTokens(c) {
+		req.Header.Set("x-api-key", plainKey)
+		version := strings.TrimSpace(c.GetHeader("anthropic-version"))
+		if version == "" {
+			version = defaultAnthropicVersion
+		}
+		req.Header.Set("anthropic-version", version)
+		if beta := strings.TrimSpace(c.GetHeader("anthropic-beta")); beta != "" {
+			req.Header.Set("anthropic-beta", beta)
+		}
+	} else {
+		req.Header.Set("Authorization", "Bearer "+plainKey)
+	}
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
@@ -561,6 +584,12 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 
 	if resp.StatusCode == http.StatusOK {
 		if stream {
+			if nativeMessages {
+				return r.streamNativeMessagesResponse(c, resp, key, cand, firstToken, cancel, trace, hit, start)
+			}
+			if isMessagesRequest(c) {
+				return r.streamMessagesBridgeResponse(c, resp, key, cand, firstToken, cancel, trace, hit, model, start)
+			}
 			if nativeResponses {
 				return r.streamNativeResponsesResponse(c, resp, key, cand, firstToken, cancel, trace, hit, start)
 			}
@@ -587,6 +616,16 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			if cerr != nil {
 				appendTrace(0, "internal", "转换 Responses 响应失败: "+cerr.Error(), start)
 				writeOpenAIError(c, http.StatusBadGateway, "server_error", "responses_conversion_failed", cerr.Error())
+				return outcomeDone
+			}
+			data = converted
+			ct = "application/json"
+		}
+		if isMessagesRequest(c) && !nativeMessages {
+			converted, cerr := convertChatCompletionToMessages(data, model, r.opt.Now())
+			if cerr != nil {
+				appendTrace(0, "internal", "转换 Messages 响应失败: "+cerr.Error(), start)
+				writeOpenAIError(c, http.StatusBadGateway, "server_error", "messages_conversion_failed", cerr.Error())
 				return outcomeDone
 			}
 			data = converted
@@ -624,6 +663,10 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		msg := upstreamErrorMessage(resp.StatusCode, errBody)
 		r.recordKeyFailure(key.ID, msg)
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
+		if isMessagesRequest(c) {
+			writeMessagesUpstreamError(c, resp.StatusCode, errBody)
+			return outcomeDone
+		}
 		ct := resp.Header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/json"

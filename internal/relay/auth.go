@@ -26,12 +26,11 @@ const (
 // logWriter 可选：治理拒绝也会进入请求日志，但永不记录 token 明文。
 func TokenAuth(db *gorm.DB, logWriter ...*LogWriter) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		raw := c.GetHeader("Authorization")
-		if !strings.HasPrefix(raw, "Bearer ") || strings.TrimSpace(strings.TrimPrefix(raw, "Bearer ")) == "" {
-			abortUnauthorized(c, "missing bearer token")
+		key := downstreamToken(c)
+		if key == "" {
+			abortUnauthorized(c, "missing bearer token or x-api-key")
 			return
 		}
-		key := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer "))
 		sum := sha256.Sum256([]byte(key))
 		hash := hex.EncodeToString(sum[:])
 
@@ -59,6 +58,17 @@ func TokenAuth(db *gorm.DB, logWriter ...*LogWriter) gin.HandlerFunc {
 		c.Set(CtxTokenName, token.Name)
 		c.Next()
 	}
+}
+
+// downstreamToken 同时接受 OpenAI 的 Authorization: Bearer 与 Anthropic 的 x-api-key；
+// Claude Code 会按 ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY 分别发送这两种头。
+func downstreamToken(c *gin.Context) string {
+	if raw := c.GetHeader("Authorization"); strings.HasPrefix(raw, "Bearer ") {
+		if key := strings.TrimSpace(strings.TrimPrefix(raw, "Bearer ")); key != "" {
+			return key
+		}
+	}
+	return strings.TrimSpace(c.GetHeader("x-api-key"))
 }
 
 func rejectToken(c *gin.Context, writers []*LogWriter, token store.Token, status int, code, message string) {
