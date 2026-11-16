@@ -80,7 +80,7 @@ jobs:
             $0 == "## " ver {found=1; next}
             found && /^## / {exit}
             found {print}
-          ' CHANGELOG.md)
+          ' CHANGELOG.md | sed '/./,$!d')
           if [ -n "$SECTION" ]; then
             {
               echo "body<<CHANGELOG_EOF"

@@ -826,6 +826,7 @@
   - 2026-11-16 验证 端到端实例（18946 + mock 上游 18947）：expensive 渠道 503 后自动落到 cheap，客户端 200；日志 `original_model=expensive-show`、`model=cheap-show`、trace 3 条且含 channel_exhausted；`gofmt`、`go vet`、`go test -p 1 ./... -count=1`、`npm --prefix web run build`、`make build` 通过，二进制 28.18MB（<30MB）
   - 2026-11-16 验证 按 init-project-docs 五条规范复审三件套：AGENTS 补齐第五条「精准修改」与 `internal/npmregistry` 目录说明；README 移除尚未交付的 Anthropic/Gemini 供应商标识；三文档相对链接有效，任务状态均在枚举内，README 未新增功能细节
   - 2026-11-16 验证 按最新 init-project-docs 标准条目复审：AGENTS 第五条补充「注释只写代码装不下的信息」约束，五条通用规范与最新标准条目一致；三文档职责归属、相对链接、README 功能细节与任务状态复核通过
+  - 2026-11-16 交付 T36 随 v0.1.28 发布，Release 正文包含模型降级条目
 
 ### T37: Anthropic 原生协议打通（P2，用户指令；吸收 T13）
 
@@ -850,6 +851,7 @@
   - 2026-11-16 验证 补充 Anthropic 非重试错误体回归：上游 400 invalid_request_error 转为 OpenAI 错误信封，客户端不接触上游错误形状
   - 2026-11-16 执行 运维配置补充协议矩阵、Anthropic Base URL、Claude Code 环境变量与桥接边界；README 能力概览与 AGENTS 协议矩阵同步为三协议
   - 2026-11-16 交付 T37 验收标准全部满足；实现与三件套提交 e3ae26b 已推送 main，剩余差距：无
+  - 2026-11-16 交付 发布 v0.1.28：Actions 43824344184 成功（2m59s）；Release 4 个资产与 CHANGELOG 正文齐全，正文前导空行已清理；npm 官方 registry 四个包均为 0.1.28，npmmirror 主包/win32/darwin 已同步、linux 子包待镜像同步；Windows 产物 SHA256 `77260625…` 与 checksums 一致，隔离端口 18948 冒烟 `/healthz`、`/`、`/metrics` 200 且 `/v1/messages` 未授权 401
 
 ### T38: Gemini 原生协议打通（P2，用户指令）
 
