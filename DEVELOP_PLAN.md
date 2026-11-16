@@ -910,6 +910,37 @@
   - T39e 响应式表格：为每张表定义 essential/secondary 列与断点，≥1024 取消卡片内滚动；窄屏保留滚动与可访问性
   - T39f 验收：多视口 DOM 测量脚本 + 桌面/移动截图 + `npm build`/`make build`/`go test`
 
+### T40: Windows 安装器与首次运行数据目录（P3，用户指令）
+
+- 目标：为普通用户提供带安装位置选择的 Windows 安装器，同时让配置与 SQLite 数据落在操作系统标准用户目录，不再随 exe 所在目录或当前工作目录漂移；保留便携 exe 与既有用户数据兼容
+- 动机：当前 `-config` 默认 `evergate.yml`、默认 `storage.sqlite_path: ./data/evergate.db` 均相对 cwd；用户直接双击下载目录里的 exe 时，配置与数据库会写进下载目录，清理下载目录就可能丢数据。发布资产目前只有 portable exe，没有安装器与安装位置选择，不符合桌面客户端习惯
+- 验收标准：
+  1. WHEN 用户运行 Windows 安装器 THEN 提供安装目录选择（默认 `%LOCALAPPDATA%\Programs\EverGate`，按用户安装、默认不需要管理员权限），并提供开始菜单快捷方式、可选桌面快捷方式、安装后启动选项与卸载器；
+  2. WHEN 启动时未显式传 `-config` THEN 配置发现顺序为：显式 `-config` → `%APPDATA%\EverGate\evergate.yml` → exe 同目录 `evergate.yml`（旧便携模式）→ 当前目录 `evergate.yml`；均不存在时在 `%APPDATA%\EverGate\evergate.yml` 创建默认配置并写回生成的密钥；
+  3. WHEN 使用默认配置 THEN SQLite 路径为 `%LOCALAPPDATA%\EverGate\data\evergate.db`，不得落在 cwd、下载目录或程序安装目录；
+  4. WHEN 配置中的 `storage.sqlite_path` 是相对路径 THEN 相对“配置文件所在目录”解析，而不是相对 cwd；显式 `-config` 的相对路径仍相对 cwd；
+  5. WHEN 旧便携用户已有 exe 同目录 `evergate.yml` 与 `data/` THEN 继续读取旧配置与原数据，不自动迁移、不覆盖；日志明确打印实际配置路径与数据路径；
+  6. WHEN 应用启动 THEN 日志与管理台（系统设置或 Dashboard）显示只读的“配置文件路径 / 数据目录”，让用户能定位数据；
+  7. 卸载器默认只删除程序文件与快捷方式，保留 `%APPDATA%\EverGate` 与 `%LOCALAPPDATA%\EverGate` 数据；删除用户数据必须由用户显式勾选；
+  8. Linux 使用 `$XDG_CONFIG_HOME/evergate` + `$XDG_DATA_HOME/evergate`（缺省 `~/.config`、`~/.local/share`），macOS 使用 `~/Library/Application Support/EverGate`；Windows 使用 `%APPDATA%` / `%LOCALAPPDATA%`；
+  9. 发布流水线新增 Windows 安装器构建与 Release 资产（如 `evergate-setup-<version>.exe`），图标沿用品牌 logo；README 下载指引区分“安装版（推荐普通用户）”与“便携版（高级用户）”；
+  10. 测试覆盖配置发现顺序、默认路径生成、相对路径解析、旧便携模式、显式 `-config`；安装器至少完成一次静默安装到临时目录 → 启动 `/healthz` → 卸载 → 用户数据保留的冒烟测试
+- 边界：不做 MSI / Microsoft Store / 自动签名；本轮不接入代码签名证书，SmartScreen 提示如实写入 README；不做安装目录内数据迁移向导（旧便携模式只兼容不搬迁）；不改变业务 API 与数据库 schema；安装器仅 Windows，Linux/macOS 继续使用便携包
+- 关键设计：
+  - 新增路径解析公共包（如 `internal/appdir`），集中管理配置目录、数据目录与跨平台环境变量覆盖，禁止各页面/模块各自拼路径
+  - 默认配置写入 OS 配置目录；默认 SQLite 使用绝对路径；相对路径统一相对配置文件目录
+  - 自更新仍替换 exe 同目录文件；默认按用户安装到 `%LOCALAPPDATA%\Programs\EverGate`，避免 Program Files 写权限问题
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户反馈首次运行会把存储路径留在当前位置；核查确认当前默认 `evergate.yml` 与 `./data/evergate.db` 均相对 cwd，发布资产只有 portable exe、无安装器；建立本卡待确认
+- 实施步骤（确认后执行）：
+  - T40a 路径解析：新增 `internal/appdir` 与配置发现顺序、相对 sqlite 路径解析、跨平台目录与测试
+  - T40b 启动接线：main 使用新解析器，首次生成配置写到 OS 配置目录，日志输出实际 config/data 路径
+  - T40c 管理台展示：系统设置或 Dashboard 增加只读“配置文件 / 数据目录”信息
+  - T40d 安装器：新增 `installer/evergate.iss`（Inno Setup），安装目录选择、快捷方式、卸载保留数据、品牌图标
+  - T40e 发布流水线：Windows runner 构建安装器、上传 Release 资产、更新 checksums 与 README 下载指引
+  - T40f 验收：路径单测 + 静默安装/启动/卸载冒烟 + 旧便携模式兼容验证
+
 ## 状态枚举
 
 
@@ -938,7 +969,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段，规划中） | T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；不改业务功能与数据结构 |
+| P3（当前阶段，规划中） | T40 Windows 安装器与首次运行数据目录（planned，建议先做）；T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；T40 先解决安装与数据落盘，T39 再做 UI 全弹性；不改业务 API 与数据结构 |
 
 ## 验收清单
 
