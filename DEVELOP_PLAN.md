@@ -948,6 +948,22 @@
   - T40e 发布流水线：Windows runner 构建安装器、上传 Release 资产、更新 checksums 与 README 下载指引
   - T40f 验收：路径单测 + 静默安装/启动/卸载冒烟 + 旧便携模式兼容验证
 
+### T41: Playground 四协议调试支持（P3，用户指令）
+
+- 目标：Playground 协议选择从 chat / responses 扩展为四协议（chat / responses / anthropic / gemini），与已交付的四个下游入口对齐；每个新协议在 Playground 层补公共 HTTP 边界回归测试
+- 动机：T37/T38 已交付，但 Playground 当前仅接受 chat/responses，新协议只能拿下游 token 用 curl 调试，绕过了 Playground 免 token + 命中链路可视化的核心价值；T39 布局重构还要改 Playground 左栏，先定协议结构可避免二次改动。渠道管理「测试连通性」仅探测 `GET {base_url}/models`，验证不了协议语义，不能替代本卡
+- 验收标准：
+  1. WHEN Playground 选择 anthropic THEN 构造最小合法 Messages 请求（model / max_tokens=1024 / system? / messages / stream）并设置 `evergate.protocol=messagesProtocol`；非流式与流式均可用，命中摘要含渠道、上游模型、first_token_ms、usage、retry_trace，请求日志 `source=playground`；
+  2. WHEN 选择 gemini THEN 构造最小合法 generateContent 请求（contents / systemInstruction? / generationConfig.maxOutputTokens / stream），并为 inner context 设置 `Params["action"]="models/{model}:generateContent|streamGenerateContent"`——Gemini handler 从 `c.Param("action")` 解析模型与方法，fake context 默认无此参数；
+  3. WHEN 四种协议任一执行 THEN 前端可提取并展示流式增量：chat（choices[].delta.content）、responses（response.output_text.delta）、anthropic（content_block_delta.text_delta）、gemini（candidates[].content.parts[].text）；非流式响应文本提取同样支持四种；
+  4. WHEN Playground 调用 THEN 仅 admin 会话可用，不签发/不要求下游 token；任何响应、UI 与日志不出现上游或下游 key 明文（沿用现有约束）；
+  5. 测试：`playground_test.go` 为 anthropic / gemini 各补非流式与流式用例——断言上游路径（`/v1/messages`、`/v1beta/models/{model}:generateContent`）、Messages `max_tokens` 注入、Gemini 路径模型映射、SSE 透传与 `evergate.meta` 收尾；既有 chat/responses 用例不回归；
+  6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过，`web/dist` 同步提交。
+- 边界：Playground 仍只接受 prompt / system / model / stream 四个输入，不做工具调用、多模态、thinking/cache_control/safetySettings 开关；不做协议一致性全量测试（由 T37/T38 的 relay 公共边界矩阵负责）；不改 `/admin/api/playground` 之外的管理台接口；不改调度内核
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户确认建卡：范围=四协议调试 + 每协议 Playground 层回归；已核实 Gemini fake context 的 `Params["action"]` 是唯一结构性改动点；渠道管理「测试连通性」与 Playground 的分工差异见同日确认结论（探测 `/models` vs 端到端推理）
+
 ## 状态枚举
 
 
@@ -976,7 +992,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段，规划中） | T40 Windows 安装器与可选择的配置/数据目录（planned，建议先做）；T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；T40 先解决安装与数据落盘，T39 再做 UI 全弹性；不改业务 API 与数据结构 |
+| P3（当前阶段，规划中） | T40 Windows 安装器与可选择的配置/数据目录（planned，建议先做）；T41 Playground 四协议调试支持（planned，建议先于 T39）；T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；T40 先解决安装与数据落盘，T41 对齐四协议调试后再做 T39 UI 全弹性（T39 会改 Playground 布局）；不改业务 API 与数据结构 |
 
 ## 验收清单
 
