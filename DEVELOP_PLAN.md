@@ -877,6 +877,39 @@
   - 2026-11-16 交付 T38 验收标准全部满足；实现与三件套提交 42c39d7 已推送 main，剩余差距：无
   - 2026-11-16 交付 发布 v0.1.29：Actions 43831841834 首次 2m25s 成功，Release 4 个资产与 CHANGELOG 正文齐全；发现 darwin-arm64 npm 包缺失（旧发布循环未 fail-fast，被后续主包成功掩盖），重跑 45s 补齐；npm 官方与 npmmirror 四包均为 0.1.29；发布步骤改为 `set -euo pipefail` 并追加四包发布后版本校验
   - 2026-11-16 验证 v0.1.29 Windows 产物 SHA256 `f6d2fb6c…` 与 checksums 一致；隔离端口 18948 冒烟 `/healthz`、`/`、`/metrics` 200，Gemini 入口未授权 401
+
+### T39: 全弹性布局与间距系统重构（P3，用户指令）
+
+- 目标：移除内容区 1280px 封顶与 1280 断点侧栏跳变，建立一套随视口连续缩放的间距 token；让 360–2560 宽度下所有页面、卡片、表单、表格、弹窗按可用空间自动铺开，页面不出现横向溢出
+- 动机：现状是断点响应式而非连续流体——1279→1280 内容区 1207→1056、渠道表格 1166→991；1920 下内容仍封顶 1280、两侧各留约 208px；1024 下渠道表容器 911/表格 960，卡片内滚动 49px。用户要求“完全弹性”，需要从断点驱动改为连续流体，并统一间距节奏
+- 验收标准：
+  1. WHEN 视口 ≥360 THEN `Layout` 内容区移除 `max-w-7xl`，仅保留随视口缩放的页面 padding；1920/2560 下内容区占满剩余宽度，不再出现固定封顶；
+  2. WHEN 视口从 360 连续增大到 2560 THEN 侧栏宽度单调不减、内容区宽度单调不减；1279→1280 不再出现 151px 的内容区回退；
+  3. 间距统一为 CSS token：`--eg-page-x`、`--eg-page-y`、`--eg-section-gap`、`--eg-card-pad`、`--eg-grid-gap`、`--eg-control-gap`、`--eg-cell-x`、`--eg-cell-y`，并落地到 `Layout`、`Card`、`PageHeader`、`Th`、`Td`、`Dialog`、`Drawer`；页面主布局不得继续散落固定 `p-4/p-6/gap-4`；
+  4. WHEN 360/390/768/1024/1280/1440/1600/1920/2560 THEN 所有页面 `document.scrollWidth == innerWidth`；≥1024 数据表不需要卡片内横向滚动；<1024 只允许表格容器内滚动；
+  5. 栅格使用 `minmax(min(100%, Npx), 1fr)` 与响应式列数；Playground 左栏从固定 380px 改为 `clamp(280px, 24vw, 420px)`；Settings/Dashboard/Usage 在宽屏增加列数而不是拉伸单卡；
+  6. 表格按列优先级自适应：≥1024 展示全部关键列且不滚动；窄屏隐藏权重/最近探测等次要列，保留 `title`/详情入口，不删除数据能力；
+  7. 弹窗窄屏全宽、宽屏按比例；Drawer 窄屏全宽；按钮/输入框/图标按钮的触控尺寸与 `aria-label`/`title` 保持；
+  8. 视觉验收覆盖 1280/1440/1920 桌面与 390/768 移动/平板截图；间距节奏一致、无贴边、无异常留白、无页面级横向溢出；
+  9. `npm --prefix web run build`、`make build`、`go test -p 1 ./... -count=1` 通过；前端改动提交 `web/dist`
+- 边界：不改业务功能、接口与数据结构；不引入 UI 组件库；不做暗色主题；不调整字号/字体体系，只改布局与间距；表格列优先级只隐藏非关键列，不删除查询与数据能力
+- 关键设计：
+  - 页面间距：`--eg-page-x: clamp(16px, 2.2vw, 40px)`；`--eg-page-y: clamp(16px, 1.6vw, 32px)`
+  - 区块/卡片/栅格：`--eg-section-gap: clamp(16px, 1.4vw, 28px)`；`--eg-card-pad: clamp(14px, 1.2vw, 24px)`；`--eg-grid-gap: clamp(12px, 1vw, 20px)`
+  - 控件/表格：`--eg-control-gap: clamp(8px, 0.7vw, 14px)`；`--eg-cell-x: clamp(8px, 0.7vw, 16px)`；`--eg-cell-y: clamp(8px, 0.55vw, 12px)`
+  - 侧栏宽度：`clamp(72px, calc(72px + (100vw - 1200px) * 0.25), 224px)`；侧栏标签在宽度 ≥168px 时显示（容器查询或等效阈值），宽度本身连续变化，避免断点跳变
+  - 内容宽度 = 视口 - 侧栏 - 页面 padding，侧栏斜率 0.25，保证内容区随视口单调增长
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-16 计划 用户要求完全弹性布局并重新规划 UI 间距；完成 7 档宽度 × 7 页面实测，确认现状为断点响应式而非连续流体，建立本卡待确认
+- 实施步骤（确认后执行）：
+  - T39a 间距 token 与公共组件：`index.css` 定义 token；`Card` 增加 fluid padding；`PageHeader`/`Th`/`Td`/`Dialog`/`Drawer` 接入；统一 `Field`/表单/按钮组间距
+  - T39b 外壳与侧栏：`Layout` 全宽内容区、侧栏连续宽度、标签显隐、导航/账号区/退出区间距
+  - T39c 页面迁移（第一批）：Dashboard、Channels、Tokens、Logs 的主布局、卡片间距、表格容器
+  - T39d 页面迁移（第二批）：Playground 左栏、Usage 栅格与图表卡片、Settings 表单栅格、ModelFallbackCard/UpdateDialog/RetryTimeline
+  - T39e 响应式表格：为每张表定义 essential/secondary 列与断点，≥1024 取消卡片内滚动；窄屏保留滚动与可访问性
+  - T39f 验收：多视口 DOM 测量脚本 + 桌面/移动截图 + `npm build`/`make build`/`go test`
+
 ## 状态枚举
 
 
@@ -904,7 +937,8 @@
 | P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
-| P2（当前阶段） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
+| P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
+| P3（当前阶段，规划中） | T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；不改业务功能与数据结构 |
 
 ## 验收清单
 
