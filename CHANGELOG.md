@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.3.1
+
+- 修复 Windows GUI 托盘 Logo 不显示：图标组资源实际 ID 为 2，改为按系统小图标尺寸使用 `LoadImageW` 加载，并移除静默回退系统空图标
+- 托盘图标加载失败现在会明确阻止托盘初始化并写入错误日志；新增资源 ID、GUI 构建产物和图标可提取性回归门禁
+- 保持 Per-Monitor V2 DPI、原生右键菜单、单实例与日志定位行为不变；console 产物不链接 GUI 图标资源
+- 本补丁版继续发布 Windows 安装器与 Linux tar.gz；macOS 安装器仍因缺少 Developer ID 签名/公证凭据而不随本版本发布
+
 ## v0.3.0
 
 - 破坏性分发调整：公开 GitHub Release 不再提供裸二进制，统一为 `evergate_<version>_<os>_<arch>[_setup].<ext>`；v0.3.0 发布 Windows 安装器与 Linux tar.gz，macOS 安装器因暂缺 Developer ID 签名凭据不随本版本发布，v0.2.0 及更早安装版本允许手动安装一次完成迁移
