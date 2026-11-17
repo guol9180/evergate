@@ -168,6 +168,7 @@
   - 2026-11-10 验收 make build → bin/evergate.exe 26.98MB（<30MB ✅）；运行实测：healthz 200、管理台 / 200（HTML 含 React 挂载点与 assets）、SPA 回退 /channels 200、/v1/models 无令牌 401、/v1 未知路径 404 JSON、assets 缓存头 immutable——验收清单 #1 ✅；三平台交叉编译 windows/amd64 26.98MB + linux/amd64 26.58MB + darwin/arm64 25.26MB 全部 <30MB ✅；冷启动日志时间线 ~180ms（<1s ✅，PowerShell 测量工具 ~2s 开销已用日志时间线排除）；空闲私有内存 49.1MB / 工作集 18.3MB（<50MB ✅）；优雅停机此前多次验证 ✅
   - 2026-11-10 交付 T7 验收标准全部满足，P0 十项验收清单全部达成；首 token 额外延迟 <5ms 属 4.9 非功能项，待真实上游环境实测（本地 loopback 无法代表真实网络，如实标注）
   - 2026-11-17 验证 真实上游首 token 额外延迟补测（严格关闭 HTTP_PROXY / HTTPS_PROXY / ALL_PROXY，不使用代理）：复制 `D:\software\evergate` 配置与 SQLite 到隔离目录并以当前构建启动；直连与网关均测首条 SSE `data:`，各 30 组交替配对，预热 3 组。ZAI `glm-5.3-flash` 30/30 成功，客户端收到首 data 耗时中位数 932.19ms、网关内部 first_token 中位数 928ms，同请求网关链额外耗时中位数 3.771ms、p95 5.098ms、最大 6.035ms；DeepSeek `deepseek-flash` 30/30 成功，客户端中位数 125.20ms、内部中位数 124ms，额外耗时中位数 3.727ms、p95 5.881ms、最大 6.008ms。两渠道各 33 条网关日志（含预热）均无重试、无非 200；按原验收“中位数 <5ms”判定通过，p95 如实保留
+  - 2026-11-17 验证 按成本上限将网关尾延迟样本扩大到 50（3 次预热不计，不再重复直连）：仍严格无代理并使用隔离配置/SQLite，以“客户端收到首条 SSE data - 请求日志 first_token_ms”计算网关额外耗时。ZAI `glm-5.3-flash` 50/50 成功，额外耗时中位数 3.717ms、p95 5.907ms、最大 6.173ms；DeepSeek `deepseek-flash` 50/50 成功，中位数 2.201ms、p95 3.160ms、最大 3.968ms；两渠道均无重试、无非 200。结论：两者中位数均 <5ms，DeepSeek p95 也 <5ms，ZAI p95 约超 0.9ms；若验收按中位数则通过，若要求所有真实上游 p95 <5ms 则 ZAI 尚未通过
 
 ### T7b: 安全检查、公开发布与自动打包（P0，用户指令）
 
