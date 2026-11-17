@@ -1061,6 +1061,23 @@
   - 2026-11-17 验证 `git diff --check` 通过；改动范围仅 `AGENTS.md` 与 `DEVELOP_PLAN.md`；15 项关键修正断言全部存在；5 个本地 Markdown 链接可解析；52 个任务 ID 唯一，最新任务为 T45
   - 2026-11-17 交付 评审结论全部回写计划与规范；T39–T44 仍为 planned，未提前实现功能
 
+### T46: 版本发布门禁与预发布通道（P3，用户指令）
+
+- 目标：把版本规则固化为可执行门禁——tag 与 CHANGELOG/二进制/npm 四包强一致；引入 rc/beta 预发布通道（npm next + GitHub prerelease + 更新检查忽略）；开发构建不参与更新比较；修正文档中的 npm 包名
+- 动机：30 个 tag 中 `v0.1.23` 有 tag 但无 CHANGELOG 段且无 Release（悬空）；workflow 缺段时静默回退 generated notes；`stage-npm` 支持 `-rc` 但发布链路未分通道，打 RC 会被推到所有用户的 `latest`；`git describe` 的 `-N-g<sha>` 会被当成预发布参与比较
+- 验收标准：
+  1. WHEN push `vX.Y.Z` THEN workflow 校验 CHANGELOG 存在精确 `## vX.Y.Z` 段且 tag 提交在 main 历史上；任一不满足即失败并输出可诊断错误，不再静默回退；
+  2. WHEN push `vX.Y.Z-rc.N`（或 `-beta.N`）THEN npm 四包以 `--tag next` 发布、GitHub Release 标记 prerelease、`latest` dist-tag 不变；四包版本等于 tag 去掉 `v`；
+  3. WHEN 更新检查遇到 npm `latest` 高于当前且当前为正式版 THEN 忽略任何 prerelease 目标；当前自身为 prerelease 时允许同通道升级；
+  4. WHEN 本地构建为 `dev`、`-dirty` 或 `vX.Y.Z-N-g<sha>` THEN 更新检查标记 development 并跳过版本提示（三种形态均有单测）；
+  5. AGENTS「版本与发布规则」小节与 npm 包名 `@heguoliang/evergate` 与实现一致；
+  6. `v0.1.23` 悬空 tag 处置二选一并记录：补发 Release 或删除（远程删除需用户显式确认）；处置后不得再出现新的悬空 tag；
+  7. 验证：`go test ./... -count=1`、`go vet ./...`、`make build` 通过；用本地脚本或临时分支演练门禁失败与 rc 发布路径（不实际发布），结果写入进度。
+- 边界：不改业务 API/DB/schema；不重写历史版本号（除经确认的 v0.1.23 处置）；不新增依赖；不改变 NPM_TOKEN 权限模型
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认执行版本规则治理；建卡待排期。当前工作区有其他会话在实施 T40，本卡仅落文档，不与其并发改代码
+
 ## 状态枚举
 
 
@@ -1089,7 +1106,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段，规划中） | 执行顺序：T42 渠道探测协议化 → T43 渠道模型目录发现与令牌模型选择器 → T40 Windows 安装器与可选择的配置/数据目录 → T44 Windows 无控制台启动与系统托盘 → T41 Playground 四协议调试 → T39 全弹性布局与间距系统重构，全部 planned | 本顺序是当前阶段的权威执行顺序，优先满足依赖；按任务卡验收。不改变下游 `/v1` API 与数据库 schema；T43 允许新增 admin 管理端点，T40/T44 允许改变安装、启动与本地日志行为 |
+| P3（当前阶段，规划中） | 执行顺序：T42 渠道探测协议化 → T43 渠道模型目录发现与令牌模型选择器 → T40 Windows 安装器与可选择的配置/数据目录 → T44 Windows 无控制台启动与系统托盘 → T41 Playground 四协议调试 → T39 全弹性布局与间距系统重构；T46 版本发布门禁与预发布通道（任意时点，建议下次发版前），全部 planned | 本顺序是当前阶段的权威执行顺序，优先满足依赖；按任务卡验收。不改变下游 `/v1` API 与数据库 schema；T43 允许新增 admin 管理端点，T40/T44 允许改变安装、启动与本地日志行为，T46 允许调整发布流水线与 tag 门禁 |
 
 ## 验收清单
 

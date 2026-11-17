@@ -79,7 +79,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
 - `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
 - OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
-- npm 发布：主包 `evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
+- npm 发布：主包 `@heguoliang/evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
 - 一键更新：版本检查与 npm 下载链默认 `npmmirror → registry.npmjs.org`，每个源独立超时，均失败才回退 GitHub；`EVERGATE_NPM_REGISTRY` 只能把链收窄为指定源，不得引入任意下载地址。GitHub 仅用于补充更新说明/资产或兜底，不可达不得阻塞已由 npm 确认的更新。下载必须校验 npm `dist.integrity`（sha512）或 GitHub `checksums.txt`（SHA256）；替换只允许同目录改名交换并保留旧版本备份，失败不得破坏原二进制；重启必须沿用 30s 优雅停机；禁止引入第三方自更新库。
 - 模型降级只能发生在 TokenAuth 与令牌治理之后、进入上游之前：预算触发必须使用请求开始时的剩余额度快照；候选模型必须通过令牌模型白名单；渠道耗尽触发必须先穷尽该模型的现有渠道/key 重试预算。降级边界必须写入 retry_trace（reason/from/to）并在请求日志保留 original_model 与实际 model，成本按实际命中渠道+模型价格快照计算；首 chunk 后禁止因降级重试。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
@@ -91,6 +91,15 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - **提交前验证**：后端 `go test ./...` 通过且 `make build` 成功；涉及前端时 `npm run build` 成功；涉及调度内核时关键状态/分支场景必须有表驱动断言，标准 Go 语句覆盖率 ≥ 90%，报告不得把语句覆盖率表述为分支覆盖率。
 - **新增依赖**：须有明确理由并在提交说明中记录；先对照下方禁止清单。
 - **依赖下载**：`go mod download` / `npm install` 受网络沙箱限制，失败时走审批，不得绕过。本机 Go 已配置用户级 `GOPROXY=https://goproxy.cn,direct`（sum.golang.org 不可达）；沙箱内执行 go 命令时需设 `GOCACHE` 指向仓库内 `.gocache/`（已 gitignore），避免写 C 盘被拒。
+
+## 版本与发布规则
+
+- **单一事实源**：版本号以 git tag `vMAJOR.MINOR.PATCH[-pre.N]` 为准，必须打在 main 上；二进制注入、npm 包版本、CHANGELOG 标题全部由 tag 派生，不得手改。
+- **bump 语义（0.x 阶段）**：修复 → PATCH；新增功能 → MINOR（例如 0.2.0）；破坏性变更 → MINOR（0.x 惯例）。**1.0 之后**破坏性变更 → MAJOR。禁止把功能发布塞进 PATCH。
+- **1.0 触发条件**：`/v1` 协议面、admin API、配置与 DB 兼容策略稳定，并承诺按语义化版本维护兼容性；不按时间点切换。
+- **预发布通道**：tag 使用 `-rc.N` / `-beta.N`；npm 发布使用 `--tag next`，GitHub Release 标记 prerelease；`latest` 只随正式版移动。更新检查默认忽略预发布目标，当前版本自身为预发布时除外。
+- **发布门禁**：tag 必须有精确对应的 `## vX.Y.Z` CHANGELOG 段且 tag 提交在 main 历史上，否则 workflow 失败；发布后校验主包与三个平台子包版本等于 tag 去掉 `v`。
+- **开发构建**：`dev`、`-dirty`、`-N-g<sha>` 形态统一视为开发态，不参与更新比较，不得提示用户升级。
 
 ## 禁止事项
 
