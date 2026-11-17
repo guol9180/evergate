@@ -1137,6 +1137,31 @@
   - 2026-11-17 验证 GitHub Release 为正式版，正文取自 CHANGELOG；6 个资产齐全：Windows GUI、Windows console、Linux amd64、macOS arm64、Windows 安装器与 checksums.txt。全部下载后按 checksums basename 校验 SHA256 均一致
   - 2026-11-17 验证 npm 四包 `@heguoliang/evergate` 与三个平台子包均为 0.2.0，`dist-tags.latest` 均为 0.2.0；临时全局安装主包后平台子包自动选择，隔离配置启动 `/healthz` 返回 200；测试进程与临时目录已清理
 
+### T48: 统一发版产物与桌面安装体验（P3，用户指令）
+
+- 目标：统一 Windows/macOS/Linux 的公开交付形态和安装体验；Windows/macOS 各只提供一个安装器，安装后均为托盘/菜单栏桌面应用；Linux/Docker 提供一个无托盘 tar.gz；公开产物采用统一机器友好命名
+- 已确认决策：
+  1. 公开命名统一为 `evergate_<version>_<os>_<arch>[_setup].<ext>`；版本不带 `v`，系统使用 `windows/macos/linux`，架构使用 `amd64/arm64`；Windows 为 `evergate_X.Y.Z_windows_amd64_setup.exe`，macOS 为 `evergate_X.Y.Z_macos_arm64_setup.<pkg|dmg>`，Linux 为 `evergate_X.Y.Z_linux_amd64.tar.gz`，校验文件为 `evergate_X.Y.Z_checksums.txt`
+  2. Windows/macOS 安装流程一致：欢迎/许可 → 检测新装或升级 → 可选登录自启 → 安装进度 → 可选立即启动；不提供程序目录、存储模式、配置目录或数据目录选择
+  3. 程序位置固定：Windows `%LOCALAPPDATA%\Programs\EverGate`；macOS `~/Applications/EverGate.app`
+  4. 配置与数据固定同一根目录：Windows `%LOCALAPPDATA%\EverGate`；macOS `~/Library/Application Support/EverGate`，内部为 `evergate.yml` 与 `data/evergate.db`
+  5. 已有 Windows 自定义配置/数据路径升级时必须保留原路径；不得自动迁移、覆盖或丢弃已有数据
+  6. 高级用户仍可通过 CLI `-config` 或 `EVERGATE_CONFIG` 覆盖，不进入安装器 UI
+- 验收标准：
+  1. Windows/macOS 安装器均只有上述五个用户步骤，无目录选择页；两端自启动默认关闭、完成后启动默认开启
+  2. macOS 产出带原生菜单栏状态图标的 `EverGate.app`，不显示 Dock 图标；菜单提供打开管理台、打开日志、重启和退出；保持单实例
+  3. Windows 安装器继续提供现有托盘功能；macOS 安装器完成后方可删除公开裸 macOS 二进制与 Windows console 的推荐下载入口
+  4. Linux 只提供无托盘 `evergate_X.Y.Z_linux_amd64.tar.gz`，解压后包含可执行 `evergate`、LICENSE 与 README，可直接运行或放入 Docker 镜像
+  5. 公开 Release 只推荐安装器、Linux tar.gz 与 checksums；平台裸二进制和 npm 平台包可作为内部更新资产保留，但必须明确其兼容用途
+  6. checksums 覆盖所有公开资产；发布门禁校验命名、包内版本、安装流程文档和四类公开产物，不再同时推荐旧命名
+  7. macOS 安装器和 `.app` 必须完成 Developer ID 签名与 notarization；无签名/公证凭据时如实标记 blocked，不得宣称可直接分发
+  8. 发布前完成 Windows/macOS 安装、升级保留路径、自启动、托盘交互、单实例、Linux tar.gz 解压运行与 Docker 使用验证
+- 边界：本轮不改变业务 API/DB/schema；不回改已发布 v0.2.0 资产；不提供 Windows/macOS 便携版或跨平台二进制；macOS 首版仅支持 arm64，不含 Intel/Universal；不静默迁移现有数据；不开始实现，待用户确认排期
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认统一公开产物与 Windows/macOS 安装流程；建卡待排期
+  - 2026-11-17 决策 程序安装位置、配置位置和数据位置均固定，不在安装器提供路径选择；仅保留升级兼容和 CLI 高级覆盖
+
 ## 状态枚举
 
 
@@ -1165,7 +1190,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流；T47 已完成正式 Release、npm 四包、资产校验与安装冒烟 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0；待排期：T48 统一发版产物与桌面安装体验 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流；T47 已完成正式 Release、npm 四包、资产校验与安装冒烟；T48 已完成方案确认，尚未实现 |
 
 ## 验收清单
 
