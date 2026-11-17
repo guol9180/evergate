@@ -1147,12 +1147,13 @@
   4. 配置与数据固定同一根目录：Windows `%LOCALAPPDATA%\EverGate`；macOS `~/Library/Application Support/EverGate`，内部为 `evergate.yml` 与 `data/evergate.db`
   5. 已有 Windows 自定义配置/数据路径升级时必须保留原路径；不得自动迁移、覆盖或丢弃已有数据
   6. 高级用户仍可通过 CLI `-config` 或 `EVERGATE_CONFIG` 覆盖，不进入安装器 UI
+  7. 首批标准安装器之前的开发版本不作为自动更新兼容目标；允许用户手动安装一次标准版本完成迁移，不为旧更新器永久保留裸二进制资产
 - 验收标准：
   1. Windows/macOS 安装器均只有上述五个用户步骤，无目录选择页；两端自启动默认关闭、完成后启动默认开启
   2. macOS 产出带原生菜单栏状态图标的 `EverGate.app`，不显示 Dock 图标；菜单提供打开管理台、打开日志、重启和退出；保持单实例
   3. Windows 安装器继续提供现有托盘功能；macOS 安装器完成后方可删除公开裸 macOS 二进制与 Windows console 的推荐下载入口
   4. Linux 只提供无托盘 `evergate_X.Y.Z_linux_amd64.tar.gz`，解压后包含可执行 `evergate`、LICENSE 与 README，可直接运行或放入 Docker 镜像
-  5. 公开 Release 只推荐安装器、Linux tar.gz 与 checksums；平台裸二进制和 npm 平台包可作为内部更新资产保留，但必须明确其兼容用途
+  5. 公开 GitHub Release 只提供 Windows/macOS 安装器、Linux tar.gz 与 checksums，不再发布平台裸二进制；npm 四包仍作为独立安装渠道发布，但不作为 GitHub 更新回退资产
   6. checksums 覆盖所有公开资产；发布门禁校验命名、包内版本、安装流程文档和四类公开产物，不再同时推荐旧命名
   7. macOS 安装器和 `.app` 必须完成 Developer ID 签名与 notarization；无签名/公证凭据时如实标记 blocked，不得宣称可直接分发
   8. 发布前完成 Windows/macOS 安装、升级保留路径、自启动、托盘交互、单实例、Linux tar.gz 解压运行与 Docker 使用验证
@@ -1161,6 +1162,7 @@
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认统一公开产物与 Windows/macOS 安装流程；建卡待排期
   - 2026-11-17 决策 程序安装位置、配置位置和数据位置均固定，不在安装器提供路径选择；仅保留升级兼容和 CLI 高级覆盖
+  - 2026-11-17 决策 用户确认当前仅自用，不需要兼容既有安装版本的自动更新链路；标准安装器发布后允许手动安装一次迁移，公开 Release 删除裸二进制
 
 ### T49: Windows 托盘 DPI 清晰度与日志入口（P3，用户指令）
 
@@ -1180,6 +1182,24 @@
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认按建议建卡；默认日志入口选择“打开目录并选中当前文件”，实时终端日志不在本卡范围
   - 2026-11-17 诊断 当前 GUI 进程 DPI awareness=0；当前显示器探测为 96 DPI/100%，附图为 351×231 像素并可能被再次放大，后续以实机缩放矩阵和截图尺寸共同判定
+
+### T50: 安装包级更新链路（P3，用户指令，依赖 T48）
+
+- 目标：随标准安装器替换旧的“下载并替换单个 executable”更新模型，使 Windows/macOS 通过安装包完成更新、Linux 通过版本化 tar.gz 完成更新，并彻底停止依赖 GitHub 裸二进制
+- 已确认前提：当前只有项目作者自用，不兼容 v0.2.0 及更早客户端的自动更新；标准版本允许手动安装一次完成迁移
+- 验收标准：
+  1. 版本检查继续只接受正式/同通道预发布版本；更新资产必须按 `evergate_<version>_<os>_<arch>[_setup].<ext>` 精确匹配，缺失、重名或跨版本资产直接拒绝
+  2. Windows 下载版本化 `setup.exe`，校验 checksums 与 Authenticode（启用签名后），进入可取消的下载/校验/安装阶段；安装前优雅退出当前实例，安装器保留配置、数据库和自启动选择，完成后启动新版本
+  3. macOS 下载版本化安装器，校验 checksums、Developer ID 签名和 notarization；不得替换 `.app` 内单个 executable，必须由系统安装器或独立 updater 辅助进程更新完整 App Bundle
+  4. Linux 下载版本化 `linux_amd64.tar.gz`，校验 checksums，安全限制解压路径，提取 `evergate` 后使用同目录原子替换并保留备份；容器环境不执行应用内自更新
+  5. npm 四包继续支持 `npm i -g @heguoliang/evergate@latest` 的独立安装渠道，但 GitHub Release 更新回退不再寻找裸二进制；npm 安装用户由 npm 更新或在 UI 中明确提示改用 npm
+  6. 下载中断、checksum/签名失败、安装器取消、替换失败和重启失败均不得损坏现有安装或数据；失败后保留可继续运行的旧版本或给出恢复路径
+  7. 更新弹窗文案从“替换二进制”改为对应平台的安装/安装包流程；来源、进度、签名校验、失败阶段和回滚路径进入管理台日志，不输出 key
+  8. 公共 HTTP/mock Release 测试覆盖正式版、RC、缺资产、错误 checksum/签名、用户取消、Windows/macOS/Linux 三平台资产选择；`go test ./... -count=1`、`go vet ./...`、前端测试、构建与 workflow dry-run 通过
+- 边界：不保留旧裸二进制兼容资产；不引入第三方通用 updater/Sparkle；不改变业务 API/DB/schema；不在首 chunk 后重启；macOS 安装器类型沿用 T48 的最终实现
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认采用标准安装包级更新；建卡依赖 T48，待安装器产物稳定后实施
 
 ## 状态枚举
 
@@ -1209,7 +1229,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0；待排期：T48 统一发版产物与桌面安装体验、T49 Windows 托盘 DPI 与日志入口 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流；T47 已完成正式 Release、npm 四包、资产校验与安装冒烟；T48/T49 已完成方案确认，尚未实现 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0；待排期：T48 统一发版产物与桌面安装体验、T49 Windows 托盘 DPI 与日志入口、T50 安装包级更新链路 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流；T47 已完成正式 Release、npm 四包、资产校验与安装冒烟；T48/T49/T50 已完成方案确认，尚未实现 |
 
 ## 验收清单
 
