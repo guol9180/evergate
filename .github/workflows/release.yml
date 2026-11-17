@@ -346,11 +346,11 @@ jobs:
           node scripts/release-gate.mjs \
             "${gate_args[@]}"
           artifacts=(
-            evergate_*_windows_amd64_setup.exe
-            evergate_*_linux_amd64.tar.gz
+            "evergate_${version}_windows_amd64_setup.exe"
+            "evergate_${version}_linux_amd64.tar.gz"
           )
           if [[ "$ENABLE_MACOS_INSTALLER" == "true" ]]; then
-            artifacts+=(evergate_*_macos_arm64_setup.dmg)
+            artifacts+=("evergate_${version}_macos_arm64_setup.dmg")
           fi
           (cd verify && sha256sum "${artifacts[@]}" > "evergate_${version}_checksums.txt")
           gh release upload "$RELEASE_TAG" "verify/evergate_${version}_checksums.txt" --clobber
