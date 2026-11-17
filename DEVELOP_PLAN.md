@@ -964,6 +964,39 @@
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户确认建卡：范围=四协议调试 + 每协议 Playground 层回归；已核实 Gemini fake context 的 `Params["action"]` 是唯一结构性改动点；渠道管理「测试连通性」与 Playground 的分工差异见同日确认结论（探测 `/models` vs 端到端推理）
 
+### T42: 渠道探测与连通测试协议化（P3，用户指令）
+
+- 目标：健康探测与渠道「测试连通性」按渠道声明的能力选择模型列表路径与鉴权头，覆盖 OpenAI 兼容 / Anthropic / Gemini 三种上游形态
+- 动机：T37/T38 交付后探测仍固定拼接 `{base}/models` 并发送 Bearer；Anthropic 原生渠道应为 `/v1/models` + `x-api-key`，Gemini 应为 `/v1beta/models` + `x-goog-api-key`，现状必然 404/401 → 永久 inconclusive，渠道测试按钮对这两类渠道失效
+- 关键设计：探测协议按声明能力选择，优先级 Anthropic → Gemini → OpenAI 兼容（原生声明优先于兼容兜底）；不做多协议并存探测
+- 验收标准：
+  1. WHEN 渠道声明 Anthropic 原生能力 THEN 探测路径 `{base}/v1/models`，头 `x-api-key` + `anthropic-version`（客户端未带时用默认 `2023-06-01`），不发送 `Authorization`；
+  2. WHEN 渠道声明 Gemini 原生能力 THEN 路径 `{base}/v1beta/models`，头 `x-goog-api-key`，请求 URL 不得包含 `?key=`；
+  3. WHEN 渠道仅 OpenAI 兼容 THEN 维持 `{base}/models` + `Authorization: Bearer`，行为不变；
+  4. WHEN 上游 404/405 THEN 仍标记 inconclusive、释放 half-open 探测名额、不改变 key 调度状态（红线不变）；
+  5. WHEN 探测成功 THEN `last_probe_*` 与渠道状态更新逻辑不变；`POST /admin/api/channels/:id/test` 返回结构不变；
+  6. 测试：health 包按三种协议各一条 httptest 用例（断言路径、鉴权头、无 query key 泄露）；admin testChannel 复用同一探测路径；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
+- 边界：不改调度/重试逻辑与数据库 schema；不解析模型列表（留给 T43）；不改渠道保存校验；不改 `/models` 之外的探测语义
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认建卡：修复 T37/T38 交付后原生渠道探测失效的回归缺口；各协议模型列表端点调研结论见 2026-11-16 会话（Anthropic `/v1/models`、Gemini `/v1beta/models`、OpenAI 兼容 `{base}/models`）
+
+### T43: 渠道模型目录发现与令牌模型选择器（P3，用户指令）
+
+- 目标：渠道表单提供「从上游拉取模型」（协议化列表调用 + 分页），候选多选后经用户确认写入「支持模型」；令牌「允许模型」改为从对外模型目录（启用渠道 `Models` 并集）选择并展示映射关系
+- 动机：支持模型目前纯手填；四种协议均提供模型列表接口；令牌白名单实际匹配对外模型名（= 支持模型），自由文本容易误填映射后的上游名导致 403
+- 验收标准：
+  1. WHEN 渠道表单点击拉取 THEN 按能力调用 `{base}/models` / `{base}/v1/models` / `{base}/v1beta/models`（分页拉取，上限保护：≤10 页且 ≤500 条），返回候选列表；失败展示可诊断错误且不覆盖已填内容；
+  2. WHEN 用户勾选并确认 THEN 按用户选择的合并方式追加或替换到支持模型文本域；不自动保存渠道；可取消；
+  3. WHEN 渠道存在 `model_mapping` THEN 候选项展示 `对外名 → 上游名` 提示；
+  4. WHEN 令牌表单编辑允许模型 THEN 候选来自启用渠道 `Models` 并集（对外目录），含映射提示；保留手动输入并标注"须为对外模型名"；
+  5. 仅 admin 会话可用；拉取属管理元数据操作，不写 request_logs / 用量；任何响应不回显上游 key 明文；
+  6. 测试：admin 端点按协议 mock（路径、鉴权头、分页、上限保护）；前端构建；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+- 边界：不自动覆盖或自动保存；不做模型能力/上下文长度探测；不拉取价格信息；不改路由语义（`Models` 仍为对外名）与数据库 schema；不复用 Playground/推理链路（纯管理元数据请求）
+- 状态：planned
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认建卡；依赖 T42 的协议化列表调用抽象（同一套路径与鉴权规则）
+
 ## 状态枚举
 
 
@@ -992,7 +1025,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
 | P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段，规划中） | T40 Windows 安装器与可选择的配置/数据目录（planned，建议先做）；T41 Playground 四协议调试支持（planned，建议先于 T39）；T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；T40 先解决安装与数据落盘，T41 对齐四协议调试后再做 T39 UI 全弹性（T39 会改 Playground 布局）；不改业务 API 与数据结构 |
+| P3（当前阶段，规划中） | T42 渠道探测协议化（planned，建议先做）；T43 渠道模型目录发现与令牌模型选择器（planned）；T40 Windows 安装器与可选择的配置/数据目录（planned）；T41 Playground 四协议调试支持（planned）；T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；T42 先修复原生渠道探测回归，T43 交付模型发现，其后 T40 安装与数据落盘、T41 四协议调试、T39 UI 全弹性（T39 会改 Playground 布局）；不改业务 API 与数据结构 |
 
 ## 验收清单
 
