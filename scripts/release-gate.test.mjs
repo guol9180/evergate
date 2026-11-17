@@ -84,6 +84,18 @@ test('public release assets use one exact versioned name per platform', () => {
     () => validatePublicAssets([...Object.values(names), names.linux], '0.3.0'),
     /exactly once/,
   )
+  assert.doesNotThrow(() =>
+    validatePublicAssets([names.windows, names.linux, names.checksums], '0.3.0', { allowMissingMacOS: true }),
+  )
+  assert.doesNotThrow(() => validatePublicAssets(Object.values(names), '0.3.0', { allowMissingMacOS: true }))
+  assert.throws(
+    () => validatePublicAssets([names.windows, names.checksums], '0.3.0', { allowMissingMacOS: true }),
+    /linux.*exactly once/,
+  )
+  assert.throws(
+    () => validatePublicAssets([names.windows, names.macOS, names.macOS, names.linux, names.checksums], '0.3.0', { allowMissingMacOS: true }),
+    /at most once/,
+  )
 })
 
 function git(cwd, args) {

@@ -4,9 +4,9 @@
 
 ## v0.3.0
 
-- 破坏性分发调整：公开 GitHub Release 不再提供 Windows/macOS 裸二进制，统一为 `evergate_<version>_<os>_<arch>[_setup].<ext>`；v0.2.0 及更早安装版本允许手动安装一次完成迁移
+- 破坏性分发调整：公开 GitHub Release 不再提供裸二进制，统一为 `evergate_<version>_<os>_<arch>[_setup].<ext>`；v0.3.0 发布 Windows 安装器与 Linux tar.gz，macOS 安装器因暂缺 Developer ID 签名凭据不随本版本发布，v0.2.0 及更早安装版本允许手动安装一次完成迁移
 - Windows 安装器改为固定程序、配置与数据路径，移除目录选择；安装流程统一为许可、新装/升级状态、可选登录自启、安装进度与可选立即启动，升级保留已有数据
-- macOS 新增 `EverGate.app` 菜单栏应用与单个 `.dmg` 安装器：不显示 Dock 图标，支持打开管理台、打开日志目录、重启、退出和单实例；正式包接入 Developer ID 签名与 notarization 门禁
+- macOS 安装器代码已实现 `EverGate.app` 菜单栏应用与单个 `.dmg` 流程：不显示 Dock 图标，支持打开管理台、打开日志目录、重启、退出和单实例；正式发布继续强制 Developer ID 签名与 notarization，未启用签名凭据时 Release 不包含未签名 DMG
 - Linux 公开产物统一为 `evergate_<version>_linux_amd64.tar.gz`，包内含 `evergate`、`LICENSE` 与 `README.md`，保持无托盘运行并可用于 Docker
 - Windows GUI 嵌入 Per-Monitor V2 DPI awareness manifest，改善高 DPI 与混合缩放显示器下的托盘原生菜单清晰度；托盘“查看日志”改为打开目录并选中当前 `evergate.log`
 - 一键更新改为安装包级链路：Windows/macOS 校验后退出并启动完整安装器，Linux 校验 tar.gz 后安全提取并原子替换，macOS 额外校验 notarization 与 Developer ID

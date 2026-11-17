@@ -225,6 +225,7 @@ jobs:
           gh release upload $env:RELEASE_TAG $installer --clobber
 
   macos-installer:
+    if: ${{ vars.ENABLE_MACOS_INSTALLER == 'true' }}
     needs: release
     runs-on: macos-14
     env:
@@ -311,8 +312,11 @@ jobs:
           gh release upload "$RELEASE_TAG" "$installer" --clobber
 
   verify-release:
+    if: ${{ always() && needs.release.result == 'success' && needs.windows-installer.result == 'success' && (vars.ENABLE_MACOS_INSTALLER != 'true' || needs.macos-installer.result == 'success') }}
     needs: [release, windows-installer, macos-installer]
     runs-on: ubuntu-latest
+    env:
+      ENABLE_MACOS_INSTALLER: ${{ vars.ENABLE_MACOS_INSTALLER || 'false' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -330,12 +334,25 @@ jobs:
           mkdir -p verify
           gh release download "$RELEASE_TAG" --dir verify
           find verify -maxdepth 1 -type f -printf '%f\n' | sort > assets.txt
-          node scripts/release-gate.mjs \
-            --tag "$RELEASE_TAG" \
-            --changelog CHANGELOG.md \
-            --main-ref origin/main \
+          gate_args=(
+            --tag "$RELEASE_TAG"
+            --changelog CHANGELOG.md
+            --main-ref origin/main
             --assets-file assets.txt
-          (cd verify && sha256sum evergate_*_windows_amd64_setup.exe evergate_*_macos_arm64_setup.dmg evergate_*_linux_amd64.tar.gz > "evergate_${version}_checksums.txt")
+          )
+          if [[ "$ENABLE_MACOS_INSTALLER" != "true" ]]; then
+            gate_args+=(--allow-missing-macos)
+          fi
+          node scripts/release-gate.mjs \
+            "${gate_args[@]}"
+          artifacts=(
+            evergate_*_windows_amd64_setup.exe
+            evergate_*_linux_amd64.tar.gz
+          )
+          if [[ "$ENABLE_MACOS_INSTALLER" == "true" ]]; then
+            artifacts+=(evergate_*_macos_arm64_setup.dmg)
+          fi
+          (cd verify && sha256sum "${artifacts[@]}" > "evergate_${version}_checksums.txt")
           gh release upload "$RELEASE_TAG" "verify/evergate_${version}_checksums.txt" --clobber
           (cd verify && sha256sum -c "evergate_${version}_checksums.txt")
           if [[ "$version" == *-* ]]; then

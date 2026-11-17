@@ -103,6 +103,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - **1.0 触发条件**：`/v1` 协议面、admin API、配置与 DB 兼容策略稳定，并承诺按语义化版本维护兼容性；不按时间点切换。
 - **预发布通道**：tag 使用 `-rc.N` / `-beta.N`；npm 发布使用 `--tag next`，GitHub Release 标记 prerelease；`latest` 只随正式版移动。更新检查默认忽略预发布目标，当前版本自身为预发布时除外。
 - **发布门禁**：tag 必须有精确对应的 `## vX.Y.Z` CHANGELOG 段且 tag 提交在 main 历史上，否则 workflow 失败；发布后校验主包与三个平台子包版本等于 tag 去掉 `v`。
+- **macOS 安装器开关**：只有 `ENABLE_MACOS_INSTALLER=true` 且全部签名/公证 Secrets 存在时才构建和发布 DMG；未启用时发布门禁允许 macOS 安装器缺省，但永远不得发布未签名、未公证 DMG。
 - **开发构建**：`dev`、`-dirty`、`-N-g<sha>` 形态统一视为开发态，不参与更新比较，不得提示用户升级。
 
 ## 禁止事项

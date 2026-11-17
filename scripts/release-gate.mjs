@@ -24,8 +24,11 @@ export function releaseAssetNames(version) {
   }
 }
 
-export function validatePublicAssets(names, version) {
-  const expected = Object.values(releaseAssetNames(version))
+export function validatePublicAssets(names, version, options = {}) {
+  const all = releaseAssetNames(version)
+  const required = [all.windows, all.linux, all.checksums]
+  const optional = options.allowMissingMacOS ? [all.macOS] : []
+  const expected = [...required, ...(options.allowMissingMacOS ? [] : [all.macOS])]
   const counts = new Map()
   for (const name of names) counts.set(name, (counts.get(name) || 0) + 1)
   for (const name of expected) {
@@ -33,8 +36,14 @@ export function validatePublicAssets(names, version) {
       throw new Error(`public release asset ${JSON.stringify(name)} must appear exactly once (found ${counts.get(name) || 0})`)
     }
   }
+  for (const name of optional) {
+    if ((counts.get(name) || 0) > 1) {
+      throw new Error(`public release asset ${JSON.stringify(name)} must appear at most once (found ${counts.get(name)})`)
+    }
+  }
+  const allowed = [...expected, ...optional]
   for (const name of counts.keys()) {
-    if (!expected.includes(name)) throw new Error(`unexpected public release asset ${JSON.stringify(name)}`)
+    if (!allowed.includes(name)) throw new Error(`unexpected public release asset ${JSON.stringify(name)}`)
   }
 }
 
@@ -143,9 +152,19 @@ function writeGithubOutputs(outputFile, release, body, mainRef) {
 }
 
 export function runCli(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
-  const options = { changelog: 'CHANGELOG.md', mainRef: 'origin/main', stagedDir: '', assetsFile: '' }
+  const options = {
+    changelog: 'CHANGELOG.md',
+    mainRef: 'origin/main',
+    stagedDir: '',
+    assetsFile: '',
+    allowMissingMacOS: false,
+  }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
+    if (arg === '--allow-missing-macos') {
+      options.allowMissingMacOS = true
+      continue
+    }
     if (arg === '--tag' || arg === '--changelog' || arg === '--main-ref' || arg === '--staged-dir' || arg === '--assets-file') {
       const value = argv[++index]
       if (!value) throw new Error(`${arg} requires a value`)
@@ -166,7 +185,7 @@ export function runCli(argv = process.argv.slice(2), env = process.env, cwd = pr
   if (options.stagedDir) validateStagedPackages(options.stagedDir, release.version)
   if (options.assetsFile) {
     const names = readFileSync(options.assetsFile, 'utf8').split(/\r?\n/).map((name) => name.trim()).filter(Boolean)
-    validatePublicAssets(names, release.version)
+    validatePublicAssets(names, release.version, { allowMissingMacOS: options.allowMissingMacOS })
   }
   writeGithubOutputs(env.GITHUB_OUTPUT, release, body, options.mainRef)
   console.log(`release gate passed: ${release.tag} (${release.version}, npm --tag ${release.npmTag})`)
