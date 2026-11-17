@@ -263,12 +263,14 @@ func TestStartIntegrityFailureKeepsOldBinary(t *testing.T) {
 }
 
 func TestCapabilityRejectsDevelopmentVersion(t *testing.T) {
-	m := New(Options{CurrentVersion: "dev", Executable: "x", Logger: discardLogger()})
-	if cap := m.Capability(); cap.Available {
-		t.Fatalf("dev capability = %#v", cap)
-	}
-	if _, err := m.Start("0.1.25", "npm"); err == nil {
-		t.Fatal("dev version should refuse update")
+	for _, version := range []string{"dev", "v0.1.29-dirty", "v0.1.29-9-g9370b7e"} {
+		m := New(Options{CurrentVersion: version, Executable: "x", Logger: discardLogger()})
+		if cap := m.Capability(); cap.Available || !cap.Dev {
+			t.Fatalf("version %q capability = %#v", version, cap)
+		}
+		if _, err := m.Start("0.1.25", "npm"); err == nil {
+			t.Fatalf("version %q should refuse update", version)
+		}
 	}
 }
 

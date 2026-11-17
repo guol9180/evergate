@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -24,6 +26,18 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Test release gate
+        run: node --test scripts/release-gate.test.mjs
+
+      - name: Validate release tag and changelog
+        id: gate
+        run: |
+          git fetch --no-tags origin main
+          node scripts/release-gate.mjs \
+            --tag "$GITHUB_REF_NAME" \
+            --changelog CHANGELOG.md \
+            --main-ref origin/main
 
       - name: Build web
         run: |
@@ -42,6 +56,14 @@ jobs:
 
       - name: Stage npm packages
         run: node scripts/stage-npm.mjs "${GITHUB_REF_NAME#v}" "$PWD/release" "$PWD/dist-npm"
+
+      - name: Validate staged npm packages
+        run: |
+          node scripts/release-gate.mjs \
+            --tag "$GITHUB_REF_NAME" \
+            --changelog CHANGELOG.md \
+            --main-ref origin/main \
+            --staged-dir "$PWD/dist-npm"
 
       - name: Check npm token
         id: npm
@@ -62,13 +84,20 @@ jobs:
           set -euo pipefail
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
           VERSION="${GITHUB_REF_NAME#v}"
+          NPM_TAG="${{ steps.gate.outputs.npm_tag }}"
+          WRAPPER_PKG=$(node -p "require('./dist-npm/evergate/package.json').name")
+          LATEST_BEFORE=""
+          if [ "$NPM_TAG" = "next" ]; then
+            LATEST_BEFORE=$(npm view "$WRAPPER_PKG" dist-tags.latest 2>/dev/null || true)
+          fi
           for dir in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
             pkg=$(node -p "require('./dist-npm/$dir/package.json').name")
             if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
               echo "$pkg@$VERSION already published; skipping"
             else
-              npm publish "./dist-npm/$dir" --access public
+              npm publish "./dist-npm/$dir" --access public --tag "$NPM_TAG"
             fi
+            npm dist-tag add "$pkg@$VERSION" "$NPM_TAG" >/dev/null
           done
           for dir in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
             pkg=$(node -p "require('./dist-npm/$dir/package.json').name")
@@ -77,37 +106,32 @@ jobs:
               echo "::error::$pkg@$VERSION is missing after publish (got: $got)"
               exit 1
             fi
+            tagged=$(npm view "$pkg" "dist-tags.$NPM_TAG")
+            if [ "$tagged" != "$VERSION" ]; then
+              echo "::error::$pkg dist-tag $NPM_TAG is $tagged, want $VERSION"
+              exit 1
+            fi
           done
+          if [ "$NPM_TAG" = "next" ]; then
+            LATEST_AFTER=$(npm view "$WRAPPER_PKG" dist-tags.latest 2>/dev/null || true)
+            if [ "$LATEST_BEFORE" != "$LATEST_AFTER" ]; then
+              echo "::error::prerelease moved $WRAPPER_PKG latest from $LATEST_BEFORE to $LATEST_AFTER"
+              exit 1
+            fi
+          fi
 
       - name: Skip npm publish (NPM_TOKEN missing)
         if: steps.npm.outputs.enabled != 'true'
         run: echo "NPM_TOKEN is not configured; staged npm packages were not published."
 
-      - name: Extract changelog section
-        id: changelog
-        run: |
-          SECTION=$(awk -v ver="${GITHUB_REF_NAME}" '
-            $0 == "## " ver {found=1; next}
-            found && /^## / {exit}
-            found {print}
-          ' CHANGELOG.md | sed '/./,$!d')
-          if [ -n "$SECTION" ]; then
-            {
-              echo "body<<CHANGELOG_EOF"
-              echo "$SECTION"
-              echo "CHANGELOG_EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "Found changelog section for ${GITHUB_REF_NAME}"
-          else
-            echo "No changelog section for ${GITHUB_REF_NAME}; release body falls back to generated notes"
-          fi
-
       - name: Attach to Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          body: ${{ steps.changelog.outputs.body }}
-          generate_release_notes: true
+          body: ${{ steps.gate.outputs.body }}
+          generate_release_notes: false
+          prerelease: ${{ steps.gate.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.gate.outputs.prerelease != 'true' }}
 
   windows-installer:
     needs: release

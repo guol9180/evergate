@@ -175,7 +175,7 @@ func (m *Manager) Capability() Capability {
 	}
 	if m.devVersion() {
 		cap.Dev = true
-		cap.Reason = "开发版本（dev/dirty）不支持自动更新，请使用正式 Release 版本"
+		cap.Reason = "开发版本（dev/dirty/git describe）不支持自动更新，请使用正式 Release 版本"
 		return cap
 	}
 	if m.opt.Executable == "" {
@@ -367,8 +367,7 @@ func (m *Manager) PendingLaunch() (LaunchSpec, bool) {
 }
 
 func (m *Manager) devVersion() bool {
-	v := m.opt.CurrentVersion
-	return v == "" || v == "dev" || strings.Contains(v, "-dirty")
+	return update.IsDevelopmentVersion(m.opt.CurrentVersion)
 }
 
 // CurrentVersion 返回当前进程版本，供重启后的进度轮询确认目标版本是否已生效。

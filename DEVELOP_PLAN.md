@@ -1088,7 +1088,7 @@
 ### T46: 版本发布门禁与预发布通道（P3，用户指令）
 
 - 目标：把版本规则固化为可执行门禁——tag 与 CHANGELOG/二进制/npm 四包强一致；引入 rc/beta 预发布通道（npm next + GitHub prerelease + 更新检查忽略）；开发构建不参与更新比较；修正文档中的 npm 包名
-- 动机：30 个 tag 中 `v0.1.23` 有 tag 但无 CHANGELOG 段且无 Release（悬空）；workflow 缺段时静默回退 generated notes；`stage-npm` 支持 `-rc` 但发布链路未分通道，打 RC 会被推到所有用户的 `latest`；`git describe` 的 `-N-g<sha>` 会被当成预发布参与比较
+- 动机：`v0.1.23` 本地与远程均有 tag、源码包含精确 CHANGELOG 段，但没有 Release 与发布资产（悬空）；workflow 缺段时静默回退 generated notes；`stage-npm` 支持 `-rc` 但发布链路未分通道，打 RC 会被推到所有用户的 `latest`；`git describe` 的 `-N-g<sha>` 会被当成预发布参与比较
 - 验收标准：
   1. WHEN push `vX.Y.Z` THEN workflow 校验 CHANGELOG 存在精确 `## vX.Y.Z` 段且 tag 提交在 main 历史上；任一不满足即失败并输出可诊断错误，不再静默回退；
   2. WHEN push `vX.Y.Z-rc.N`（或 `-beta.N`）THEN npm 四包以 `--tag next` 发布、GitHub Release 标记 prerelease、`latest` dist-tag 不变；四包版本等于 tag 去掉 `v`；
@@ -1098,9 +1098,17 @@
   6. `v0.1.23` 悬空 tag 处置二选一并记录：补发 Release 或删除（远程删除需用户显式确认）；处置后不得再出现新的悬空 tag；
   7. 验证：`go test ./... -count=1`、`go vet ./...`、`make build` 通过；用本地脚本或临时分支演练门禁失败与 rc 发布路径（不实际发布），结果写入进度。
 - 边界：不改业务 API/DB/schema；不重写历史版本号（除经确认的 v0.1.23 处置）；不新增依赖；不改变 NPM_TOKEN 权限模型
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认执行版本规则治理；建卡待排期。当前工作区有其他会话在实施 T40，本卡仅落文档，不与其并发改代码
+  - 2026-11-17 决策 用户选择删除 `v0.1.23` 悬空 tag；经本地引用与 GitHub API 确认均指向 `8e88110` 且无 Release 后，已删除远程与本地 tag，远程查询现返回 404
+  - 2026-11-17 执行 修正卡面中“v0.1.23 无 CHANGELOG”的过时描述并开始 T46；实现范围保持为发布门禁、预发布通道、更新检查与文档同步
+  - 2026-11-17 执行 新增 `scripts/release-gate.mjs`：严格校验 `vX.Y.Z` / `vX.Y.Z-rc.N` / `vX.Y.Z-beta.N`、精确非空 CHANGELOG 段、tag 提交属于 main、四包名称/版本及主包 optionalDependencies 一致；Release workflow 在构建前校验门禁，在 staging 后再校验四包，缺段或离线历史直接失败
+  - 2026-11-17 执行 RC/Beta 发布固定使用 npm `next` 与 GitHub prerelease，正式版使用 npm `latest` 且设为 Latest；发布后逐包校验 dist-tag，并确认预发布前后 `latest` 不变；GitHub Release 正文固定取 CHANGELOG，不再回退 generated notes
+  - 2026-11-17 执行 更新检查统一识别 `dev`、`-dirty` 与 `git describe -N-g<sha>` 开发态；实现 SemVer 预发布数值排序；正式版忽略 prerelease，预发布版本同时查询 npm `latest`/`next` 并只接受同通道更高的 prerelease 或正式版；GitHub Atom 也会跳过不可发布目标
+  - 2026-11-17 执行 自更新能力复用同一开发态判定，`git describe` 构建与 dev/dirty 一样禁止一键更新；AGENTS 版本规则和 `@heguoliang/evergate` 包名经检索与实现一致
+  - 2026-11-17 验证 `node --test scripts/release-gate.test.mjs` 4/4 通过（含精确 CHANGELOG、四包版本、RC 门禁 dry-run、非 main 失败）；`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web test` 4/4、`make build` 全部通过
+  - 2026-11-17 验证 正式版门禁 dry-run v0.1.29 通过；用真实三平台二进制 staging `0.1.29`，四个包及主包 optionalDependencies 版本全部一致并通过门禁；通过代理 7897 只读实测 npm `dist-tags.latest` 查询成功
 
 ## 状态枚举
 
@@ -1130,7 +1138,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构；待执行：T46 版本发布门禁与预发布通道（建议下次发版前） | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力，T46 完成后才允许调整发布流水线与 tag 门禁 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流 |
 
 ## 验收清单
 

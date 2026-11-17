@@ -28,7 +28,9 @@ const (
 	defaultGitHubTimeout = 3 * time.Second
 )
 
-var versionPattern = regexp.MustCompile(`^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$`)
+var versionPattern = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
+
+var developmentVersionPattern = regexp.MustCompile(`^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-\d+-g[0-9a-fA-F]+(?:-dirty)?$`)
 
 type Asset struct {
 	Name string `json:"name"`
@@ -68,7 +70,10 @@ type githubRelease struct {
 	Assets      []Asset   `json:"assets"`
 }
 
-var errRateLimited = errors.New("update endpoint rate limited")
+var (
+	errRateLimited       = errors.New("update endpoint rate limited")
+	errNoEligibleRelease = errors.New("update fallback has no eligible releases")
+)
 
 // Options 是版本检查器装配依赖。
 // Registries 为 nil 时使用 npmmirror → 官方 registry；传非 nil 空切片可关闭 npm 检查。
@@ -134,7 +139,7 @@ func NewCheckerWithOptions(opt Options) *Checker {
 
 func (c *Checker) Check(ctx context.Context) (Status, error) {
 	status := Status{CurrentVersion: c.currentVersion, CheckedAt: c.now()}
-	if c.currentVersion == "" || c.currentVersion == "dev" || strings.HasSuffix(c.currentVersion, "-dirty") {
+	if IsDevelopmentVersion(c.currentVersion) {
 		status.Development = true
 		return status, nil
 	}
@@ -143,18 +148,25 @@ func (c *Checker) Check(ctx context.Context) (Status, error) {
 	if npmErr != nil {
 		release, err := c.fetchRelease(ctx)
 		if err != nil {
+			if errors.Is(err, errNoEligibleRelease) {
+				status.Source = "github"
+				return status, nil
+			}
 			return status, fmt.Errorf("npm: %v; github: %w", npmErr, err)
 		}
 		if !versionPattern.MatchString(release.TagName) {
 			return status, fmt.Errorf("invalid release tag %q", release.TagName)
 		}
-		applyRelease(&status, release)
 		status.Source = "github"
+		applyRelease(&status, release)
 		return status, nil
 	}
 
-	status.LatestVersion = latest
 	status.Source = source
+	if !isVersionEligible(c.currentVersion, latest) {
+		return status, nil
+	}
+	status.LatestVersion = latest
 	status.UpdateAvailable = CompareVersions(c.currentVersion, latest) < 0
 	if !status.UpdateAvailable {
 		return status, nil
@@ -174,25 +186,30 @@ func (c *Checker) Check(ctx context.Context) (Status, error) {
 		status.Assets = release.Assets
 	case 1:
 		// GitHub 版本更新说明 npm 尚未同步（或 npm 发布失败），以 GitHub 为准。
-		applyRelease(&status, release)
-		status.Source = "github"
+		if applyRelease(&status, release) {
+			status.Source = "github"
+		}
 	}
 	return status, nil
 }
 
-func applyRelease(status *Status, release githubRelease) {
+func applyRelease(status *Status, release githubRelease) bool {
+	if !isVersionEligible(status.CurrentVersion, release.TagName) {
+		return false
+	}
 	status.LatestVersion = release.TagName
 	status.ReleaseURL = release.HTMLURL
 	status.PublishedAt = &release.PublishedAt
 	status.Assets = release.Assets
 	status.UpdateAvailable = CompareVersions(status.CurrentVersion, release.TagName) < 0
+	return true
 }
 
 // checkNPM 按 chain 顺序读取 npm dist-tags，返回版本与来源标识。
 func (c *Checker) checkNPM(ctx context.Context) (version, source string, err error) {
 	failures := make([]string, 0, len(c.registries))
 	for _, registry := range c.registries {
-		version, err := c.fetchNPMVersion(ctx, registry)
+		version, err := c.fetchCurrentNPMVersion(ctx, registry)
 		if err == nil {
 			return version, "npm:" + npmregistry.Host(registry), nil
 		}
@@ -207,10 +224,32 @@ func (c *Checker) checkNPM(ctx context.Context) (version, source string, err err
 	return "", "", fmt.Errorf("npm（%s）", strings.Join(failures, "；"))
 }
 
-func (c *Checker) fetchNPMVersion(ctx context.Context, registry string) (string, error) {
+func (c *Checker) fetchCurrentNPMVersion(ctx context.Context, registry string) (string, error) {
+	latest, latestErr := c.fetchNPMVersion(ctx, registry, "latest")
+	if !isPrereleaseVersion(c.currentVersion) {
+		return latest, latestErr
+	}
+	next, nextErr := c.fetchNPMVersion(ctx, registry, "next")
+	versions := []string{latest, next}
+	best := ""
+	for _, candidate := range versions {
+		if !isVersionEligible(c.currentVersion, candidate) {
+			continue
+		}
+		if best == "" || CompareVersions(best, candidate) < 0 {
+			best = candidate
+		}
+	}
+	if best != "" {
+		return best, nil
+	}
+	return "", fmt.Errorf("latest: %v; next: %v", latestErr, nextErr)
+}
+
+func (c *Checker) fetchNPMVersion(ctx context.Context, registry, distTag string) (string, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, c.npmTimeout)
 	defer cancel()
-	endpoint := registry + "/" + c.pkg + "/latest"
+	endpoint := registry + "/" + c.pkg + "/" + distTag
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return "", err
@@ -303,18 +342,23 @@ func (c *Checker) fetchAtom(ctx context.Context) (githubRelease, error) {
 	if len(feed.Entries) == 0 {
 		return githubRelease{}, errors.New("update fallback has no releases")
 	}
-	entry := feed.Entries[0]
-	return githubRelease{
-		TagName: entry.Title, HTMLURL: entry.Link.Href, PublishedAt: entry.Updated,
-		Assets: []Asset{{
-			Name: "evergate-windows-amd64.exe",
-			URL:  fmt.Sprintf("https://github.com/guol9180/evergate/releases/download/%s/evergate-windows-amd64.exe", entry.Title),
-		}},
-	}, nil
+	for _, entry := range feed.Entries {
+		if !versionPattern.MatchString(entry.Title) || !isVersionEligible(c.currentVersion, entry.Title) {
+			continue
+		}
+		return githubRelease{
+			TagName: entry.Title, HTMLURL: entry.Link.Href, PublishedAt: entry.Updated,
+			Assets: []Asset{{
+				Name: "evergate-windows-amd64.exe",
+				URL:  fmt.Sprintf("https://github.com/guol9180/evergate/releases/download/%s/evergate-windows-amd64.exe", entry.Title),
+			}},
+		}, nil
+	}
+	return githubRelease{}, errNoEligibleRelease
 }
 
 func CompareVersions(current, latest string) int {
-	if current == "dev" || current == "" {
+	if IsDevelopmentVersion(current) {
 		return 0
 	}
 	a, ok := parseVersion(current)
@@ -334,22 +378,25 @@ func CompareVersions(current, latest string) int {
 		}
 	}
 	switch {
-	case a.pre == b.pre:
+	case len(a.pre) == 0 && len(b.pre) == 0:
 		return 0
-	case a.pre == "":
+	case len(a.pre) == 0:
 		return 1
-	case b.pre == "":
+	case len(b.pre) == 0:
 		return -1
-	case a.pre < b.pre:
-		return -1
-	default:
-		return 1
 	}
+	return comparePrerelease(a.pre, b.pre)
 }
 
 type parsedVersion struct {
 	numeric [3]int
-	pre     string
+	pre     []prereleaseIdentifier
+}
+
+type prereleaseIdentifier struct {
+	text    string
+	numeric bool
+	number  int
 }
 
 func parseVersion(v string) (parsedVersion, bool) {
@@ -365,6 +412,94 @@ func parseVersion(v string) (parsedVersion, bool) {
 		}
 		out.numeric[i] = n
 	}
-	out.pre = m[4]
+	if m[4] == "" {
+		return out, true
+	}
+	parts := strings.Split(m[4], ".")
+	out.pre = make([]prereleaseIdentifier, 0, len(parts))
+	for _, part := range parts {
+		identifier := prereleaseIdentifier{text: part}
+		if isDigits(part) {
+			if len(part) > 1 && part[0] == '0' {
+				return parsedVersion{}, false
+			}
+			n, err := strconv.Atoi(part)
+			if err != nil {
+				return parsedVersion{}, false
+			}
+			identifier.numeric = true
+			identifier.number = n
+		}
+		out.pre = append(out.pre, identifier)
+	}
 	return out, true
+}
+
+// IsDevelopmentVersion 识别未发布构建；这些版本不参与更新比较。
+func IsDevelopmentVersion(version string) bool {
+	version = strings.TrimSpace(version)
+	return version == "" || version == "dev" || strings.HasSuffix(version, "-dirty") ||
+		developmentVersionPattern.MatchString(version)
+}
+
+func isVersionEligible(current, candidate string) bool {
+	latest, ok := parseVersion(candidate)
+	if !ok {
+		return false
+	}
+	if len(latest.pre) == 0 {
+		return true
+	}
+	installed, ok := parseVersion(current)
+	if !ok || len(installed.pre) == 0 {
+		return false
+	}
+	return installed.pre[0].text == latest.pre[0].text
+}
+
+func isPrereleaseVersion(version string) bool {
+	parsed, ok := parseVersion(version)
+	return ok && len(parsed.pre) > 0
+}
+
+func comparePrerelease(a, b []prereleaseIdentifier) int {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		switch {
+		case a[i].text == b[i].text:
+			continue
+		case a[i].numeric && b[i].numeric:
+			if a[i].number < b[i].number {
+				return -1
+			}
+			return 1
+		case a[i].numeric:
+			return -1
+		case b[i].numeric:
+			return 1
+		case a[i].text < b[i].text:
+			return -1
+		default:
+			return 1
+		}
+	}
+	switch {
+	case len(a) < len(b):
+		return -1
+	case len(a) > len(b):
+		return 1
+	default:
+		return 0
+	}
+}
+
+func isDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
