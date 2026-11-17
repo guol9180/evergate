@@ -187,12 +187,14 @@ jobs:
           if (-not $iscc) { throw "ISCC.exe not found" }
           $version = $env:RELEASE_TAG.TrimStart('v')
           $chineseIsl = 'C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl'
-          $languageArg = if (Test-Path $chineseIsl) { '/DUseChineseLanguage=1' } else { '/DUseChineseLanguage=0' }
-          & $iscc "/DAppVersion=$version" `
-            "/DSourceExe=$env:GITHUB_WORKSPACE\release\evergate-windows-amd64.exe" `
-            "/DOutputDir=$env:GITHUB_WORKSPACE\release-installer" `
-            $languageArg `
-            "$env:GITHUB_WORKSPACE\installer\evergate.iss"
+          $isccArgs = @(
+            "/DAppVersion=$version"
+            "/DSourceExe=$env:GITHUB_WORKSPACE\release\evergate-windows-amd64.exe"
+            "/DOutputDir=$env:GITHUB_WORKSPACE\release-installer"
+          )
+          if (Test-Path $chineseIsl) { $isccArgs += '/DUseChineseLanguage' }
+          $isccArgs += "$env:GITHUB_WORKSPACE\installer\evergate.iss"
+          & $iscc @isccArgs
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
 
       - name: Attach installer and refresh checksums

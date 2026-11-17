@@ -7,10 +7,6 @@
 #ifndef OutputDir
   #define OutputDir "..\release-installer"
 #endif
-#ifndef UseChineseLanguage
-  #define UseChineseLanguage 0
-#endif
-
 [Setup]
 AppId={{67AE737E-F141-45CB-A535-52DA6953F1F4}
 AppName=EverGate
@@ -37,7 +33,7 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
-#if UseChineseLanguage
+#ifdef UseChineseLanguage
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 #else
 Name: "english"; MessagesFile: "compiler:Default.isl"
