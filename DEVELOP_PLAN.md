@@ -1129,6 +1129,7 @@
   - 2026-11-17 计划 用户确认发版；版本判定 v0.2.0，开始整理 CHANGELOG 与发布前验证
   - 2026-11-17 执行 `CHANGELOG.md` 新增精确 `## v0.2.0` 段，覆盖 Windows 安装器/GUI/托盘、协议化探测、模型发现、四协议 Playground、弹性布局与发布门禁；未夹带业务 API/DB/schema 改动
   - 2026-11-17 验证 发布前门禁全部通过：`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web test` 4/4、`node --test scripts/release-gate.test.mjs` 4/4、`v0.2.0` release-gate dry-run、`actionlint`、`make build`
+  - 2026-11-17 发版 Action 44040069449：门禁、三平台构建、npm staging 与四个 npm 包发布均成功；发布后的立即 `npm view` 遇到 registry 元数据传播延迟并返回 404，导致 Workflow 在 Release 创建前失败。已确认需将有界轮询加入 workflow；不移 tag，先验证四包可见后重跑同一 Workflow
 
 ## 状态枚举
 

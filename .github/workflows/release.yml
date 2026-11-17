@@ -99,18 +99,22 @@ jobs:
             fi
             npm dist-tag add "$pkg@$VERSION" "$NPM_TAG" >/dev/null
           done
+          deadline=$((SECONDS + 360))
           for dir in evergate-win32-x64 evergate-linux-amd64 evergate-darwin-arm64 evergate; do
             pkg=$(node -p "require('./dist-npm/$dir/package.json').name")
-            got=$(npm view "$pkg@$VERSION" version)
-            if [ "$got" != "$VERSION" ]; then
-              echo "::error::$pkg@$VERSION is missing after publish (got: $got)"
-              exit 1
-            fi
-            tagged=$(npm view "$pkg" "dist-tags.$NPM_TAG")
-            if [ "$tagged" != "$VERSION" ]; then
-              echo "::error::$pkg dist-tag $NPM_TAG is $tagged, want $VERSION"
-              exit 1
-            fi
+            while true; do
+              got=$(npm view "$pkg@$VERSION" version 2>/dev/null || true)
+              tagged=$(npm view "$pkg" "dist-tags.$NPM_TAG" 2>/dev/null || true)
+              if [ "$got" = "$VERSION" ] && [ "$tagged" = "$VERSION" ]; then
+                break
+              fi
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                echo "::error::$pkg registry metadata did not settle (version=$got tag=$tagged)"
+                exit 1
+              fi
+              echo "waiting for $pkg registry metadata (version=$got tag=$tagged)"
+              sleep 10
+            done
           done
           if [ "$NPM_TAG" = "next" ]; then
             LATEST_AFTER=$(npm view "$WRAPPER_PKG" dist-tags.latest 2>/dev/null || true)
