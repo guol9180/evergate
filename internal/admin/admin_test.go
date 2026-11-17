@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -413,6 +414,223 @@ func TestChannelManualProbeUsesAnthropicProtocol(t *testing.T) {
 	}
 	if strings.Contains(body, "sk-anthropic") || strings.Contains(body, "key_cipher") {
 		t.Fatalf("manual probe leaked key material: %s", body)
+	}
+}
+
+func TestChannelModelPreviewUsesPaginationAndMappingAliases(t *testing.T) {
+	env := newEnv(t)
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/v1/models" || r.Header.Get("x-api-key") != "sk-preview" ||
+			r.Header.Get("anthropic-version") != "2023-06-01" {
+			http.Error(w, "bad probe", http.StatusForbidden)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch calls {
+		case 1:
+			_, _ = w.Write([]byte(`{"data":[{"id":"upstream-a"}],"has_more":true,"last_id":"upstream-a"}`))
+		case 2:
+			if r.URL.Query().Get("after_id") != "upstream-a" {
+				http.Error(w, "missing cursor", http.StatusBadRequest)
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[{"id":"upstream-b"}],"has_more":false}`))
+		default:
+			http.Error(w, "unexpected page", http.StatusInternalServerError)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+
+	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
+		fmt.Sprintf(`{"name":"preview","type":"anthropic","base_url":%q,"models":["upstream-a","upstream-b"],"model_mapping":{"alias-a":"upstream-a","alias-b":"upstream-a"},"supports_anthropic":true}`, server.URL))
+	if code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", code, body)
+	}
+	if code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-preview"}`); code != http.StatusOK {
+		t.Fatalf("add key: %d %s", code, body)
+	}
+
+	var before store.ChannelKey
+	if err := env.db.First(&before, 1).Error; err != nil {
+		t.Fatalf("read key before preview: %v", err)
+	}
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/models/preview", cookie, "")
+	if code != http.StatusOK {
+		t.Fatalf("preview models: %d %s", code, body)
+	}
+	var payload struct {
+		Data struct {
+			Items []struct {
+				PublicModel   string `json:"public_model"`
+				UpstreamModel string `json:"upstream_model"`
+			} `json:"items"`
+			Truncated bool   `json:"truncated"`
+			Pages     int    `json:"pages"`
+			Protocol  string `json:"protocol"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("decode preview: %v (%s)", err, body)
+	}
+	got := make(map[string]string)
+	for _, item := range payload.Data.Items {
+		got[item.PublicModel] = item.UpstreamModel
+	}
+	want := map[string]string{
+		"alias-a": "upstream-a", "alias-b": "upstream-a", "upstream-b": "upstream-b",
+	}
+	if !reflect.DeepEqual(got, want) || payload.Data.Pages != 2 || payload.Data.Protocol != "anthropic" || payload.Data.Truncated {
+		t.Fatalf("preview = %#v, items=%v", payload.Data, got)
+	}
+	if strings.Contains(body, "sk-preview") || strings.Contains(body, "key_cipher") {
+		t.Fatalf("preview leaked key material: %s", body)
+	}
+
+	var after store.ChannelKey
+	if err := env.db.First(&after, 1).Error; err != nil {
+		t.Fatalf("read key after preview: %v", err)
+	}
+	if after.State != before.State || after.ConsecutiveFails != before.ConsecutiveFails ||
+		after.SuccessCount != before.SuccessCount || after.FailCount != before.FailCount ||
+		after.CooldownUntil != nil {
+		t.Fatalf("preview mutated key state: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestChannelModelPreviewOpenAIAndGemini(t *testing.T) {
+	cases := []struct {
+		name         string
+		supportsJSON string
+		wantPath     string
+		response     string
+		wantModel    string
+	}{
+		{
+			name: "openai-compatible", wantPath: "/models",
+			response:  `{"data":[{"id":"gpt-catalog"}]}`,
+			wantModel: "gpt-catalog",
+		},
+		{
+			name: "gemini", supportsJSON: `,"supports_gemini":true`, wantPath: "/v1beta/models",
+			response:  `{"models":[{"name":"models/gemini-catalog"}]}`,
+			wantModel: "gemini-catalog",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newEnv(t)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != tc.wantPath || r.URL.Query().Get("key") != "" {
+					http.Error(w, "bad path", http.StatusForbidden)
+					return
+				}
+				if tc.name == "gemini" {
+					if r.Header.Get("x-goog-api-key") != "sk-protocol" || r.Header.Get("Authorization") != "" {
+						http.Error(w, "bad gemini auth", http.StatusForbidden)
+						return
+					}
+				} else if r.Header.Get("Authorization") != "Bearer sk-protocol" {
+					http.Error(w, "bad openai auth", http.StatusForbidden)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(tc.response))
+			}))
+			t.Cleanup(server.Close)
+
+			cookie, _ := login(t, env, "admin", "admin123")
+			env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+			cookie, _ = login(t, env, "admin", "newpass123")
+			code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
+				fmt.Sprintf(`{"name":%q,"type":"openai-compatible","base_url":%q,"models":["placeholder"]%s}`,
+					tc.name, server.URL, tc.supportsJSON))
+			if code != http.StatusOK {
+				t.Fatalf("create channel: %d %s", code, body)
+			}
+			if code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-protocol"}`); code != http.StatusOK {
+				t.Fatalf("add key: %d %s", code, body)
+			}
+			code, body, _ = env.req(t, "POST", "/admin/api/channels/1/models/preview", cookie, "")
+			if code != http.StatusOK || !strings.Contains(body, fmt.Sprintf(`"public_model":%q`, tc.wantModel)) {
+				t.Fatalf("preview: %d %s", code, body)
+			}
+			if strings.Contains(body, "sk-protocol") || strings.Contains(body, "key_cipher") {
+				t.Fatalf("preview leaked key material: %s", body)
+			}
+		})
+	}
+}
+
+func TestChannelModelPreviewRequiresEnabledKey(t *testing.T) {
+	env := newEnv(t)
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
+		`{"name":"no-key","type":"openai-compatible","base_url":"https://example.com/v1","models":["m"]}`)
+	if code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/models/preview", cookie, "")
+	if code != http.StatusBadRequest || !strings.Contains(body, "没有启用的 key") {
+		t.Fatalf("preview without key: %d %s", code, body)
+	}
+}
+
+func TestModelCatalogUsesEnabledPublicModelsAndMappingHints(t *testing.T) {
+	env := newEnv(t)
+	if code, _, _ := env.req(t, "GET", "/admin/api/model-catalog", "", ""); code != http.StatusUnauthorized {
+		t.Fatalf("catalog without session = %d, want 401", code)
+	}
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+
+	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
+		`{"name":"catalog-a","type":"openai-compatible","base_url":"https://a.example/v1","models":["public-a","public-b"],"model_mapping":{"public-a":"upstream-a"}}`)
+	if code != http.StatusOK {
+		t.Fatalf("create channel a: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "POST", "/admin/api/channels", cookie,
+		`{"name":"catalog-b","type":"openai-compatible","base_url":"https://b.example/v1","models":["public-b","disabled-only"],"model_mapping":{"public-b":"upstream-b"}}`)
+	if code != http.StatusOK {
+		t.Fatalf("create channel b: %d %s", code, body)
+	}
+	if code, body, _ = env.req(t, "POST", "/admin/api/channels/2/toggle", cookie, `{"enabled":false}`); code != http.StatusOK {
+		t.Fatalf("disable channel b: %d %s", code, body)
+	}
+
+	code, body, _ = env.req(t, "GET", "/admin/api/model-catalog", cookie, "")
+	if code != http.StatusOK {
+		t.Fatalf("model catalog: %d %s", code, body)
+	}
+	var payload struct {
+		Data struct {
+			Items []struct {
+				Model    string `json:"model"`
+				Channels []struct {
+					ChannelID     int64  `json:"channel_id"`
+					ChannelName   string `json:"channel_name"`
+					UpstreamModel string `json:"upstream_model"`
+				} `json:"channels"`
+			} `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		t.Fatalf("decode catalog: %v (%s)", err, body)
+	}
+	if len(payload.Data.Items) != 2 ||
+		payload.Data.Items[0].Model != "public-a" ||
+		payload.Data.Items[1].Model != "public-b" ||
+		len(payload.Data.Items[0].Channels) != 1 ||
+		payload.Data.Items[0].Channels[0].UpstreamModel != "upstream-a" {
+		t.Fatalf("catalog = %#v", payload.Data.Items)
 	}
 }
 

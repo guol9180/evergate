@@ -23,6 +23,8 @@ import (
 
 	"evergate/internal/health"
 	"evergate/internal/pool"
+	"evergate/internal/provider"
+	"evergate/internal/router"
 	"evergate/internal/selfupdate"
 	"evergate/internal/settings"
 	"evergate/internal/store"
@@ -32,15 +34,17 @@ import (
 
 // Options 管理 API 装配依赖。
 type Options struct {
-	DB         *gorm.DB
-	MasterKey  string        // 解密上游 key 用于连通测试
-	Pool       *pool.Manager // 渠道健康推导 / key 重置
-	Session    *SessionManager
-	Update     *update.Checker
-	Settings   *settings.Manager
-	Health     *health.Prober
-	Usage      *usage.Manager
-	SelfUpdate *selfupdate.Manager
+	DB        *gorm.DB
+	MasterKey string        // 解密上游 key 用于连通测试
+	Pool      *pool.Manager // 渠道健康推导 / key 重置
+	// ModelListClient 拉取上游模型目录；nil 时使用 http.DefaultClient。
+	ModelListClient provider.HTTPClient
+	Session         *SessionManager
+	Update          *update.Checker
+	Settings        *settings.Manager
+	Health          *health.Prober
+	Usage           *usage.Manager
+	SelfUpdate      *selfupdate.Manager
 	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
 	Playground gin.HandlerFunc
 }
@@ -52,6 +56,9 @@ type API struct {
 
 // New 创建管理 API。
 func New(opt Options) *API {
+	if opt.ModelListClient == nil {
+		opt.ModelListClient = http.DefaultClient
+	}
 	return &API{opt: opt}
 }
 
@@ -75,12 +82,14 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.POST("/admin/api/usage/prices/overrides", a.sessionMiddleware(), a.upsertUsagePriceOverride)
 	r.DELETE("/admin/api/usage/prices/overrides/:id", a.sessionMiddleware(), a.deleteUsagePriceOverride)
 	r.GET("/admin/api/channels", a.sessionMiddleware(), a.listChannels)
+	r.GET("/admin/api/model-catalog", a.sessionMiddleware(), a.modelCatalog)
 	r.POST("/admin/api/channels", a.sessionMiddleware(), a.createChannel)
 	r.GET("/admin/api/channels/:id", a.sessionMiddleware(), a.getChannel)
 	r.PUT("/admin/api/channels/:id", a.sessionMiddleware(), a.updateChannel)
 	r.DELETE("/admin/api/channels/:id", a.sessionMiddleware(), a.deleteChannel)
 	r.POST("/admin/api/channels/:id/toggle", a.sessionMiddleware(), a.toggleChannel)
 	r.POST("/admin/api/channels/:id/test", a.sessionMiddleware(), a.testChannel)
+	r.POST("/admin/api/channels/:id/models/preview", a.sessionMiddleware(), a.previewChannelModels)
 	r.POST("/admin/api/channels/:id/keys", a.sessionMiddleware(), a.batchAddKeys)
 	r.PUT("/admin/api/keys/:id", a.sessionMiddleware(), a.updateKey)
 	r.DELETE("/admin/api/keys/:id", a.sessionMiddleware(), a.deleteKey)
@@ -542,6 +551,120 @@ func (a *API) testChannel(c *gin.Context) {
 		"error_type": result.ErrorType, "error": result.Error,
 		"probed_at": result.ProbedAt, "next_probe_at": result.NextProbeAt,
 	})
+}
+
+type modelPreviewItem struct {
+	PublicModel   string `json:"public_model"`
+	UpstreamModel string `json:"upstream_model"`
+}
+
+// previewChannelModels 拉取渠道上游模型目录并按现有映射反查对外别名。
+// 该操作只读取一把启用 key，不经过 pool，不改变 key 调度状态。
+func (a *API) previewChannelModels(c *gin.Context) {
+	ch, found := a.loadChannel(c)
+	if !found {
+		return
+	}
+	var key store.ChannelKey
+	if err := a.opt.DB.Where("channel_id = ? AND enabled = ?", ch.ID, true).
+		Order("id asc").First(&key).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			fail(c, http.StatusBadRequest, "渠道没有启用的 key，请先导入 key")
+			return
+		}
+		fail(c, http.StatusInternalServerError, "查询 key 失败")
+		return
+	}
+	plainKey, err := store.Decrypt(key.KeyCipher, a.opt.MasterKey)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "解密上游 key 失败")
+		return
+	}
+
+	timeout := 10 * time.Second
+	if a.opt.Settings != nil {
+		timeout = time.Duration(a.opt.Settings.Snapshot().HealthProbeTimeoutMS) * time.Millisecond
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+	defer cancel()
+	result, err := provider.ListModels(ctx, a.opt.ModelListClient, ch, plainKey)
+	if err != nil {
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			fail(c, http.StatusGatewayTimeout, "拉取模型目录超时")
+		case errors.Is(err, context.Canceled):
+			fail(c, http.StatusRequestTimeout, "拉取模型目录已取消")
+		default:
+			fail(c, http.StatusBadGateway, "拉取模型目录失败："+err.Error())
+		}
+		return
+	}
+
+	aliasesByUpstream := make(map[string][]string)
+	for publicModel, upstreamModel := range ch.ModelMapping {
+		if publicModel == "" || upstreamModel == "" {
+			continue
+		}
+		aliasesByUpstream[upstreamModel] = append(aliasesByUpstream[upstreamModel], publicModel)
+	}
+	items := make([]modelPreviewItem, 0, len(result.Models))
+	for _, upstreamModel := range result.Models {
+		aliases := aliasesByUpstream[upstreamModel]
+		if len(aliases) == 0 {
+			items = append(items, modelPreviewItem{PublicModel: upstreamModel, UpstreamModel: upstreamModel})
+			continue
+		}
+		sort.Strings(aliases)
+		for _, publicModel := range aliases {
+			items = append(items, modelPreviewItem{PublicModel: publicModel, UpstreamModel: upstreamModel})
+		}
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].PublicModel != items[j].PublicModel {
+			return items[i].PublicModel < items[j].PublicModel
+		}
+		return items[i].UpstreamModel < items[j].UpstreamModel
+	})
+	ok(c, gin.H{
+		"items": items, "protocol": result.Protocol,
+		"pages": result.Pages, "truncated": result.Truncated,
+	})
+}
+
+type catalogChannelRef struct {
+	ChannelID     int64  `json:"channel_id"`
+	ChannelName   string `json:"channel_name"`
+	UpstreamModel string `json:"upstream_model"`
+}
+
+type catalogModel struct {
+	Model    string              `json:"model"`
+	Channels []catalogChannelRef `json:"channels"`
+}
+
+// modelCatalog 为令牌模型选择器提供启用渠道 Models 并集；与下游 /v1/models 共用归一化逻辑。
+func (a *API) modelCatalog(c *gin.Context) {
+	var channels []*store.Channel
+	if err := a.opt.DB.Where("enabled = ?", true).Order("id asc").Find(&channels).Error; err != nil {
+		fail(c, http.StatusInternalServerError, "查询模型目录失败")
+		return
+	}
+	models := router.PublicModelCatalog(channels)
+	items := make([]catalogModel, 0, len(models))
+	for _, model := range models {
+		item := catalogModel{Model: model, Channels: []catalogChannelRef{}}
+		for _, ch := range channels {
+			if !router.SupportsModel(ch, model) {
+				continue
+			}
+			item.Channels = append(item.Channels, catalogChannelRef{
+				ChannelID: ch.ID, ChannelName: ch.Name,
+				UpstreamModel: router.UpstreamModel(ch.ModelMapping, model),
+			})
+		}
+		items = append(items, item)
+	}
+	ok(c, gin.H{"items": items})
 }
 
 func (a *API) loadChannel(c *gin.Context) (*store.Channel, bool) {

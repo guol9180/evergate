@@ -20,7 +20,7 @@ internal/router/       # 模型 → 渠道候选列表（优先级+权重）
 internal/pool/         # key 池调度器 + cooldown 状态机
 internal/affinity/     # X-Session-Id 会话亲和：SHA-256 指纹 + TTL + 有界 LRU
 internal/retry/        # 错误分类器 + 重试预算
-internal/provider/     # 上游适配器接口（规划；当前 OpenAI 兼容协议适配在 relay）
+internal/provider/     # 跨协议上游公共能力：模型列表端点、鉴权与有界分页
 internal/appdir/       # 跨平台配置/数据目录解析（规划；T40 交付）
 internal/store/        # GORM 模型与数据访问
 internal/admin/        # 管理台 API handlers
@@ -66,6 +66,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 运行日志（slog JSON 到 stdout）与请求日志（入库供管理台查询）分离。
 - 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
 - 渠道健康探测只能调用模型列表 GET，不得触发推理接口：OpenAI 兼容渠道使用 `GET {base_url}/models` 与 Bearer；Anthropic 原生渠道使用 `GET {base_url}/v1/models`、`x-api-key` 与固定 `anthropic-version: 2023-06-01`；Gemini 原生渠道使用 `GET {base_url}/v1beta/models` 与 `x-goog-api-key`，禁止 `?key=`。协议选择优先级 Anthropic → Gemini → OpenAI 兼容。404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
+- 模型目录发现只能读取上游模型列表，不得触发推理或改变 key 调度状态。拉取结果按 Anthropic `after_id` / Gemini `pageToken` 分页，最多 10 页、500 个唯一模型；OpenAI 兼容协议不猜测非标准游标。渠道 `Models` 始终是对外模型名：选择上游模型时必须反查 `model_mapping`，多对一时每个对外别名单独作为候选，禁止把映射目标直接写入 `Models`。
 - 会话亲和表只保存 `token + model + session` 的 SHA-256 指纹，禁止保存 `X-Session-Id` 原文或写入请求日志/响应；TTL 与 LRU 容量必须有界，第一版仅进程内存，禁止擅自加 Redis/SQLite 持久化。
 - 会话亲和只能在最高优先级组内提升候选渠道，且粘性 key 必须重新通过 enabled/cooldown/探测名额校验；不得绕过 priority 主备层级、健康状态或重试预算。
 - 请求级 `X-EverGate-Config` 只允许 timeouts / retry / channels / session_affinity 白名单字段，必须在 TokenAuth 与令牌治理之后解析；未知字段与敏感字段（api_key/model/allowed_models 等）一律 400 并带字段路径，禁止静默忽略或放宽。

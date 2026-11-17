@@ -1,10 +1,12 @@
 import { type FormEvent, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Plug, Plus, Trash2, TriangleAlert } from 'lucide-react'
-import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey } from '../api/hooks'
+import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
+import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey } from '../api/hooks'
 import { Badge, Button, Card, Dialog, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Switch, Td, Textarea, Th } from '../components/ui'
+import ModelPicker from '../components/ModelPicker'
 import type { Channel } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset } from '../lib/channelPresets'
 import { cooldownRemaining, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
+import { applyModelSelection } from '../lib/modelSelection'
 
 export default function Channels() {
   const channels = useChannels()
@@ -204,6 +206,7 @@ function KeysPanel({ channelId }: { channelId: number }) {
 // 新建/编辑渠道弹窗
 function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: () => void }) {
   const save = useSaveChannel()
+  const preview = usePreviewChannelModels()
   const formID = 'channel-form'
   const [name, setName] = useState(channel?.name ?? '')
   const [nameTouched, setNameTouched] = useState(Boolean(channel))
@@ -217,6 +220,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [supportsGemini, setSupportsGemini] = useState(channel?.supports_gemini ?? false)
   const [models, setModels] = useState((channel?.models || []).join('\n'))
   const [mapping, setMapping] = useState(channel?.model_mapping ? JSON.stringify(channel.model_mapping, null, 2) : '')
+  const [showModelPicker, setShowModelPicker] = useState(false)
   const preset = findChannelPreset(presetId)
 
   const applyPreset = (id: string) => {
@@ -334,9 +338,60 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           <Field label="优先级" hint="越小越优先"><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
           <Field label="权重" hint="同优先级内加权随机"><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
         </div>
-        <Field label="支持的模型（每行一个）">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <label className="text-sm font-medium text-slate-700">支持的模型（每行一个）</label>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={!channel || channel.key_count === 0 || preview.isPending}
+              onClick={() => {
+                if (!channel) return
+                setShowModelPicker(false)
+                preview.reset()
+                preview.mutate(channel.id, { onSuccess: () => setShowModelPicker(true) })
+              }}
+            >
+              <RefreshCw size={13} className={preview.isPending ? 'animate-spin' : ''} />
+              {preview.isPending ? '拉取中…' : '从上游拉取'}
+            </Button>
+          </div>
           <Textarea rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} required />
-        </Field>
+          <div className="text-xs text-slate-400">
+            {!channel
+              ? '新建渠道保存并导入 key 后，可从上游拉取模型目录。'
+              : channel.key_count === 0
+                ? '请先在渠道行展开并导入至少一把启用 key。'
+                : '候选映射按当前已保存的模型映射生成；确认后会写入本表单，仍需点击保存。'}
+          </div>
+          {showModelPicker && preview.data && (
+            <ModelPicker
+              title={`${channel?.name ?? ''} 上游模型`}
+              options={preview.data.items.map((item) => ({
+                publicModel: item.public_model,
+                upstreamModel: item.upstream_model,
+              }))}
+              initialModels={splitLines(models)}
+              protocol={preview.data.protocol}
+              truncated={preview.data.truncated}
+              loading={preview.isPending}
+              onCancel={() => {
+                setShowModelPicker(false)
+                preview.reset()
+              }}
+              onApply={(selected, mode) => {
+                const next = applyModelSelection(splitLines(models), selected, mode)
+                setModels(next.join('\n'))
+                setShowModelPicker(false)
+                preview.reset()
+              }}
+            />
+          )}
+          {showModelPicker && preview.isError && !preview.data && (
+            <ErrorText>{(preview.error as Error).message}</ErrorText>
+          )}
+        </div>
         <Field label="模型映射（可选 JSON）" hint='{"请求模型": "上游模型"}，如 {"gpt-4": "gpt-4o-2024"}'>
           <Textarea rows={3} value={mapping} onChange={(e) => setMapping(e.target.value)} placeholder='{}' />
         </Field>
@@ -344,4 +399,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       </form>
     </Dialog>
   )
+}
+
+function splitLines(text: string): string[] {
+  return text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
 }

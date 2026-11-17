@@ -48,7 +48,7 @@ func (r *Router) Route(model string, channels []*store.Channel) []Candidate {
 		group := matched[i:j]
 		r.shuffleWeighted(group)
 		for _, ch := range group {
-			out = append(out, Candidate{Channel: ch, UpstreamModel: mapModel(ch.ModelMapping, model)})
+			out = append(out, Candidate{Channel: ch, UpstreamModel: UpstreamModel(ch.ModelMapping, model)})
 		}
 		i = j
 	}
@@ -83,9 +83,29 @@ func SupportsModel(ch *store.Channel, model string) bool {
 	return false
 }
 
-func mapModel(mapping map[string]string, model string) string {
+// UpstreamModel 将对外模型名映射为渠道上游模型名；空值保持原模型。
+func UpstreamModel(mapping map[string]string, model string) string {
 	if v, ok := mapping[model]; ok && v != "" {
 		return v
 	}
 	return model
+}
+
+// PublicModelCatalog 返回启用渠道的对外模型目录，按名称排序并去重。
+func PublicModelCatalog(channels []*store.Channel) []string {
+	seen := make(map[string]bool)
+	for _, ch := range channels {
+		if ch == nil || !ch.Enabled {
+			continue
+		}
+		for _, model := range ch.Models {
+			seen[model] = true
+		}
+	}
+	models := make([]string, 0, len(seen))
+	for model := range seen {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	return models
 }

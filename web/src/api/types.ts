@@ -158,6 +158,29 @@ export interface TestResult {
   next_probe_at?: string
 }
 
+export interface ModelPreviewItem {
+  public_model: string
+  upstream_model: string
+}
+
+export interface ModelPreview {
+  items: ModelPreviewItem[]
+  protocol: 'anthropic' | 'gemini' | 'openai-compatible'
+  pages: number
+  truncated: boolean
+}
+
+export interface ModelCatalogChannel {
+  channel_id: number
+  channel_name: string
+  upstream_model: string
+}
+
+export interface ModelCatalogItem {
+  model: string
+  channels: ModelCatalogChannel[]
+}
+
 export interface Token {
   id: number
   name: string

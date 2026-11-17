@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, jsonBody } from './client'
-import type { AdminInfo, Channel, ChannelDetail, LogsPage, ModelFallback, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, Channel, ChannelDetail, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -156,6 +156,20 @@ export function useToggleChannel() {
 export function useTestChannel() {
   return useMutation({
     mutationFn: (id: number) => api<TestResult>(`/admin/api/channels/${id}/test`, { method: 'POST' }),
+  })
+}
+
+export function usePreviewChannelModels() {
+  return useMutation({
+    mutationFn: (id: number) => api<ModelPreview>(`/admin/api/channels/${id}/models/preview`, { method: 'POST' }),
+  })
+}
+
+export function useModelCatalog() {
+  return useQuery({
+    queryKey: ['model-catalog'],
+    queryFn: () => api<{ items: ModelCatalogItem[] }>('/admin/api/model-catalog'),
+    staleTime: 30_000,
   })
 }
 

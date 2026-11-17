@@ -994,16 +994,23 @@
 - 目标：渠道表单提供「从上游拉取模型」（协议化列表调用 + 分页），候选多选后经用户确认写入「支持模型」；令牌「允许模型」改为从对外模型目录（启用渠道 `Models` 并集）选择并展示映射关系
 - 动机：支持模型目前纯手填；OpenAI 兼容、Anthropic 与 Gemini 官方 API 形态提供模型列表接口，兼容实现可能不支持；令牌白名单实际匹配对外模型名（= 支持模型），自由文本容易误填映射后的上游名导致 403
 - 验收标准：
-  1. WHEN 渠道表单点击拉取 THEN 按能力调用 `{base}/models` / `{base}/v1/models` / `{base}/v1beta/models`。分页契约：Anthropic 使用 `limit` + `after_id`，读取 `has_more` / `last_id`；Gemini 使用 `pageToken`，读取 `nextPageToken`；OpenAI 兼容端点按 `data[].id` best-effort 读取，只有上游返回明确游标时才继续翻页。总上限 ≤10 页且 ≤500 条，跨页去重；失败展示可诊断错误且不覆盖已填内容；
+  1. WHEN 渠道表单点击拉取 THEN 按能力调用 `{base}/models` / `{base}/v1/models` / `{base}/v1beta/models`。分页契约：Anthropic 使用 `limit` + `after_id`，读取 `has_more` / `last_id`；Gemini 使用 `pageToken`，读取 `nextPageToken`；OpenAI 兼容协议没有统一游标，按 `data[].id` 单页读取，不猜测非标准分页字段。总上限 ≤10 页且 ≤500 条，跨页去重；失败展示可诊断错误且不覆盖已填内容；
   2. WHEN 用户勾选并确认 THEN 按用户选择的合并方式追加或替换到支持模型文本域；不自动保存渠道；可取消；
   3. 候选必须显式区分 `对外名` 与 `上游名`。对每个拉取到的上游名 `U`，先反查所有满足 `model_mapping[P] == U` 的对外别名 `P`：存在别名时每个 `P` 作为可用候选并展示 `P → U`，选择后写入 `Models` 的是 `P`；无别名时才提供直连候选 `U → U` 并写入 `U`。禁止把映射目标 `U` 原样写入 `Models` 导致白名单与映射语义错位；
   4. WHEN 令牌表单编辑允许模型 THEN 候选来自启用渠道 `Models` 并集（对外目录），含映射提示；该目录必须与下游 `GET /v1/models` 复用同一公共查询/归一化逻辑。保留手动输入并标注“须为对外模型名”；
   5. 仅 admin 会话可用；拉取属管理元数据操作，不写 request_logs / 用量；任何响应不回显上游 key 明文；拉取失败不得改变 key 的 active/cooldown/disabled/half-open 状态；
   6. 测试：admin 端点按协议 mock（路径、鉴权头、游标分页、跨页去重、10 页/500 条上限、映射别名多对一）；前端构建并覆盖合并/替换、取消和失败不覆盖；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不自动覆盖或自动保存；不做模型能力/上下文长度探测；不拉取价格信息；不改路由语义（`Models` 仍为对外名）与数据库 schema；不复用 Playground/推理链路（纯管理元数据请求）
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认建卡；依赖 T42 的协议化列表调用抽象（同一套路径与鉴权规则）
+  - 2026-11-17 执行 T42 已完成并提交 `4fc3807`；T43 进入执行，先抽公共模型列表端点与分页解析，再接入 admin 和前端选择器
+  - 2026-11-17 执行 新增 `internal/provider` 模型目录公共层：OpenAI/Anthropic/Gemini 路径与鉴权、Anthropic `after_id`、Gemini `pageToken`、10 页/500 条上限与跨页去重；T42 health 探测同步复用该端点定义
+  - 2026-11-17 执行 admin 新增 `POST /admin/api/channels/:id/models/preview` 与 `GET /admin/api/model-catalog`。预览只读取第一把启用 key、不使用 pool、不写请求日志/用量；按 `model_mapping` 反查并展开多对一对外别名。令牌目录与 `/v1/models` 共用 `router.PublicModelCatalog`
+  - 2026-11-17 执行 前端新增共享 `ModelPicker`，渠道表单支持拉取、搜索、多选、追加/替换、取消与映射提示；令牌允许模型支持从启用的对外目录选择并保留手动输入
+  - 2026-11-17 验证 Go 测试覆盖三协议路径/鉴权、游标分页、去重、500 条截断、错误不泄漏 key、映射多对一、停用渠道排除、无 key 400、预览不改变 key 状态；`npm --prefix web test` 2/2 通过，覆盖追加去重与替换
+  - 2026-11-17 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`go test ./... -count=1` 全包通过、`npm --prefix web run build` 与 `make build` 成功；`web/dist` 已同步
+  - 2026-11-17 交付 T43 验收标准全部满足；管理元数据拉取不进入 relay 调度链路
 
 ### T44: Windows 无控制台启动与系统托盘（P3，用户指令）
 

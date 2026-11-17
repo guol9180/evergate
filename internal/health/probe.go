@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"evergate/internal/pool"
+	"evergate/internal/provider"
 	"evergate/internal/retry"
 	"evergate/internal/store"
 )
@@ -21,8 +22,6 @@ const (
 	ProbeResultSuccess      = "success"
 	ProbeResultFailure      = "failure"
 	ProbeResultInconclusive = "inconclusive"
-
-	defaultAnthropicVersion = "2023-06-01"
 )
 
 var (
@@ -151,49 +150,17 @@ type probeResponse struct {
 	Err        error
 }
 
-type modelListEndpoint struct {
-	Path    string
-	SetAuth func(*http.Request, string)
-}
-
-func modelListEndpointFor(ch *store.Channel) modelListEndpoint {
-	switch {
-	case ch.SupportsAnthropic:
-		return modelListEndpoint{
-			Path: "/v1/models",
-			SetAuth: func(req *http.Request, key string) {
-				req.Header.Set("x-api-key", key)
-				req.Header.Set("anthropic-version", defaultAnthropicVersion)
-			},
-		}
-	case ch.SupportsGemini:
-		return modelListEndpoint{
-			Path: "/v1beta/models",
-			SetAuth: func(req *http.Request, key string) {
-				req.Header.Set("x-goog-api-key", key)
-			},
-		}
-	default:
-		return modelListEndpoint{
-			Path: "/models",
-			SetAuth: func(req *http.Request, key string) {
-				req.Header.Set("Authorization", "Bearer "+key)
-			},
-		}
-	}
-}
-
 func (p *Prober) doModelsProbe(ctx context.Context, ch *store.Channel, plainKey string, timeout time.Duration) probeResponse {
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	endpoint := modelListEndpointFor(ch)
+	endpoint := provider.ModelListEndpointFor(ch)
 	url := strings.TrimSuffix(ch.BaseURL, "/") + endpoint.Path
 	req, reqErr := http.NewRequestWithContext(probeCtx, http.MethodGet, url, nil)
 	if reqErr != nil {
 		return probeResponse{Message: reqErr.Error(), Err: reqErr}
 	}
-	endpoint.SetAuth(req, plainKey)
+	endpoint.Authorize(req, plainKey)
 	req.Header.Set("Accept", "application/json")
 
 	start := p.opt.Now()

@@ -1,9 +1,11 @@
 import { type FormEvent, useState } from 'react'
-import { Check, Copy, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useCreateToken, useDeleteToken, useTokens, useUpdateToken } from '../api/hooks'
+import { Check, Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken } from '../api/hooks'
 import type { Token } from '../api/types'
 import { Badge, Button, Card, Dialog, Empty, ErrorText, Field, Input, PageHeader, Spinner, Switch, Td, Textarea, Th } from '../components/ui'
+import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime } from '../lib/format'
+import { applyModelSelection } from '../lib/modelSelection'
 
 const tokenStatusTone: Record<string, string> = {
   active: 'bg-emerald-100 text-emerald-700',
@@ -109,6 +111,7 @@ export default function Tokens() {
 function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => void }) {
   const create = useCreateToken()
   const update = useUpdateToken()
+  const catalog = useModelCatalog()
   const formID = 'token-form'
   const [name, setName] = useState(token?.name ?? '')
   const [quota, setQuota] = useState(String(token?.quota ?? 0))
@@ -116,6 +119,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   const [modelsText, setModelsText] = useState((token?.allowed_models || []).join('\n'))
   const [ipsText, setIpsText] = useState((token?.allowed_ips || []).join('\n'))
   const [disableFallback, setDisableFallback] = useState(token?.disable_fallback ?? false)
+  const [showModelPicker, setShowModelPicker] = useState(false)
   const [copied, setCopied] = useState(false)
 
   if (create.data) {
@@ -194,9 +198,37 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
           <Switch checked={!disableFallback} onChange={(enabled) => setDisableFallback(!enabled)} label="允许模型降级" />
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="允许模型（每行一个）" hint="留空表示允许全部模型">
+          <div className="space-y-2">
+            <div className="flex items-end justify-between gap-2">
+              <label className="text-sm font-medium text-slate-700">允许模型（每行一个）</label>
+              <Button type="button" size="sm" variant="outline" onClick={() => setShowModelPicker((current) => !current)}>
+                <RefreshCw size={13} /> {showModelPicker ? '收起目录' : '从目录选择'}
+              </Button>
+            </div>
             <Textarea rows={4} value={modelsText} onChange={(e) => setModelsText(e.target.value)} placeholder={'gpt-4o\nglm-4.7'} />
-          </Field>
+            <div className="text-xs text-slate-400">留空表示允许全部模型；手动输入时须为对外模型名。</div>
+            {showModelPicker && (
+              <ModelPicker
+                title="对外模型目录"
+                options={(catalog.data?.items ?? []).map((item) => ({
+                  publicModel: item.model,
+                  upstreamModel: item.channels[0]?.upstream_model ?? item.model,
+                  context: item.channels.length > 0
+                    ? item.channels.map((channel) => `${channel.channel_name}: ${channel.upstream_model}`).join('；')
+                    : undefined,
+                }))}
+                initialModels={splitLines(modelsText)}
+                loading={catalog.isPending}
+                error={catalog.isError ? (catalog.error as Error).message : undefined}
+                onCancel={() => setShowModelPicker(false)}
+                onApply={(selected, mode) => {
+                  const next = applyModelSelection(splitLines(modelsText), selected, mode)
+                  setModelsText(next.join('\n'))
+                  setShowModelPicker(false)
+                }}
+              />
+            )}
+          </div>
           <Field label="允许 IP（每行一个）" hint="支持精确 IP 与 CIDR；留空允许全部 IP">
             <Textarea rows={4} value={ipsText} onChange={(e) => setIpsText(e.target.value)} placeholder={'127.0.0.1\n192.168.0.0/16'} />
           </Field>

@@ -267,17 +267,7 @@ func (r *Relay) HandleModels(c *gin.Context) {
 		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
 		return
 	}
-	seen := make(map[string]bool)
-	for _, ch := range channels {
-		for _, m := range ch.Models {
-			seen[m] = true
-		}
-	}
-	models := make([]string, 0, len(seen))
-	for m := range seen {
-		models = append(models, m)
-	}
-	sortStrings(models)
+	models := router.PublicModelCatalog(channels)
 	data := make([]gin.H, 0, len(models))
 	for _, m := range models {
 		data = append(data, gin.H{"id": m, "object": "model", "created": 0, "owned_by": "evergate"})
@@ -901,14 +891,6 @@ func replaceModel(body []byte, upstreamModel string) ([]byte, error) {
 // writeOpenAIError 输出 OpenAI 格式错误体（对外契约）。
 func writeOpenAIError(c *gin.Context, status int, typ, code, message string) {
 	c.JSON(status, gin.H{"error": gin.H{"message": message, "type": typ, "code": code}})
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j] < s[j-1]; j-- {
-			s[j], s[j-1] = s[j-1], s[j]
-		}
-	}
 }
 
 func firstNonEmpty(s, fallback string) string {
