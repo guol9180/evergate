@@ -1229,11 +1229,15 @@
   5. npm 主包与三个平台子包均为 `0.3.0`，平台子包先行，正式版 `latest` 指向 `0.3.0`
   6. 下载安装器/tar.gz 并按 checksums 校验；记录 Action URL、资产大小、npm dist-tags 与安装/启动证据
 - 边界：本次临时不发布 macOS 安装器；不移动或删除历史 tag；不发布裸二进制；启用 macOS 时不得跳过签名门禁；不夹带业务 API/DB/schema 改动
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户指令发版；版本判定 v0.3.0，新增 CHANGELOG 段与发布任务卡
   - 2026-11-17 阻塞 仓库 Actions Secrets 仅存在 `NPM_TOKEN`，缺少 `MACOS_CERTIFICATE_P12`、`MACOS_CERTIFICATE_PASSWORD`、`MACOS_SIGN_IDENTITY`、`APPLE_ID`、`APPLE_TEAM_ID`、`APPLE_APP_PASSWORD`；按发布门禁不得创建不完整 v0.3.0 tag/Release
   - 2026-11-17 决策 用户确认先发 Windows/Linux 的 v0.3.0；macOS 安装器改为仓库变量显式开关，本次不生成未签名 DMG，发布门禁允许 macOS 资产缺省
+  - 2026-11-17 执行 提交并推送 `7226a87` 修复最终 checksum 文件名；首次 Action 44070158035 的业务构建、npm 与 Release 成功，但 verify-release 因 Bash 数组保留通配符失败。修正后通过 workflow_dispatch 重放现有 `v0.3.0`，未移动 tag
+  - 2026-11-17 交付 最终 Action 44072716844 全绿：release、Windows installer、最终 verify-release 成功，macOS installer 按 `ENABLE_MACOS_INSTALLER` 未启用而跳过；Release `https://github.com/guol9180/evergate/releases/tag/v0.3.0` 为正式版且 GitHub Latest 已指向 v0.3.0
+  - 2026-11-17 验证 公开 Release 仅 3 个资产：Windows setup 9,799,244B、Linux tar.gz 10,815,786B、checksums 205B；下载后按 checksums 校验 SHA256 全部一致，未发布裸二进制或未签名 DMG
+  - 2026-11-17 验证 npm 主包与三个平台子包均为 `0.3.0` 且 `latest=0.3.0`；临时安装主包后 Windows 平台二进制为 GUI subsystem=2、29,279,232B 且包含 Per-Monitor V2 manifest；因本机已有 EverGate 持有单实例锁，未重复执行 healthz 启动
 
 ## 状态枚举
 
@@ -1263,7 +1267,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0；实现完成待环境验收：T48 Windows/Linux 产物与桌面安装体验、T49 Windows 托盘 DPI 与日志入口、T50 安装包级更新链路；发布中：T51 v0.3.0 Windows/Linux | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49 仍待 125%/150%/200% 和混合 DPI 截图矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、DPI awareness=2、日志定位与 Linux 归档均已本地验证 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux；实现完成待环境验收：T48 macOS 安装体验、T49 Windows 托盘 DPI 截图矩阵、T50 macOS 安装包更新 | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49 已实测 Per-Monitor awareness=2，仍待 125%/150%/200% 和混合 DPI 截图矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、v0.3.0 Release 与 npm 四包均已验证 |
 
 ## 验收清单
 
