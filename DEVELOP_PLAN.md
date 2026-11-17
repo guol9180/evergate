@@ -1250,7 +1250,7 @@
   4. 单测或构建产物断言覆盖资源 ID/加载路径；Windows GUI 冒烟确认托盘 Logo、菜单、单实例和退出/重启行为
   5. `go test ./... -count=1`、`go vet ./...`、`make build-all`、Windows manifest 验证与 actionlint 通过
 - 边界：不改托盘菜单结构或文案，不改管理台、业务 API/DB/schema，不引入第三方托盘库
-- 状态：done
+- 状态：blocked
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认 DPI 清晰度已改善，但托盘 Logo 未显示；按用户要求留待后续修复
   - 2026-11-17 执行 开始复现与资源诊断，先验证 GUI PE 中 RT_GROUP_ICON/RT_ICON 是否存在、资源 ID 与 Windows LoadIconW/LoadImageW 加载结果，再修改实现
@@ -1258,6 +1258,7 @@
   - 2026-11-17 执行 新增 `internal/winres.LoadTrayIcon`，按小图标系统尺寸使用 `LoadImageW + LR_SHARED` 加载资源 ID 2；仅 `windowsgui` 初始化注入 loader，console 不链接 GUI 资源；加载失败直接返回错误，不再静默 fallback
   - 2026-11-17 验证 回归测试先以错误 ID 1 稳定失败（error 1813），改为 ID 2 后通过；GUI 产物 `ExtractIconEx` 返回 count=2，提取出的 32×32 Logo 含有效非透明像素；GUI subsystem=2/PMv2 保留，console subsystem=3 且不嵌入 GUI 资源
   - 2026-11-17 验证 本机安装 exe 已备份为 `evergate.exe.pre-logo-20261117T194605` 后替换修复版并重启，v0.3.0 使用迁移后旧数据，`/healthz` 200；`go test -p 1 ./... -count=1`、`go vet ./...`、`make build-all`、Windows GUI/icon 验证与 actionlint 通过
+  - 2026-11-17 验证 当前缩放环境 Logo 已恢复且资源/运行态门禁通过；仍缺少 100%/125%/150%/200% 与混合 DPI 多显示器截图矩阵，状态保持 blocked
 
 ### T53: 发布 v0.3.1（P3，用户指令）
 
@@ -1271,9 +1272,13 @@
   5. npm 主包与三个平台子包均为 `0.3.1`，正式版 `latest` 指向 `0.3.1`
   6. 记录 Action URL、资产大小/哈希、GitHub Latest 与 npm dist-tags 证据
 - 边界：不夹带新功能；不移动历史 tag；不发布裸二进制；不跳过启用状态下的 macOS 签名门禁
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户指令发版；托盘 Logo 单缺陷修复判定为 v0.3.1
+  - 2026-11-17 验证 发布前 Go 全量测试、vet、前端测试 4/4、`make build-all`、release-gate 5/5 与 dry-run、actionlint 通过；Windows GUI/icon 门禁返回 icon count=2
+  - 2026-11-17 交付 Action 44078628560 全绿：release、Windows installer、最终 verify-release 成功，macOS installer 因未启用而跳过；Release `https://github.com/guol9180/evergate/releases/tag/v0.3.1` 为正式版，GitHub Latest 已指向 v0.3.1
+  - 2026-11-17 验证 公开资产包含 Windows setup 9,802,589B、Linux tar.gz 10,815,776B、checksums 205B；下载后 SHA256 全部一致；npm 四包 `latest` 均为 `0.3.1`
+  - 2026-11-17 验证 按 init-project-docs 核查 README/AGENTS：README 更新 Go 1.25+、固定安装路径措辞并移除重复验证命令，改为引用 AGENTS；AGENTS 五条标准规范完整，目录表补 `internal/winres`，Release 规则与 macOS 条件开关保持一致
 
 ## 状态枚举
 
@@ -1303,7 +1308,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T52 Windows 托盘 Logo 修复；发布中：T53 v0.3.1；实现完成待环境验收：T48 macOS 安装体验、T49 Windows 托盘 DPI 截图矩阵、T50 macOS 安装包更新 | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49 已实测 Per-Monitor awareness=2，仍待 125%/150%/200% 和混合 DPI 截图矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、v0.3.0 Release、npm 四包与托盘 Logo 均已验证 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux；实现完成待环境验收：T48 macOS 安装体验、T49 Windows 托盘 DPI 截图矩阵、T50 macOS 安装包更新、T52 托盘 Logo 多 DPI 截图矩阵 | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49/T52 已修复当前环境问题与 Per-Monitor awareness，仍待完整缩放矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、v0.3.0/v0.3.1 Release、npm 四包与托盘 Logo 资源均已验证 |
 
 ## 验收清单
 

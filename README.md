@@ -6,10 +6,10 @@
 
 [![Release](https://img.shields.io/github/v/release/guol9180/evergate?include_prereleases&style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white&style=flat-square)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white&style=flat-square)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
 
-**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供 Windows x64 安装器（GUI + 系统托盘）与 Linux x64 `tar.gz`。macOS Apple Silicon 安装器仅在 Developer ID 签名与公证凭据启用后发布；当前可使用 npm 安装渠道。公开 Release 不再提供裸二进制。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
+**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供 Windows x64 安装器（GUI + 系统托盘）与 Linux x64 `tar.gz`。macOS Apple Silicon 安装器仅在 Developer ID 签名与公证凭据启用后发布；当前可使用 npm 安装渠道运行 CLI。公开 Release 不再提供裸二进制。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
 标准安装产物统一命名为 `evergate_<version>_<os>_<arch>[_setup].<ext>`；请同时核对同版本 `checksums.txt`。Windows 安装器当前未接入代码签名证书，首次运行可能触发 SmartScreen；macOS 正式安装器必须通过 Developer ID 签名与 notarization。
 
@@ -21,7 +21,7 @@
 - **轻量交付**：单二进制 + SQLite，无需 Docker / Redis / 外部数据库
 - **可运维**：指标观测与一键更新
 
-能力边界、协议矩阵与验收细节见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md) 与 [AGENTS.md](./AGENTS.md)；配置与运维详见 [docs/运维配置.md](./docs/运维配置.md)。
+能力边界、协议矩阵与验收细节见 [DEVELOP_PLAN.md](./DEVELOP_PLAN.md)；开发规范见 [AGENTS.md](./AGENTS.md)；配置与运维详见 [docs/运维配置.md](./docs/运维配置.md)。
 
 ## 快速开始
 
@@ -52,7 +52,7 @@ npm 安装会自动选择本平台子包，实际运行仍是原生单二进制�
 
 Windows 安装版启动后常驻系统托盘，菜单提供打开管理台、打开日志目录、重启和退出。macOS 签名安装版发布后作为菜单栏应用运行且不显示 Dock 图标。关闭浏览器不会停止服务。运行日志位于数据目录下的 `logs/evergate.log`，并按大小保留滚动备份。
 
-存活检查 `GET /healthz`。默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改。路径发现顺序、默认目录和安装器存储选项见 [docs/运维配置.md](./docs/运维配置.md#配置与数据路径)。
+存活检查 `GET /healthz`。默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改。路径发现顺序、固定安装目录与数据位置见 [docs/运维配置.md](./docs/运维配置.md#配置与数据路径)。
 
 ## 安全模型
 
@@ -69,17 +69,11 @@ Windows 安装版启动后常驻系统托盘，菜单提供打开管理台、打
 3. SQLite（WAL）：业务数据与运行时设置的唯一事实源
 4. React 管理台构建产物 go:embed 进同一二进制
 
-技术栈：Go 1.24+ / Gin / GORM / 纯 Go SQLite；React 19 / TypeScript / Vite / TanStack Query / Tailwind 4。
+技术栈：Go 1.25+ / Gin / GORM / 纯 Go SQLite；React 19 / TypeScript / Vite / TanStack Query / Tailwind 4。
 
 ## 参与开发
 
-```bash
-go test ./...                # 后端全量测试
-npm --prefix web run build   # 前端构建（改前端后执行并提交 dist）
-make build                   # 提交前完整构建
-```
-
-提交前验证流程与代码规范见 [AGENTS.md](./AGENTS.md)；当前阶段与后续任务见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)；需求与协议调研见 [docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)、[docs/协议生态调研-ChatCompletions与Responses.md](./docs/协议生态调研-ChatCompletions与Responses.md)。
+提交前验证流程与代码规范见 [AGENTS.md · 流程要求](./AGENTS.md#流程要求分支--提交--测试--验证)；当前阶段与后续任务见 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑)；需求与协议调研见 [docs/AI网关项目-开发任务书.md](./docs/AI网关项目-开发任务书.md)、[docs/协议生态调研-ChatCompletions与Responses.md](./docs/协议生态调研-ChatCompletions与Responses.md)。
 
 ## License
 
