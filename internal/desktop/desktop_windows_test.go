@@ -3,7 +3,12 @@
 package desktop
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -50,5 +55,46 @@ func TestTrayCommandsInvokeActions(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 	if opens.Load() != 1 || logs.Load() != 1 || restarts.Load() != 1 || exits.Load() != 1 {
 		t.Fatalf("actions opens=%d logs=%d restarts=%d exits=%d", opens.Load(), logs.Load(), restarts.Load(), exits.Load())
+	}
+}
+
+func TestRevealPathSelectsExistingLog(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "evergate.log")
+	if err := os.WriteFile(logPath, []byte("log"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous := startDetachedCommand
+	var gotName string
+	var gotArgs []string
+	startDetachedCommand = func(name string, args ...string) error {
+		gotName = name
+		gotArgs = append([]string(nil), args...)
+		return nil
+	}
+	t.Cleanup(func() { startDetachedCommand = previous })
+
+	if err := RevealPath(logPath); err != nil {
+		t.Fatal(err)
+	}
+	if gotName != "explorer.exe" || !reflect.DeepEqual(gotArgs, []string{"/select," + logPath}) {
+		t.Fatalf("command = %q %#v", gotName, gotArgs)
+	}
+}
+
+func TestRevealPathRejectsMissingFileAndReportsCommandFailure(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing.log")
+	if err := RevealPath(missing); err == nil || !strings.Contains(err.Error(), "unavailable") {
+		t.Fatalf("missing file error = %v", err)
+	}
+
+	logPath := filepath.Join(t.TempDir(), "evergate.log")
+	if err := os.WriteFile(logPath, []byte("log"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous := startDetachedCommand
+	startDetachedCommand = func(string, ...string) error { return errors.New("explorer failed") }
+	t.Cleanup(func() { startDetachedCommand = previous })
+	if err := RevealPath(logPath); err == nil || !strings.Contains(err.Error(), "explorer failed") {
+		t.Fatalf("command error = %v", err)
 	}
 }

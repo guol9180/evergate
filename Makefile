@@ -19,7 +19,8 @@ build-web:
 icon:
 	go run github.com/akavel/rsrc@v0.10.2 \
 		-ico web/public/favicon.ico \
-		-o cmd/evergate/rsrc_windows_amd64.syso
+		-manifest internal/winres/gui.manifest \
+		-o internal/winres/resources_windows_amd64.syso
 
 # 三平台交叉编译（任务书 4.9）；target 级 export 保证 Windows make 兼容
 build-all: build-web

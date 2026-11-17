@@ -75,6 +75,7 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.GET("/admin/api/system/update", a.sessionMiddleware(), a.systemUpdate)
 	r.POST("/admin/api/system/update/apply", a.sessionMiddleware(), a.applySystemUpdate)
 	r.GET("/admin/api/system/update/progress", a.sessionMiddleware(), a.systemUpdateProgress)
+	r.POST("/admin/api/system/update/cancel", a.sessionMiddleware(), a.cancelSystemUpdate)
 	r.GET("/admin/api/system/settings", a.sessionMiddleware(), a.getSystemSettings)
 	r.PUT("/admin/api/system/settings", a.sessionMiddleware(), a.updateSystemSettings)
 	r.GET("/admin/api/model-fallbacks", a.sessionMiddleware(), a.listModelFallbacks)
@@ -228,6 +229,18 @@ func (a *API) systemUpdateProgress(c *gin.Context) {
 		"job":             a.opt.SelfUpdate.Snapshot(),
 		"current_version": a.opt.SelfUpdate.CurrentVersion(),
 	})
+}
+
+func (a *API) cancelSystemUpdate(c *gin.Context) {
+	if a.opt.SelfUpdate == nil {
+		fail(c, http.StatusServiceUnavailable, "自动更新未配置")
+		return
+	}
+	if err := a.opt.SelfUpdate.Cancel(); err != nil {
+		fail(c, http.StatusConflict, err.Error())
+		return
+	}
+	ok(c, gin.H{"cancelled": true})
 }
 
 func (a *API) getSystemSettings(c *gin.Context) {

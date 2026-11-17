@@ -17,7 +17,7 @@ const target = PACKAGES[key]
 if (!target) {
   console.error(`evergate: unsupported platform ${key}`)
   console.error('Supported: win32-x64, linux-x64, darwin-arm64')
-  console.error('Download a standalone binary: https://github.com/guol9180/evergate/releases')
+  console.error('Download a desktop installer or Linux archive: https://github.com/guol9180/evergate/releases')
   process.exit(1)
 }
 

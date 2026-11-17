@@ -58,14 +58,15 @@ jobs:
         run: |
           VERSION="${RELEASE_TAG}"
           LDFLAGS="-s -w -X main.version=${VERSION}"
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags windowsgui -ldflags "$LDFLAGS -H windowsgui" -o release/evergate-windows-amd64.exe ./cmd/evergate
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o release/evergate-windows-amd64-console.exe ./cmd/evergate
-          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o release/evergate-linux-amd64   ./cmd/evergate
-          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o release/evergate-darwin-arm64  ./cmd/evergate
-          sha256sum release/* > release/checksums.txt
+          mkdir -p build-bin release
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags windowsgui -ldflags "$LDFLAGS -H windowsgui" -o build-bin/evergate-windows-amd64.exe ./cmd/evergate
+          CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o build-bin/evergate-linux-amd64   ./cmd/evergate
+          CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o build-bin/evergate-darwin-arm64  ./cmd/evergate
+          bash scripts/package-linux-release.sh "$VERSION" build-bin/evergate-linux-amd64 release
+          (cd release && sha256sum evergate_*_linux_amd64.tar.gz > "evergate_${VERSION#v}_checksums.txt")
 
       - name: Stage npm packages
-        run: node scripts/stage-npm.mjs "${RELEASE_TAG#v}" "$PWD/release" "$PWD/dist-npm"
+        run: node scripts/stage-npm.mjs "${RELEASE_TAG#v}" "$PWD/build-bin" "$PWD/dist-npm"
 
       - name: Validate staged npm packages
         run: |
@@ -146,7 +147,7 @@ jobs:
           body: ${{ steps.gate.outputs.body }}
           generate_release_notes: false
           prerelease: ${{ steps.gate.outputs.prerelease == 'true' }}
-          make_latest: ${{ steps.gate.outputs.prerelease != 'true' }}
+          make_latest: false
 
   windows-installer:
     needs: release
@@ -161,7 +162,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: |
           git fetch --no-tags origin main
-          git checkout origin/main -- installer/evergate.iss
+          git checkout origin/main -- installer/evergate.iss scripts/release-gate.mjs scripts/release-gate.test.mjs
 
       - uses: actions/setup-node@v4
         with:
@@ -179,12 +180,17 @@ jobs:
         run: |
           npm --prefix web ci
           npm --prefix web run build
-          New-Item -ItemType Directory -Force release | Out-Null
+          New-Item -ItemType Directory -Force build | Out-Null
           $ldflags = "-s -w -X main.version=$env:RELEASE_TAG"
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          go build -tags windowsgui -ldflags "$ldflags -H windowsgui" -o release/evergate-windows-amd64.exe ./cmd/evergate
+          go build -tags windowsgui -ldflags "$ldflags -H windowsgui" -o build/evergate.exe ./cmd/evergate
+          go build -ldflags "$ldflags" -o build/evergate-console.exe ./cmd/evergate
+
+      - name: Verify Windows GUI manifest
+        shell: pwsh
+        run: ./scripts/verify-windows-gui.ps1 -Gui build/evergate.exe -Console build/evergate-console.exe
 
       - name: Build installer
         shell: pwsh
@@ -196,7 +202,7 @@ jobs:
           $chineseIsl = 'C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl'
           $isccArgs = @(
             "/DAppVersion=$version"
-            "/DSourceExe=$env:GITHUB_WORKSPACE\release\evergate-windows-amd64.exe"
+            "/DSourceExe=$env:GITHUB_WORKSPACE\build\evergate.exe"
             "/DOutputDir=$env:GITHUB_WORKSPACE\release-installer"
           )
           if (Test-Path $chineseIsl) { $isccArgs += '/DUseChineseLanguage' }
@@ -204,15 +210,136 @@ jobs:
           & $iscc @isccArgs
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
 
-      - name: Attach installer and refresh checksums
+      - name: Smoke-test installer
+        shell: pwsh
+        run: ./scripts/smoke-installer.ps1 -SourceBinary (Resolve-Path build/evergate.exe).Path
+
+      - name: Attach Windows installer
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = $env:RELEASE_TAG.TrimStart('v')
-          $installer = "release-installer/evergate-setup-$version.exe"
+          $installer = "release-installer/evergate_${version}_windows_amd64_setup.exe"
           if (-not (Test-Path $installer)) { throw "installer asset missing: $installer" }
-          gh release download $env:RELEASE_TAG --pattern checksums.txt --dir release --clobber
-          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
-          Add-Content release/checksums.txt "$hash  evergate-setup-$version.exe"
-          gh release upload $env:RELEASE_TAG $installer release/checksums.txt --clobber
+          gh release upload $env:RELEASE_TAG $installer --clobber
+
+  macos-installer:
+    needs: release
+    runs-on: macos-14
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      REQUIRE_MACOS_SIGNING: "true"
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Refresh release tooling for dispatched rebuild
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git fetch --no-tags origin main
+          git checkout origin/main -- scripts/build-macos-app.sh scripts/build-macos-installer.sh installer/macos
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check signing credentials
+        run: |
+          for name in MACOS_SIGN_IDENTITY APPLE_ID APPLE_TEAM_ID APPLE_APP_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::macOS release requires secret $name"
+              exit 1
+            fi
+          done
+
+      - name: Import Developer ID certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE_P12" ] || [ -z "$MACOS_CERTIFICATE_PASSWORD" ]; then
+            echo "::error::macOS release requires MACOS_CERTIFICATE_P12 and MACOS_CERTIFICATE_PASSWORD"
+            exit 1
+          fi
+          keychain="$RUNNER_TEMP/evergate-signing.keychain-db"
+          cert="$RUNNER_TEMP/evergate-signing.p12"
+          echo "$MACOS_CERTIFICATE_P12" | base64 -D > "$cert"
+          security create-keychain -p "$RUNNER_TEMP" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$RUNNER_TEMP" "$keychain"
+          security import "$cert" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP" "$keychain"
+          security list-keychains -d user -s "$keychain" login.keychain-db
+
+      - name: Build macOS app and installer
+        env:
+          CGO_ENABLED: "1"
+          GOOS: darwin
+          GOARCH: arm64
+          CC: clang
+          CGO_CFLAGS: -arch arm64
+          CGO_LDFLAGS: -arch arm64
+          MACOS_SWIFT_TARGET: arm64-apple-macos11
+        run: |
+          npm --prefix web ci
+          npm --prefix web run build
+          mkdir -p build-bin release-macos
+          go build -ldflags "-s -w -X main.version=$RELEASE_TAG" -o build-bin/evergate-darwin-arm64 ./cmd/evergate
+          bash scripts/build-macos-installer.sh "$RELEASE_TAG" build-bin/evergate-darwin-arm64 release-macos
+
+      - name: Attach macOS installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          installer="release-macos/evergate_${version}_macos_arm64_setup.dmg"
+          test -f "$installer"
+          gh release upload "$RELEASE_TAG" "$installer" --clobber
+
+  verify-release:
+    needs: [release, windows-installer, macos-installer]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - name: Fetch main for release gate
+        run: git fetch --no-tags origin main
+
+      - name: Verify public assets and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          mkdir -p verify
+          gh release download "$RELEASE_TAG" --dir verify
+          find verify -maxdepth 1 -type f -printf '%f\n' | sort > assets.txt
+          node scripts/release-gate.mjs \
+            --tag "$RELEASE_TAG" \
+            --changelog CHANGELOG.md \
+            --main-ref origin/main \
+            --assets-file assets.txt
+          (cd verify && sha256sum evergate_*_windows_amd64_setup.exe evergate_*_macos_arm64_setup.dmg evergate_*_linux_amd64.tar.gz > "evergate_${version}_checksums.txt")
+          gh release upload "$RELEASE_TAG" "verify/evergate_${version}_checksums.txt" --clobber
+          (cd verify && sha256sum -c "evergate_${version}_checksums.txt")
+          if [[ "$version" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --prerelease
+          else
+            gh release edit "$RELEASE_TAG" --latest
+          fi

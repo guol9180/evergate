@@ -5,5 +5,9 @@
 *.yml text eol=lf
 *.js text eol=lf
 *.mjs text eol=lf
+*.sh text eol=lf
+*.iss text eol=lf
+*.ps1 text eol=lf
 Makefile text eol=lf
 *.png binary
+*.syso binary

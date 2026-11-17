@@ -9,7 +9,9 @@ import {
   WRAPPER_PACKAGE,
   extractChangelogSection,
   parseReleaseTag,
+  releaseAssetNames,
   runCli,
+  validatePublicAssets,
   validateStagedPackages,
 } from './release-gate.mjs'
 
@@ -63,6 +65,25 @@ test('staged npm gate requires four matching package versions', () => {
   } finally {
     rmSync(output, { recursive: true, force: true })
   }
+})
+
+test('public release assets use one exact versioned name per platform', () => {
+  const names = releaseAssetNames('0.3.0')
+  assert.deepEqual(Object.values(names), [
+    'evergate_0.3.0_windows_amd64_setup.exe',
+    'evergate_0.3.0_macos_arm64_setup.dmg',
+    'evergate_0.3.0_linux_amd64.tar.gz',
+    'evergate_0.3.0_checksums.txt',
+  ])
+  assert.doesNotThrow(() => validatePublicAssets(Object.values(names), '0.3.0'))
+  assert.throws(
+    () => validatePublicAssets([...Object.values(names).slice(0, 3), 'evergate-windows-amd64.exe'], '0.3.0'),
+    /checksums.*exactly once|unexpected public release asset/,
+  )
+  assert.throws(
+    () => validatePublicAssets([...Object.values(names), names.linux], '0.3.0'),
+    /exactly once/,
+  )
 })
 
 function git(cwd, args) {

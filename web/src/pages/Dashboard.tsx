@@ -44,7 +44,7 @@ export default function Dashboard() {
       </span>
       <div className="min-w-56 flex-1">
         <div className="text-sm font-semibold text-indigo-900">EverGate {update.data.latest_version} 可更新</div>
-        <p className="text-xs text-indigo-700/80">一键下载、校验并替换当前版本，服务自动优雅重启；数据目录保持不变。</p>
+        <p className="text-xs text-indigo-700/80">下载并校验当前平台安装包，优雅退出后进入标准安装流程；数据目录保持不变。</p>
       </div>
       <Button size="sm" onClick={() => setUpdateOpen(true)}>
         <Download size={14} /> 立即更新

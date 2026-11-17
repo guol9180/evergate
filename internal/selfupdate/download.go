@@ -6,170 +6,114 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
-	"crypto/sha512"
-	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"evergate/internal/npmregistry"
-	"evergate/internal/update"
 )
 
 const (
-	npmScope        = "@heguoliang"
 	maxMetadataSize = 1 << 20
-	maxChecksumSize = 1 << 20
-	maxTarballSize  = 256 << 20
+	maxArtifactSize = 512 << 20
 	maxBinarySize   = 256 << 20
 	downloadTimeout = 3 * time.Minute
 )
 
 func (m *Manager) download(ctx context.Context, target, source string) ([]byte, string, error) {
-	switch source {
-	case "npm":
-		return m.downloadNPMChain(ctx, target)
-	case "github":
-		binary, err := m.downloadGitHub(ctx, target)
-		return binary, "github", err
-	default:
-		binary, used, err := m.downloadNPMChain(ctx, target)
-		if err == nil {
-			return binary, used, nil
-		}
-		m.opt.Logger.Warn("npm update channel failed, falling back to GitHub",
-			"error", err, "target", target)
-		binary, ghErr := m.downloadGitHub(ctx, target)
-		if ghErr != nil {
-			return nil, "", fmt.Errorf("%v; github: %w", err, ghErr)
-		}
-		return binary, "github", nil
+	if source != "auto" && source != "github" {
+		return nil, "", fmt.Errorf("标准安装包仅支持 GitHub Release，收到来源 %q", source)
 	}
-}
-
-type npmVersionMeta struct {
-	Dist struct {
-		Tarball   string `json:"tarball"`
-		Integrity string `json:"integrity"`
-	} `json:"dist"`
-}
-
-// downloadNPMChain 按配置顺序尝试 npm registry，成功时返回 "npm:<host>" 作为来源标识。
-func (m *Manager) downloadNPMChain(ctx context.Context, target string) ([]byte, string, error) {
-	failures := make([]string, 0, len(m.opt.Registries))
-	for _, registry := range m.opt.Registries {
-		binary, err := m.downloadNPMFrom(ctx, registry, target)
-		if err == nil {
-			return binary, "npm:" + registryHost(registry), nil
-		}
-		m.opt.Logger.Warn("npm update source failed",
-			slog.String("registry", registry), slog.String("target", target), slog.Any("error", err))
-		failures = append(failures, fmt.Sprintf("%s: %v", registryHost(registry), err))
-		if ctx.Err() != nil {
-			break
-		}
-	}
-	if len(failures) == 0 {
-		return nil, "", errors.New("npm 下载链为空")
-	}
-	return nil, "", fmt.Errorf("npm（%s）", strings.Join(failures, "；"))
-}
-
-func registryHost(raw string) string {
-	return npmregistry.Host(raw)
-}
-
-// downloadNPMFrom 从单个 registry 查询版本元数据并下载、校验平台 tarball。
-// 元数据与 tarball 分别使用独立超时，避免挂掉的镜像占满整个更新预算。
-func (m *Manager) downloadNPMFrom(ctx context.Context, registry, target string) ([]byte, error) {
-	pkg, binPath, err := platformPackage(m.opt.GOOS, m.opt.GOARCH)
+	artifact, err := m.downloadReleaseAsset(ctx, target)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	metaURL := registry + "/" + pkg + "/" + url.PathEscape(target)
-	metaCtx, cancelMeta := context.WithTimeout(ctx, m.opt.MetadataTimeout)
-	body, err := httpGet(metaCtx, m.opt.Client, metaURL, maxMetadataSize)
-	cancelMeta()
-	if err != nil {
-		return nil, fmt.Errorf("查询 npm 包 %s@%s 失败: %w", pkg, target, err)
-	}
-	var meta npmVersionMeta
-	if err := json.Unmarshal(body, &meta); err != nil {
-		return nil, fmt.Errorf("解析 npm 元数据失败: %w", err)
-	}
-	if meta.Dist.Tarball == "" || meta.Dist.Integrity == "" {
-		return nil, errors.New("npm 元数据缺少 tarball 或 integrity")
-	}
-	parsed, err := url.Parse(meta.Dist.Tarball)
-	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") {
-		return nil, fmt.Errorf("npm tarball 地址不合法: %q", meta.Dist.Tarball)
-	}
-	tarCtx, cancelTar := context.WithTimeout(ctx, m.opt.TarballTimeout)
-	tarball, err := httpGet(tarCtx, m.opt.Client, meta.Dist.Tarball, maxTarballSize)
-	cancelTar()
-	if err != nil {
-		return nil, fmt.Errorf("下载 npm tarball 失败: %w", err)
-	}
-	if err := verifyNPMIntegrity(tarball, meta.Dist.Integrity); err != nil {
-		return nil, err
-	}
-	binary, err := extractBinary(tarball, binPath)
-	if err != nil {
-		return nil, err
-	}
-	return binary, nil
+	return artifact, "github", nil
 }
 
-func (m *Manager) downloadGitHub(ctx context.Context, target string) ([]byte, error) {
+// downloadReleaseAsset 精确匹配当前版本、平台和 checksums 资产；任何缺失或重名都拒绝。
+func (m *Manager) downloadReleaseAsset(ctx context.Context, target string) ([]byte, error) {
 	if m.opt.Latest == nil {
-		return nil, errors.New("GitHub 回退通道未配置")
+		return nil, errors.New("Release 更新通道未配置")
 	}
 	status, err := m.opt.Latest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("查询 GitHub Release 失败: %w", err)
 	}
 	if status.Development {
-		return nil, errors.New("开发版本无法使用 GitHub 回退通道")
+		return nil, errors.New("开发版本无法使用 Release 更新通道")
 	}
-	if update.CompareVersions(status.LatestVersion, target) != 0 {
-		return nil, fmt.Errorf("GitHub 回退仅支持最新版本 %s，目标版本为 %s", status.LatestVersion, target)
+	if got := strings.TrimPrefix(status.LatestVersion, "v"); got != target {
+		return nil, fmt.Errorf("Release 版本 %q 与目标版本 %q 不一致", status.LatestVersion, target)
 	}
-	assetName, err := githubBinaryName(m.opt.GOOS, m.opt.GOARCH)
+	artifactName, checksumName, err := releaseAssetNames(m.opt.GOOS, m.opt.GOARCH, target)
 	if err != nil {
 		return nil, err
 	}
-	var binaryURL, checksumURL string
+	var artifactURL, checksumURL string
+	seen := map[string]int{}
 	for _, asset := range status.Assets {
+		seen[asset.Name]++
 		switch asset.Name {
-		case assetName:
-			binaryURL = asset.URL
-		case "checksums.txt":
+		case artifactName:
+			artifactURL = asset.URL
+		case checksumName:
 			checksumURL = asset.URL
 		}
 	}
-	if binaryURL == "" || checksumURL == "" {
-		return nil, fmt.Errorf("Release 缺少 %s 或 checksums.txt", assetName)
+	for _, name := range []string{artifactName, checksumName} {
+		if seen[name] != 1 {
+			return nil, fmt.Errorf("Release 资产 %s 必须精确出现一次（实际 %d 次）", name, seen[name])
+		}
 	}
-	checksums, err := httpGet(ctx, m.opt.Client, checksumURL, maxChecksumSize)
+	if err := validateAssetURL(artifactURL); err != nil {
+		return nil, fmt.Errorf("%s 地址不合法: %w", artifactName, err)
+	}
+	if err := validateAssetURL(checksumURL); err != nil {
+		return nil, fmt.Errorf("%s 地址不合法: %w", checksumName, err)
+	}
+	checksums, err := httpGet(ctx, m.opt.Client, checksumURL, maxMetadataSize)
 	if err != nil {
-		return nil, fmt.Errorf("下载 checksums.txt 失败: %w", err)
+		return nil, fmt.Errorf("下载 %s 失败: %w", checksumName, err)
 	}
-	binary, err := httpGet(ctx, m.opt.Client, binaryURL, maxBinarySize)
+	artifact, err := httpGet(ctx, m.opt.Client, artifactURL, maxArtifactSize)
 	if err != nil {
-		return nil, fmt.Errorf("下载 Release 二进制失败: %w", err)
+		return nil, fmt.Errorf("下载 %s 失败: %w", artifactName, err)
 	}
-	if err := verifyChecksum(binary, checksums, assetName); err != nil {
+	if err := verifyChecksum(artifact, checksums, artifactName); err != nil {
 		return nil, err
 	}
-	return binary, nil
+	return artifact, nil
+}
+
+func validateAssetURL(raw string) error {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return fmt.Errorf("unsupported scheme %q", parsed.Scheme)
+	}
+	return nil
+}
+
+func releaseAssetNames(goos, goarch, version string) (artifact, checksums string, err error) {
+	prefix := "evergate_" + strings.TrimPrefix(version, "v")
+	switch goos + "-" + goarch {
+	case "windows-amd64":
+		return prefix + "_windows_amd64_setup.exe", prefix + "_checksums.txt", nil
+	case "darwin-arm64":
+		return prefix + "_macos_arm64_setup.dmg", prefix + "_checksums.txt", nil
+	case "linux-amd64":
+		return prefix + "_linux_amd64.tar.gz", prefix + "_checksums.txt", nil
+	default:
+		return "", "", fmt.Errorf("当前平台 %s/%s 不支持安装包更新", goos, goarch)
+	}
 }
 
 func httpGet(ctx context.Context, client *http.Client, rawURL string, max int64) ([]byte, error) {
@@ -197,57 +141,54 @@ func httpGet(ctx context.Context, client *http.Client, rawURL string, max int64)
 	return body, nil
 }
 
-func verifyNPMIntegrity(tarball []byte, integrity string) error {
-	for _, field := range strings.Fields(integrity) {
-		if !strings.HasPrefix(field, "sha512-") {
-			continue
-		}
-		want := strings.TrimPrefix(field, "sha512-")
-		sum := sha512.Sum512(tarball)
-		got := base64.StdEncoding.EncodeToString(sum[:])
-		if got != want {
-			return errors.New("npm tarball integrity 校验失败")
-		}
-		return nil
-	}
-	return errors.New("npm 元数据未提供 sha512 integrity")
-}
-
-func extractBinary(tarball []byte, expectedPath string) ([]byte, error) {
-	gz, err := gzip.NewReader(bytes.NewReader(tarball))
+func extractLinuxBinary(archive []byte) ([]byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
-		return nil, fmt.Errorf("解压 npm tarball 失败: %w", err)
+		return nil, fmt.Errorf("解压 Linux tar.gz 失败: %w", err)
 	}
 	defer gz.Close()
 	tr := tar.NewReader(gz)
+	found := false
+	var binary []byte
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("读取 npm tarball 失败: %w", err)
+			return nil, fmt.Errorf("读取 Linux tar.gz 失败: %w", err)
 		}
-		if hdr.Typeflag != tar.TypeReg || hdr.Name != expectedPath {
+		clean := path.Clean(hdr.Name)
+		if clean != "evergate" {
 			continue
 		}
-		if hdr.Size > maxBinarySize {
-			return nil, errors.New("npm 包内二进制超过大小上限")
+		if found {
+			return nil, errors.New("Linux tar.gz 包含重复 evergate")
 		}
-		binary, err := io.ReadAll(io.LimitReader(tr, maxBinarySize+1))
+		if hdr.Typeflag != tar.TypeReg {
+			return nil, errors.New("Linux tar.gz 中的 evergate 不是普通文件")
+		}
+		if hdr.Size <= 0 || hdr.Size > maxBinarySize {
+			return nil, errors.New("Linux tar.gz 中的 evergate 大小非法")
+		}
+		found = true
+		binary, err = io.ReadAll(io.LimitReader(tr, maxBinarySize+1))
 		if err != nil {
 			return nil, err
 		}
 		if int64(len(binary)) > maxBinarySize {
-			return nil, errors.New("npm 包内二进制超过大小上限")
+			return nil, errors.New("Linux evergate 超过大小上限")
 		}
-		return binary, nil
 	}
-	return nil, fmt.Errorf("npm 包内未找到 %s", expectedPath)
+	if !found {
+		return nil, errors.New("Linux tar.gz 缺少 evergate")
+	}
+	return binary, nil
 }
 
-func verifyChecksum(binary, checksums []byte, assetName string) error {
+func verifyChecksum(artifact, checksums []byte, assetName string) error {
 	target := filepath.Base(assetName)
+	matches := 0
 	for _, line := range strings.Split(string(checksums), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
@@ -257,39 +198,22 @@ func verifyChecksum(binary, checksums []byte, assetName string) error {
 		if file != target {
 			continue
 		}
+		matches++
 		want := strings.ToLower(fields[0])
-		sum := sha256.Sum256(binary)
+		if len(want) != sha256.Size*2 {
+			return errors.New("checksums 中 SHA256 长度非法")
+		}
+		sum := sha256.Sum256(artifact)
 		got := hex.EncodeToString(sum[:])
 		if got != want {
-			return errors.New("Release 二进制 SHA256 校验失败")
+			return errors.New("Release 安装包 SHA256 校验失败")
 		}
-		return nil
 	}
-	return fmt.Errorf("checksums.txt 中未找到 %s", target)
-}
-
-func platformPackage(goos, goarch string) (pkg, binPath string, err error) {
-	switch goos + "-" + goarch {
-	case "windows-amd64":
-		return npmScope + "/evergate-win32-x64", "package/bin/evergate.exe", nil
-	case "linux-amd64":
-		return npmScope + "/evergate-linux-amd64", "package/bin/evergate", nil
-	case "darwin-arm64":
-		return npmScope + "/evergate-darwin-arm64", "package/bin/evergate", nil
-	default:
-		return "", "", fmt.Errorf("当前平台 %s/%s 不支持自动更新", goos, goarch)
+	if matches == 0 {
+		return fmt.Errorf("checksums 文件中未找到 %s", target)
 	}
-}
-
-func githubBinaryName(goos, goarch string) (string, error) {
-	switch goos + "-" + goarch {
-	case "windows-amd64":
-		return "evergate-windows-amd64.exe", nil
-	case "linux-amd64":
-		return "evergate-linux-amd64", nil
-	case "darwin-arm64":
-		return "evergate-darwin-arm64", nil
-	default:
-		return "", fmt.Errorf("当前平台 %s/%s 不支持自动更新", goos, goarch)
+	if matches != 1 {
+		return fmt.Errorf("checksums 文件中 %s 出现 %d 次", target, matches)
 	}
+	return nil
 }

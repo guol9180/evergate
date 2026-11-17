@@ -166,8 +166,8 @@ func TestCheckerFallsBackToAtomWhenRateLimited(t *testing.T) {
 	if !status.UpdateAvailable || status.LatestVersion != "v0.1.4" || status.ReleaseURL != "https://example/release" {
 		t.Fatalf("unexpected fallback status: %+v", status)
 	}
-	if len(status.Assets) != 1 || status.Assets[0].URL != "https://github.com/guol9180/evergate/releases/download/v0.1.4/evergate-windows-amd64.exe" {
-		t.Fatalf("fallback should derive Windows asset: %+v", status.Assets)
+	if len(status.Assets) != 0 {
+		t.Fatalf("atom fallback must not invent legacy binary assets: %+v", status.Assets)
 	}
 }
 

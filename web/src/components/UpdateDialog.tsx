@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
-import { useApplyUpdate, useUpdateProgress } from '../api/hooks'
+import { useApplyUpdate, useCancelUpdate, useUpdateProgress } from '../api/hooks'
 import type { UpdateJob, UpdateStatus } from '../api/types'
 import { Badge, Button, Dialog, Field, Select } from './ui'
 
 const stageLabel: Record<string, string> = {
   downloading: '下载新版本',
   verifying: '校验完整性',
-  replacing: '替换二进制',
+  installing: '安装平台更新',
   restarting: '重启服务',
   failed: '更新失败',
 }
 
-const busyStages = new Set(['downloading', 'verifying', 'replacing', 'restarting'])
+const busyStages = new Set(['downloading', 'verifying', 'installing', 'restarting'])
 
 function sourceLabel(source?: string) {
   if (!source) return ''
@@ -28,6 +28,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
   const [restartTimedOut, setRestartTimedOut] = useState(false)
   const progress = useUpdateProgress(open)
   const apply = useApplyUpdate()
+  const cancel = useCancelUpdate()
 
   const liveJob = progress.data?.job
   const job = liveJob ?? snapshot
@@ -64,7 +65,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
   }, [open])
 
   const stages = useMemo(
-    () => ['downloading', 'verifying', 'replacing', 'restarting'],
+    () => ['downloading', 'verifying', 'installing', 'restarting'],
     [],
   )
 
@@ -95,6 +96,11 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
             )}
           </span>
           <div className="flex items-center gap-2">
+            {job?.cancelable && (
+              <Button variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
+                {cancel.isPending ? '取消中…' : '取消更新'}
+              </Button>
+            )}
             <Button variant="outline" onClick={close} disabled={busy || restarting}>关闭</Button>
             <Button onClick={begin} disabled={busy || restarting || !status?.latest_version || capability?.available === false || !status?.update_available}>
               <Download size={14} /> 立即更新
@@ -139,11 +145,10 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
         )}
 
         {!started && (
-          <Field label="下载通道" hint="自动模式依次尝试 npmmirror、官方 npm registry，最后回退 GitHub Releases。">
+          <Field label="下载通道" hint="标准安装版本从 GitHub Release 下载当前平台的版本化安装器或 Linux 归档。">
             <Select value={source} onChange={(e) => setSource(e.target.value)}>
-              <option value="auto">自动（npmmirror → 官方 → GitHub）</option>
-              <option value="npm">仅 npm（镜像优先）</option>
-              <option value="github">GitHub Releases</option>
+              <option value="auto">自动选择当前平台安装包</option>
+              <option value="github">GitHub Release 安装包</option>
             </Select>
           </Field>
         )}
@@ -183,7 +188,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
                 <div>
                   {restarting
                     ? '服务正在优雅重启，新版本就绪后页面会自动刷新。'
-                    : job?.message || '下载内容会先做完整性校验，校验失败不会替换当前版本。'}
+                    : job?.message || '安装包会先校验 SHA256 与平台签名，失败不会修改当前安装。'}
                 </div>
                 {job?.backup_path && <div className="break-all text-slate-400">旧版本备份：{job.backup_path}</div>}
               </div>
@@ -203,7 +208,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
 
         {restartTimedOut && restarting && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            重启耗时超过 45 秒。请检查进程是否仍在运行；若新版本启动失败，可使用上方备份路径手动回滚。
+            重启耗时超过 45 秒。请检查安装器是否已打开；Linux 新版本启动失败时可使用上方备份路径手动回滚。
           </div>
         )}
       </div>

@@ -13,7 +13,9 @@ The platform binary is installed automatically through optional dependencies:
 - `@heguoliang/evergate-linux-amd64`
 - `@heguoliang/evergate-darwin-arm64`
 
-After startup, open `http://localhost:8787/` for the admin console. Config and data use platform user directories by default; run `evergate -config <path>` for a portable config. On Windows the npm command detaches the GUI process and returns the terminal immediately; use the `evergate-windows-amd64-console.exe` Release asset for terminal diagnostics.
+After startup, open `http://localhost:8787/` for the admin console. Config and data use platform user directories by default; run `evergate -config <path>` for a portable config.
+
+npm is an independent installation channel. Update it with `npm i -g @heguoliang/evergate@latest`; the standard Windows/macOS installer updater does not replace npm-installed files.
 
 Documentation: https://github.com/guol9180/evergate
 

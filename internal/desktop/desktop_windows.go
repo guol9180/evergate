@@ -5,6 +5,7 @@ package desktop
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"sync"
@@ -119,6 +120,16 @@ type notifyIconData struct {
 }
 
 var trayActions TrayActions
+var trayStopMu sync.Mutex
+var trayStop func()
+
+var startDetachedCommand = func(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
 
 // AcquireSingleInstance 获取当前用户会话内的 EverGate 命名互斥。
 func AcquireSingleInstance() (func(), bool, error) {
@@ -154,16 +165,19 @@ func ShowError(title, text string) {
 		uintptr(unsafe.Pointer(textPtr)), uintptr(unsafe.Pointer(titlePtr)), 0x10)
 }
 
-// OpenPath 使用资源管理器打开文件或目录。
-func OpenPath(path string) error {
+// RevealPath 在资源管理器中打开目录并选中目标文件。
+func RevealPath(path string) error {
 	if path == "" {
 		return errors.New("path is empty")
 	}
-	cmd := exec.Command("explorer.exe", path)
-	if err := cmd.Start(); err != nil {
-		return err
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("log file is unavailable: %w", err)
 	}
-	return cmd.Process.Release()
+	if info.IsDir() {
+		return errors.New("log path is a directory")
+	}
+	return startDetachedCommand("explorer.exe", "/select,"+path)
 }
 
 // StartTray 启动消息循环和系统托盘；仅 GUI 产物生效。
@@ -212,12 +226,31 @@ func StartTray(actions TrayActions) (func(), error) {
 	if err := <-ready; err != nil {
 		return nil, err
 	}
-	return func() {
+	stop := func() {
 		if hwnd != 0 {
 			_, _, _ = procPostMessageW.Call(uintptr(hwnd), wmClose, 0, 0)
 		}
 		<-done
+	}
+	trayStopMu.Lock()
+	trayStop = stop
+	trayStopMu.Unlock()
+	return func() {
+		stop()
+		trayStopMu.Lock()
+		trayStop = nil
+		trayStopMu.Unlock()
 	}, nil
+}
+
+// StopTray 唤醒桌面消息循环，供进程信号或 HTTP 服务错误触发优雅停机。
+func StopTray() {
+	trayStopMu.Lock()
+	stop := trayStop
+	trayStopMu.Unlock()
+	if stop != nil {
+		stop()
+	}
 }
 
 func createTrayWindow() (windows.Handle, error) {
@@ -310,7 +343,7 @@ func showTrayMenu(hwnd windows.Handle) {
 	defer procDestroyMenu.Call(menu)
 
 	appendMenu(menu, menuOpen, "打开管理台")
-	appendMenu(menu, menuLogs, "查看日志")
+	appendMenu(menu, menuLogs, "打开日志目录")
 	appendMenu(menu, menuRestart, "重启")
 	appendMenu(menu, menuExit, "退出")
 

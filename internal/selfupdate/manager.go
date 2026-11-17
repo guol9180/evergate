@@ -1,8 +1,5 @@
-// Package selfupdate 实现管理台一键更新：下载、校验、替换与重启编排。
-//
-// 下载通道优先 npm registry（默认 npmmirror → 官方 registry，平台子包 tarball +
-// dist.integrity），均失败时回退 GitHub Releases + checksums.txt。替换引擎只做
-// 同目录改名交换，不依赖外部工具。
+// Package selfupdate 实现标准发行包更新：Windows/macOS 下载版本化安装器，
+// Linux 下载版本化 tar.gz 后安全提取并原位置换。
 package selfupdate
 
 import (
@@ -19,23 +16,17 @@ import (
 	"sync"
 	"time"
 
-	"evergate/internal/npmregistry"
 	"evergate/internal/update"
 )
 
 const (
 	StageDownloading = "downloading"
 	StageVerifying   = "verifying"
-	StageReplacing   = "replacing"
+	StageInstalling  = "installing"
 	StageRestarting  = "restarting"
 	StageFailed      = "failed"
 
-	registryMirror   = npmregistry.Mirror
-	registryOfficial = npmregistry.Official
-	jobTimeout       = 10 * time.Minute
-
-	defaultMetadataTimeout = 8 * time.Second
-	defaultTarballTimeout  = 90 * time.Second
+	jobTimeout = 10 * time.Minute
 )
 
 var versionPattern = regexp.MustCompile(`^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$`)
@@ -49,18 +40,13 @@ type Options struct {
 	Executable     string // 为空时取 os.Executable()
 	Args           []string
 	WorkDir        string
-	// Registries 是 npm 下载链，按顺序尝试；为空时使用 npmmirror → 官方 registry。
-	// 显式配置（如 EVERGATE_NPM_REGISTRY）时传单元素切片即可只走该源。
-	Registries      []string
-	MetadataTimeout time.Duration // 每个 registry 的元数据请求超时，默认 8s
-	TarballTimeout  time.Duration // 每个 registry 的 tarball 下载超时，默认 90s
-	Latest          func(context.Context) (update.Status, error)
-	Client          *http.Client
-	Logger          *slog.Logger
-	Now             func() time.Time
-	RequestRestart  func()
-	GOOS            string
-	GOARCH          string
+	Latest         func(context.Context) (update.Status, error)
+	Client         *http.Client
+	Logger         *slog.Logger
+	Now            func() time.Time
+	RequestRestart func()
+	GOOS           string
+	GOARCH         string
 }
 
 // Capability 描述当前安装是否允许自更新，用于管理台提前提示。
@@ -83,6 +69,7 @@ type Job struct {
 	Error         string    `json:"error,omitempty"`
 	FailedStage   string    `json:"failed_stage,omitempty"`
 	BackupPath    string    `json:"backup_path,omitempty"`
+	Cancelable    bool      `json:"cancelable"`
 	StartedAt     time.Time `json:"started_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 
@@ -111,6 +98,7 @@ type Manager struct {
 	mu      sync.Mutex
 	job     *Job
 	pending *LaunchSpec
+	cancel  context.CancelFunc
 }
 
 // New 创建 Manager。
@@ -120,19 +108,6 @@ func New(opt Options) *Manager {
 	}
 	if opt.Now == nil {
 		opt.Now = time.Now
-	}
-	if len(opt.Registries) == 0 {
-		opt.Registries = defaultRegistries()
-	}
-	opt.Registries = normalizeRegistries(opt.Registries)
-	if len(opt.Registries) == 0 {
-		opt.Registries = defaultRegistries()
-	}
-	if opt.MetadataTimeout <= 0 {
-		opt.MetadataTimeout = defaultMetadataTimeout
-	}
-	if opt.TarballTimeout <= 0 {
-		opt.TarballTimeout = defaultTarballTimeout
 	}
 	if opt.Client == nil {
 		opt.Client = &http.Client{Timeout: downloadTimeout}
@@ -157,16 +132,6 @@ func New(opt Options) *Manager {
 	return &Manager{opt: opt}
 }
 
-// defaultRegistries 返回默认 npm 下载链：国内镜像优先，官方 registry 兜底。
-func defaultRegistries() []string {
-	return npmregistry.Default()
-}
-
-// normalizeRegistries 去掉空项、末尾斜杠与重复项，保持声明顺序。
-func normalizeRegistries(in []string) []string {
-	return npmregistry.Normalize(in)
-}
-
 // Capability 返回当前安装的可更新能力；不可用时 Reason 给出可操作提示。
 func (m *Manager) Capability() Capability {
 	cap := Capability{
@@ -187,11 +152,7 @@ func (m *Manager) Capability() Capability {
 		cap.Reason = "go run 临时可执行文件不支持自动更新，请使用正式安装的二进制"
 		return cap
 	}
-	if err := dirWritable(filepath.Dir(m.opt.Executable)); err != nil {
-		cap.Reason = "安装目录不可写：" + err.Error()
-		return cap
-	}
-	if _, _, err := platformPackage(m.opt.GOOS, m.opt.GOARCH); err != nil {
+	if err := validateInstallation(m.opt.GOOS, m.opt.Executable); err != nil {
 		cap.Reason = err.Error()
 		return cap
 	}
@@ -200,7 +161,7 @@ func (m *Manager) Capability() Capability {
 }
 
 // Start 创建并异步执行更新任务。version 为空时使用 Latest 返回的最新版本。
-// source 取 npm / github / 空（先 npm 后 github 自动回退）。
+// source 仅接受 github / auto；npm 包由 npm 独立更新。
 func (m *Manager) Start(version, source string) (*Job, error) {
 	if m.opt.RequestRestart == nil {
 		return nil, errors.New("重启编排未配置")
@@ -213,9 +174,9 @@ func (m *Manager) Start(version, source string) (*Job, error) {
 	switch source {
 	case "", "auto":
 		source = "auto"
-	case "npm", "github":
+	case "github":
 	default:
-		return nil, fmt.Errorf("未知更新通道 %q", source)
+		return nil, fmt.Errorf("标准安装包更新不支持通道 %q", source)
 	}
 
 	target, err := m.resolveTarget(version)
@@ -233,15 +194,18 @@ func (m *Manager) Start(version, source string) (*Job, error) {
 		Stage:         StageDownloading,
 		Progress:      5,
 		TargetVersion: target,
-		Message:       "准备下载新版本…",
+		Message:       "准备下载平台安装包…",
+		Cancelable:    true,
 		StartedAt:     m.opt.Now(),
 		UpdatedAt:     m.opt.Now(),
 	}
 	m.job = job
+	ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
+	m.cancel = cancel
 	out := job.clone()
 	m.mu.Unlock()
 
-	go m.run(job.ID, target, source)
+	go m.run(ctx, cancel, job.ID, target, source)
 	return &out, nil
 }
 
@@ -270,22 +234,26 @@ func (m *Manager) resolveTarget(version string) (string, error) {
 	return target, nil
 }
 
-func (m *Manager) run(id, target, source string) {
-	ctx, cancel := context.WithTimeout(context.Background(), jobTimeout)
+func (m *Manager) run(ctx context.Context, cancel context.CancelFunc, id, target, source string) {
 	defer cancel()
+	defer m.clearCancel()
 
-	m.setStage(id, StageDownloading, 15, "正在下载新版本…")
-	binary, usedSource, err := m.download(ctx, target, source)
+	m.setStage(id, StageDownloading, 15, "正在下载平台安装包…")
+	artifact, usedSource, err := m.download(ctx, target, source)
 	if err != nil {
 		m.fail(id, "下载或校验失败："+err.Error())
 		return
 	}
-	m.setStageWithSource(id, StageVerifying, 65, usedSource, "下载完成，正在校验…")
+	m.setStageWithSource(id, StageVerifying, 55, usedSource, "下载完成，正在校验 SHA256 与平台签名…")
+	if err := m.verifyArtifact(ctx, artifact); err != nil {
+		m.fail(id, "平台安装包校验失败："+err.Error())
+		return
+	}
 
-	m.setStageWithSource(id, StageReplacing, 80, usedSource, "正在替换二进制（保留旧版本备份）…")
-	backup, err := replaceExecutable(m.opt.Executable, target, binary)
+	m.setStageWithSource(id, StageInstalling, 75, usedSource, installMessage(m.opt.GOOS))
+	spec, backup, err := m.installArtifact(ctx, target, artifact)
 	if err != nil {
-		m.fail(id, "替换失败："+err.Error())
+		m.fail(id, "准备安装失败："+err.Error())
 		return
 	}
 
@@ -295,16 +263,17 @@ func (m *Manager) run(id, target, source string) {
 		m.job.BackupPath = backup
 		m.job.Stage = StageRestarting
 		m.job.Progress = 95
-		m.job.Message = "新版本已就位，正在优雅重启…"
+		m.job.Message = "正在优雅退出并进入安装流程…"
+		m.job.Cancelable = false
 		m.job.UpdatedAt = m.opt.Now()
-		m.job.launchPath = m.opt.Executable
-		m.job.launchArgs = append([]string(nil), m.opt.Args...)
-		m.job.launchDir = m.opt.WorkDir
+		m.job.launchPath = spec.Path
+		m.job.launchArgs = append([]string(nil), spec.Args...)
+		m.job.launchDir = spec.Dir
 	}
-	m.pending = &LaunchSpec{Path: m.opt.Executable, Args: append([]string(nil), m.opt.Args...), Dir: m.opt.WorkDir}
+	m.pending = &spec
 	m.mu.Unlock()
 
-	m.opt.Logger.Info("self-update replaced binary, restarting",
+	m.opt.Logger.Info("self-update prepared platform installer and restart",
 		slog.String("target", target), slog.String("source", usedSource), slog.String("backup", backup))
 	time.Sleep(600 * time.Millisecond)
 	m.opt.RequestRestart()
@@ -327,6 +296,9 @@ func (m *Manager) setStageWithSource(id, stage string, progress int, source, mes
 		m.job.Source = source
 	}
 	m.job.UpdatedAt = m.opt.Now()
+	if m.job.Stage != StageDownloading && m.job.Stage != StageVerifying {
+		m.job.Cancelable = false
+	}
 }
 
 func (m *Manager) fail(id, message string) {
@@ -339,8 +311,29 @@ func (m *Manager) fail(id, message string) {
 	m.job.Stage = StageFailed
 	m.job.Error = message
 	m.job.Message = "更新已中止，当前版本仍可继续使用"
+	m.job.Cancelable = false
 	m.job.UpdatedAt = m.opt.Now()
 	m.opt.Logger.Warn("self-update failed", slog.String("error", message))
+}
+
+// Cancel 中止尚未进入安装器阶段的更新任务。
+func (m *Manager) Cancel() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.job == nil || (m.job.Stage != StageDownloading && m.job.Stage != StageVerifying) {
+		return errors.New("当前更新阶段不可取消")
+	}
+	if m.cancel == nil {
+		return errors.New("更新任务缺少取消句柄")
+	}
+	m.cancel()
+	return nil
+}
+
+func (m *Manager) clearCancel() {
+	m.mu.Lock()
+	m.cancel = nil
+	m.mu.Unlock()
 }
 
 // Snapshot 返回当前任务副本；无任务时返回 nil。

@@ -9,9 +9,9 @@
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white&style=flat-square)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
 
-**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供 Windows x64 安装版（推荐普通用户，GUI + 系统托盘）、Windows x64 便携/排障版、Linux x64 与 macOS Apple Silicon 单二进制。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
+**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供 Windows x64 安装器（GUI + 系统托盘）、macOS Apple Silicon 安装器（菜单栏应用）与 Linux x64 `tar.gz`。公开 Release 不再提供裸二进制。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
-Windows 安装器当前未接入代码签名证书；首次运行可能触发 SmartScreen 或“未知发布者”提示，请核对 Release 资产与 `checksums.txt` 后再继续。
+标准安装产物统一命名为 `evergate_<version>_<os>_<arch>[_setup].<ext>`；请同时核对同版本 `checksums.txt`。Windows 安装器当前未接入代码签名证书，首次运行可能触发 SmartScreen；macOS 正式安装器必须通过 Developer ID 签名与 notarization。
 
 ## 能力概览
 
@@ -26,10 +26,12 @@ Windows 安装器当前未接入代码签名证书；首次运行可能触发 Sm
 ## 快速开始
 
 ```bash
-# 方式一：Windows 安装版（推荐）
-# 运行 evergate-setup-<version>.exe；安装器可选择配置、数据目录与可选开机自启
+# 方式一：Windows / macOS 安装器（推荐）
+# Windows 运行 evergate_<version>_windows_amd64_setup.exe
+# macOS 打开 evergate_<version>_macos_arm64_setup.dmg 并运行其中安装器
 
-# 方式二：直接下载 Windows console 排障版或 Linux/macOS 单二进制后运行
+# 方式二：Linux 归档
+tar -xzf evergate_<version>_linux_amd64.tar.gz
 ./evergate
 
 # 方式三：npm 全局安装（Windows x64 / Linux x64 / macOS Apple Silicon）
@@ -44,12 +46,12 @@ go run ./cmd/evergate   # 开发态直接运行
 
 npm 安装会自动选择本平台子包，实际运行仍是原生单二进制。国内网络可用 `npm i -g @heguoliang/evergate --registry=https://registry.npmmirror.com`。
 
-1. 默认配置与数据写入平台用户目录；Windows 安装器允许选择统一根目录或分别选择配置/数据目录。便携部署仍可复制 `evergate.yml.example` 到 exe 同目录，或用 `-config <path>` 显式指定
+1. 桌面安装器使用固定程序、配置与数据路径，不提供目录选择；高级用户仍可用 `-config <path>` 或 `EVERGATE_CONFIG` 覆盖配置位置
 2. 启动后访问管理台 `http://localhost:8787/`（初始账号 `admin/admin123`，仅用于本机初始化，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`
 3. 在管理台添加渠道并创建下游令牌
 4. 客户端只需改 base_url 为 `http://localhost:8787/v1` 并使用下游令牌
 
-Windows 安装版启动后常驻系统托盘，提供打开管理台、查看日志、重启和退出；关闭浏览器不会停止服务。运行日志位于数据目录下的 `logs/evergate.log`，并按大小保留滚动备份。
+Windows 安装版启动后常驻系统托盘，菜单提供打开管理台、打开日志目录、重启和退出。macOS 安装版作为菜单栏应用运行且不显示 Dock 图标。关闭浏览器不会停止服务。运行日志位于数据目录下的 `logs/evergate.log`，并按大小保留滚动备份。
 
 存活检查 `GET /healthz`。默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改。路径发现顺序、默认目录和安装器存储选项见 [docs/运维配置.md](./docs/运维配置.md#配置与数据路径)。
 

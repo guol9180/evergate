@@ -15,6 +15,29 @@ export const PLATFORM_PACKAGES = [
 
 export const WRAPPER_PACKAGE = ['evergate', '@heguoliang/evergate']
 
+export function releaseAssetNames(version) {
+  return {
+    windows: `evergate_${version}_windows_amd64_setup.exe`,
+    macOS: `evergate_${version}_macos_arm64_setup.dmg`,
+    linux: `evergate_${version}_linux_amd64.tar.gz`,
+    checksums: `evergate_${version}_checksums.txt`,
+  }
+}
+
+export function validatePublicAssets(names, version) {
+  const expected = Object.values(releaseAssetNames(version))
+  const counts = new Map()
+  for (const name of names) counts.set(name, (counts.get(name) || 0) + 1)
+  for (const name of expected) {
+    if (counts.get(name) !== 1) {
+      throw new Error(`public release asset ${JSON.stringify(name)} must appear exactly once (found ${counts.get(name) || 0})`)
+    }
+  }
+  for (const name of counts.keys()) {
+    if (!expected.includes(name)) throw new Error(`unexpected public release asset ${JSON.stringify(name)}`)
+  }
+}
+
 export function parseReleaseTag(tag) {
   const match = RELEASE_TAG.exec(tag)
   if (!match) {
@@ -120,16 +143,17 @@ function writeGithubOutputs(outputFile, release, body, mainRef) {
 }
 
 export function runCli(argv = process.argv.slice(2), env = process.env, cwd = process.cwd()) {
-  const options = { changelog: 'CHANGELOG.md', mainRef: 'origin/main', stagedDir: '' }
+  const options = { changelog: 'CHANGELOG.md', mainRef: 'origin/main', stagedDir: '', assetsFile: '' }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
-    if (arg === '--tag' || arg === '--changelog' || arg === '--main-ref' || arg === '--staged-dir') {
+    if (arg === '--tag' || arg === '--changelog' || arg === '--main-ref' || arg === '--staged-dir' || arg === '--assets-file') {
       const value = argv[++index]
       if (!value) throw new Error(`${arg} requires a value`)
       if (arg === '--tag') options.tag = value
       if (arg === '--changelog') options.changelog = value
       if (arg === '--main-ref') options.mainRef = value
       if (arg === '--staged-dir') options.stagedDir = value
+      if (arg === '--assets-file') options.assetsFile = value
       continue
     }
     throw new Error(`unknown argument ${JSON.stringify(arg)}`)
@@ -140,6 +164,10 @@ export function runCli(argv = process.argv.slice(2), env = process.env, cwd = pr
   const body = extractChangelogSection(readFileSync(options.changelog, 'utf8'), options.tag)
   assertTagOnMain(options.mainRef, cwd)
   if (options.stagedDir) validateStagedPackages(options.stagedDir, release.version)
+  if (options.assetsFile) {
+    const names = readFileSync(options.assetsFile, 'utf8').split(/\r?\n/).map((name) => name.trim()).filter(Boolean)
+    validatePublicAssets(names, release.version)
+  }
   writeGithubOutputs(env.GITHUB_OUTPUT, release, body, options.mainRef)
   console.log(`release gate passed: ${release.tag} (${release.version}, npm --tag ${release.npmTag})`)
 }

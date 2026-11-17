@@ -33,7 +33,7 @@ export interface SelfUpdateCapability {
 
 export interface UpdateJob {
   id: string
-  stage: 'downloading' | 'verifying' | 'replacing' | 'restarting' | 'failed'
+  stage: 'downloading' | 'verifying' | 'installing' | 'restarting' | 'failed'
   progress: number
   source?: 'npm' | 'github' | string
   target_version: string
@@ -41,6 +41,7 @@ export interface UpdateJob {
   error?: string
   failed_stage?: string
   backup_path?: string
+  cancelable: boolean
   started_at: string
   updated_at: string
 }

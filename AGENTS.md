@@ -29,16 +29,16 @@ internal/health/       # 周期模型列表轻量探测、key cooldown 持久化
 internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
 internal/usage/        # 模型价格快照、请求成本、UTC 日幂等聚合与报表查询
 internal/browser/      # 启动后打开管理台的系统浏览器封装
-internal/desktop/      # Windows GUI 单实例、托盘菜单与可见错误提示
+internal/desktop/      # Windows/macOS 桌面单实例、托盘/菜单栏、错误提示与日志定位
 internal/update/       # 版本检查：npm dist-tags 优先、GitHub Release 元数据/兜底
 internal/metrics/      # 进程内 Prometheus 注册表、文本曝光与 loopback 限制
 internal/telemetry/    # 可选 OTLP/HTTP JSON 链路导出（无 SDK 依赖，默认关闭）
-internal/selfupdate/   # 一键更新：npm/GitHub 下载、integrity 校验、改名替换与重启编排
+internal/selfupdate/   # 安装包级更新：版本化资产、校验、安装器/Linux 置换与重启编排
 internal/npmregistry/  # npm registry 默认链（npmmirror → 官方）与规范化公共定义
 npm/wrapper/           # npm 主包模板（启动垫片，不含二进制）
 npm/platform/          # npm 平台子包模板（版本/os/cpu 由发布脚本注入）
 scripts/               # 构建与发布辅助脚本（如 stage-npm.mjs）
-installer/             # Windows Inno Setup 安装器脚本
+installer/             # Windows Inno Setup 与 macOS 自定义安装器
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）
 web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
 docs/                  # 设计文档与需求（开发任务书等）
@@ -83,8 +83,8 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
 - OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
 - npm 发布：主包 `@heguoliang/evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
-- Windows 产物分 GUI/console 双版本：`evergate-windows-amd64.exe` 使用 `windowsgui` tag 与 `-H windowsgui`，负责托盘和 npm/安装版；`evergate-windows-amd64-console.exe` 保留终端日志排障。GUI 必须保持单实例，重复启动只打开现有管理台；自启动参数不得自动弹浏览器。
-- 一键更新：版本检查与 npm 下载链默认 `npmmirror → registry.npmjs.org`，每个源独立超时，均失败才回退 GitHub；`EVERGATE_NPM_REGISTRY` 只能把链收窄为指定源，不得引入任意下载地址。GitHub 仅用于补充更新说明/资产或兜底，不可达不得阻塞已由 npm 确认的更新。下载必须校验 npm `dist.integrity`（sha512）或 GitHub `checksums.txt`（SHA256）；替换只允许同目录改名交换并保留旧版本备份，失败不得破坏原二进制；重启必须沿用 30s 优雅停机；禁止引入第三方自更新库。
+- 公开 Release 只发布版本化 Windows 安装器、macOS 安装器、Linux tar.gz 与 checksums；不得重新发布 Windows/macOS 裸二进制。Windows GUI 使用 `windowsgui` 与 Per-Monitor V2 manifest，console 内部构建不得嵌入该 manifest。Windows/macOS 必须保持单实例，自启动参数不得自动弹浏览器。
+- 一键更新只接受 GitHub Release 中与目标版本、OS、架构完全匹配的安装资产及同版本 checksums；npm 只用于版本发现和独立安装渠道，不得作为 GitHub 更新回退资产。Windows/macOS 必须退出后运行完整安装器，禁止替换 App/程序内单文件；macOS 必须校验 Developer ID 与 notarization。Linux 只从 tar.gz 安全提取唯一 `evergate`，同目录原子替换并保留备份；容器与 npm 安装拒绝应用内更新。
 - 模型降级只能发生在 TokenAuth 与令牌治理之后、进入上游之前：预算触发必须使用请求开始时的剩余额度快照；候选模型必须通过令牌模型白名单；渠道耗尽触发必须先穷尽该模型的现有渠道/key 重试预算。降级边界必须写入 retry_trace（reason/from/to）并在请求日志保留 original_model 与实际 model，成本按实际命中渠道+模型价格快照计算；首 chunk 后禁止因降级重试。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 

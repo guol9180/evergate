@@ -55,6 +55,12 @@ export function useApplyUpdate() {
   })
 }
 
+export function useCancelUpdate() {
+  return useMutation({
+    mutationFn: () => api<{ cancelled: boolean }>('/admin/api/system/update/cancel', { method: 'POST' }),
+  })
+}
+
 // ---------- 系统设置 ----------
 export function useSystemSettings() {
   return useQuery({

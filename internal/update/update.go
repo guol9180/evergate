@@ -348,10 +348,6 @@ func (c *Checker) fetchAtom(ctx context.Context) (githubRelease, error) {
 		}
 		return githubRelease{
 			TagName: entry.Title, HTMLURL: entry.Link.Href, PublishedAt: entry.Updated,
-			Assets: []Asset{{
-				Name: "evergate-windows-amd64.exe",
-				URL:  fmt.Sprintf("https://github.com/guol9180/evergate/releases/download/%s/evergate-windows-amd64.exe", entry.Title),
-			}},
 		}, nil
 	}
 	return githubRelease{}, errNoEligibleRelease

@@ -197,7 +197,7 @@ func run() error {
 	if updateAPIURL == "" {
 		updateAPIURL = update.DefaultAPIURL
 	}
-	// npm 版本检查与自更新共用下载链：默认 npmmirror → 官方；显式配置时只走该源。
+	// npm 仅用于版本发现；标准安装包更新仍从 GitHub Release 获取并校验平台资产。
 	var npmRegistries []string
 	if customRegistry := os.Getenv("EVERGATE_NPM_REGISTRY"); customRegistry != "" {
 		npmRegistries = []string{customRegistry}
@@ -217,7 +217,6 @@ func run() error {
 	updater := selfupdate.New(selfupdate.Options{
 		CurrentVersion: version,
 		Args:           os.Args[1:],
-		Registries:     npmRegistries,
 		Latest:         updateChecker.Check,
 		Logger:         logger,
 		Now:            time.Now,
@@ -307,11 +306,31 @@ func run() error {
 			openAdmin()
 		}()
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	type runtimeStop struct {
+		reason string
+		err    error
+	}
+	runtimeStopped := make(chan runtimeStop, 1)
+	go func() {
+		select {
+		case err := <-errCh:
+			desktop.StopTray()
+			runtimeStopped <- runtimeStop{reason: "http server error", err: err}
+		case <-ctx.Done():
+			desktop.StopTray()
+			runtimeStopped <- runtimeStop{reason: "shutdown signal"}
+		}
+	}()
+
 	stopTray, err := desktop.StartTray(desktop.TrayActions{
 		OpenAdmin: openAdmin,
 		OpenLogs: func() {
-			if err := desktop.OpenPath(filepath.Dir(activeLogPath)); err != nil {
-				logger.Warn("open log directory failed", slog.Any("error", err))
+			if err := desktop.RevealPath(activeLogPath); err != nil {
+				logger.Warn("reveal active log file failed",
+					slog.Any("error", err), slog.String("path", activeLogPath))
 			}
 		},
 		Restart: func() {
@@ -327,14 +346,12 @@ func run() error {
 	defer stopTray()
 
 	// Windows 下以 Ctrl+C（SIGINT）为主，SIGTERM 兜底；最长 30s 排空（任务书 4.9）。
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	manualRestartRequested := false
 	select {
-	case err := <-errCh:
-		return fmt.Errorf("http server: %w", err)
-	case <-ctx.Done():
+	case stopped := <-runtimeStopped:
+		if stopped.err != nil {
+			return fmt.Errorf("%s: %w", stopped.reason, stopped.err)
+		}
 		logger.Info("shutdown signal received, draining requests (max 30s)")
 	case <-restartCh:
 		logger.Info("self-update restart requested, draining requests (max 30s)")

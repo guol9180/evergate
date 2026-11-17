@@ -1145,7 +1145,7 @@
   2. Windows/macOS 安装流程一致：欢迎/许可 → 检测新装或升级 → 可选登录自启 → 安装进度 → 可选立即启动；不提供程序目录、存储模式、配置目录或数据目录选择
   3. 程序位置固定：Windows `%LOCALAPPDATA%\Programs\EverGate`；macOS `~/Applications/EverGate.app`
   4. 配置与数据固定同一根目录：Windows `%LOCALAPPDATA%\EverGate`；macOS `~/Library/Application Support/EverGate`，内部为 `evergate.yml` 与 `data/evergate.db`
-  5. 已有 Windows 自定义配置/数据路径升级时必须保留原路径；不得自动迁移、覆盖或丢弃已有数据
+  5. 不兼容旧安装器及其自定义配置/数据路径；标准安装器只使用固定路径，安装或升级不得覆盖、删除已有配置与数据库
   6. 高级用户仍可通过 CLI `-config` 或 `EVERGATE_CONFIG` 覆盖，不进入安装器 UI
   7. 首批标准安装器之前的开发版本不作为自动更新兼容目标；允许用户手动安装一次标准版本完成迁移，不为旧更新器永久保留裸二进制资产
 - 验收标准：
@@ -1156,13 +1156,20 @@
   5. 公开 GitHub Release 只提供 Windows/macOS 安装器、Linux tar.gz 与 checksums，不再发布平台裸二进制；npm 四包仍作为独立安装渠道发布，但不作为 GitHub 更新回退资产
   6. checksums 覆盖所有公开资产；发布门禁校验命名、包内版本、安装流程文档和四类公开产物，不再同时推荐旧命名
   7. macOS 安装器和 `.app` 必须完成 Developer ID 签名与 notarization；无签名/公证凭据时如实标记 blocked，不得宣称可直接分发
-  8. 发布前完成 Windows/macOS 安装、升级保留路径、自启动、托盘交互、单实例、Linux tar.gz 解压运行与 Docker 使用验证
-- 边界：本轮不改变业务 API/DB/schema；不回改已发布 v0.2.0 资产；不提供 Windows/macOS 便携版或跨平台二进制；macOS 首版仅支持 arm64，不含 Intel/Universal；不静默迁移现有数据；不开始实现，待用户确认排期
-- 状态：planned
+  8. 发布前完成 Windows/macOS 安装、升级保留数据、自启动、托盘交互、单实例、Linux tar.gz 解压运行与 Docker 使用验证
+- 边界：本轮不改变业务 API/DB/schema；不回改已发布 v0.2.0 资产；不提供 Windows/macOS 便携版或跨平台二进制；macOS 首版仅支持 arm64，不含 Intel/Universal；不静默迁移旧安装器数据
+- 状态：blocked
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认统一公开产物与 Windows/macOS 安装流程；建卡待排期
   - 2026-11-17 决策 程序安装位置、配置位置和数据位置均固定，不在安装器提供路径选择；仅保留升级兼容和 CLI 高级覆盖
   - 2026-11-17 决策 用户确认当前仅自用，不需要兼容既有安装版本的自动更新链路；标准安装器发布后允许手动安装一次迁移，公开 Release 删除裸二进制
+  - 2026-11-17 修正 用户确认忽略本机旧安装版本，按标准方案直接切换固定路径；卡面移除旧自定义路径升级保留要求，仅保留数据不覆盖
+  - 2026-11-17 执行 开始实现标准产物、Windows/macOS 安装流程与 Linux tar.gz
+  - 2026-11-17 执行 公开产物改为版本化 `evergate_<version>_<os>_<arch>[_setup].<ext>`；Release 只产出 Windows setup、macOS setup.dmg、Linux tar.gz 与 checksums；npm 四包继续独立发布，但不再作为 GitHub 裸二进制回退
+  - 2026-11-17 执行 Windows 安装器改为固定程序/配置/数据路径，五段式流程包含安装状态、自启动、进度与完成后启动；macOS 新增菜单栏 App、自定义安装器 App、`.dmg` 打包、Developer ID/notarization 门禁与 LaunchAgent
+  - 2026-11-17 验证 Windows 安装器已在临时隔离路径完成首次安装、升级保留 config/database、自启动默认关闭/按需启用、单实例、启动失败提示、静默卸载保留数据；GUI 子系统=2 且含 Per-Monitor V2 manifest
+  - 2026-11-17 验证 Linux tar.gz 包含 `evergate`、`LICENSE`、`README.md`；Go 单元测试、前端构建、三平台构建、actionlint 与 shell/PowerShell 语法检查通过
+  - 2026-11-17 阻塞 macOS App/安装器尚未在 macOS 主机构建、签名、公证和安装冒烟；仓库缺少 Developer ID 证书与 Apple notarization secrets，无法在本机 Windows 环境完成该验收
 
 ### T49: Windows 托盘 DPI 清晰度与日志入口（P3，用户指令）
 
@@ -1178,10 +1185,14 @@
   7. 单测覆盖 DPI manifest/构建产物断言、日志定位命令参数与错误路径；Windows GUI 冒烟验证菜单和日志入口；`go test ./... -count=1`、`go vet ./...`、`make build`、三平台构建与 actionlint 通过
   8. 截图复核至少覆盖 100% 与 150% 缩放；记录截图尺寸和实际显示器 DPI，避免把截图放大误判为应用模糊
 - 边界：不实现终端/tail 实时日志，不引入第三方终端、托盘或 DPI 库，不改日志格式、轮转策略、业务 API/DB/schema；不顺手实现 T48 的 macOS 托盘
-- 状态：planned
+- 状态：blocked
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认按建议建卡；默认日志入口选择“打开目录并选中当前文件”，实时终端日志不在本卡范围
   - 2026-11-17 诊断 当前 GUI 进程 DPI awareness=0；当前显示器探测为 96 DPI/100%，附图为 351×231 像素并可能被再次放大，后续以实机缩放矩阵和截图尺寸共同判定
+  - 2026-11-17 执行 开始嵌入仅 Windows GUI 生效的 Per-Monitor V2 manifest，并统一日志文件定位语义
+  - 2026-11-17 执行 新增仅 `windows && windowsgui` 导入的图标+manifest 资源包；console 不嵌入 DPI manifest。菜单改为“打开日志目录”，公共 `RevealPath` 在 Windows 使用 `explorer.exe /select,<logPath>`，macOS 使用 `open -R`
+  - 2026-11-17 验证 `GetProcessDpiAwareness=2`（Per-Monitor）；GUI subsystem=2、console subsystem=3；GUI 含 `PerMonitorV2`，console 不含；日志定位参数与文件缺失/Explorer 失败单测通过
+  - 2026-11-17 阻塞 125%/150%/200% 与混合 DPI 截图矩阵需在实际 Windows 显示器切换缩放后复核；当前会话未修改系统缩放或显示器拓扑
 
 ### T50: 安装包级更新链路（P3，用户指令，依赖 T48）
 
@@ -1197,9 +1208,14 @@
   7. 更新弹窗文案从“替换二进制”改为对应平台的安装/安装包流程；来源、进度、签名校验、失败阶段和回滚路径进入管理台日志，不输出 key
   8. 公共 HTTP/mock Release 测试覆盖正式版、RC、缺资产、错误 checksum/签名、用户取消、Windows/macOS/Linux 三平台资产选择；`go test ./... -count=1`、`go vet ./...`、前端测试、构建与 workflow dry-run 通过
 - 边界：不保留旧裸二进制兼容资产；不引入第三方通用 updater/Sparkle；不改变业务 API/DB/schema；不在首 chunk 后重启；macOS 安装器类型沿用 T48 的最终实现
-- 状态：planned
+- 状态：blocked
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认采用标准安装包级更新；建卡依赖 T48，待安装器产物稳定后实施
+  - 2026-11-17 执行 自更新拆除 npm 裸二进制下载；只接受 GitHub Release 中与目标版本/OS/架构精确匹配的安装器或 tar.gz，以及同名版本 checksums，缺失、重名、跨版本、SHA256 失败全部拒绝
+  - 2026-11-17 执行 Windows/macOS 在优雅退出后启动完整安装器；macOS 下载 DMG 并校验 stapler/Developer ID；Linux 安全提取唯一 `evergate` 后原子替换并保留备份；容器和 npm 安装拒绝应用内更新
+  - 2026-11-17 执行 管理台更新阶段改为下载/校验/安装/重启，新增下载与校验阶段取消 API；npm 仅供版本发现与独立安装渠道，不再作为更新回退资产
+  - 2026-11-17 验证 单测覆盖三平台资产名、正式/RC、缺资产、重名、跨版本、checksum、macOS notarization/签名成功与失败、取消、Linux 替换备份；全量 Go 测试、前端测试/构建与发布门禁通过
+  - 2026-11-17 阻塞 依赖 T48 的 macOS 签名安装器真实更新冒烟；Windows 安装包只完成本地安装器冒烟与更新准备逻辑测试，尚未在真实历史版本上端到端执行一次管理台更新
 
 ## 状态枚举
 
@@ -1229,7 +1245,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0；待排期：T48 统一发版产物与桌面安装体验、T49 Windows 托盘 DPI 与日志入口、T50 安装包级更新链路 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流；T47 已完成正式 Release、npm 四包、资产校验与安装冒烟；T48/T49/T50 已完成方案确认，尚未实现 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0；实现完成待环境验收：T48 统一发版产物与桌面安装体验、T49 Windows 托盘 DPI 与日志入口、T50 安装包级更新链路 | 按任务卡验收；T48/T50 阻塞于 macOS Developer ID/notarization 与 macOS 实机安装更新冒烟；T49 阻塞于 125%/150%/200% 和混合 DPI 截图矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、DPI awareness=2、日志定位与 Linux 归档均已本地验证 |
 
 ## 验收清单
 

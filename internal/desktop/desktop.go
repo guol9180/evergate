@@ -1,4 +1,4 @@
-// Package desktop 封装 Windows GUI 单实例、托盘与错误提示；其他平台保持无操作。
+// Package desktop 封装桌面平台单实例、托盘、错误提示与文件定位。
 package desktop
 
 // TrayActions 是托盘菜单触发的应用动作。

@@ -1,4 +1,4 @@
-//go:build !windows
+//go:build !windows && !darwin
 
 package desktop
 
@@ -8,8 +8,10 @@ func AcquireSingleInstance() (func(), bool, error) {
 
 func ShowError(string, string) {}
 
-func OpenPath(string) error { return nil }
+func RevealPath(string) error { return nil }
 
 func StartTray(TrayActions) (func(), error) {
 	return func() {}, nil
 }
+
+func StopTray() {}
