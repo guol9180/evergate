@@ -2,6 +2,17 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.2.0
+
+- Windows 分发升级：新增 Inno Setup 安装器，支持统一或分离的配置/数据目录、静默卸载保留数据、可选开机自启；配置路径统一由显式参数、环境变量、注册表、平台默认和便携目录发现
+- Windows 桌面运行升级：提供无控制台 GUI 与 console 双产物，GUI 支持系统托盘、单实例、打开管理台/日志、重启与退出；日志同时写入数据目录并按大小滚动
+- 渠道健康探测按协议适配 OpenAI 兼容、Anthropic 与 Gemini，不再假设所有上游都支持同一个 `/models` 路径
+- 新增渠道模型目录发现与令牌模型选择器：支持 Anthropic/Gemini 分页、模型映射场景下的对外名称选择，并保持无推理副作用
+- Playground 扩展为 Chat Completions / Responses / Anthropic Messages / Gemini 四协议调试，统一流式提取、停止与命中链路展示
+- 管理台完成全弹性布局与间距系统重构：桌面、平板和窄屏统一卡片内滚动，修复页面级横向溢出、图表空白与操作按钮可访问性
+- 发布流程加固：tag、CHANGELOG、main 历史与 npm 四包执行强一致门禁；RC/Beta 使用 npm `next` 与 GitHub prerelease，正式版才移动 `latest`；开发构建不参与更新比较
+- 真实上游流式测试完成：ZAI 与 DeepSeek 在无代理环境下各完成 50 个正式样本，网关首 token 额外延迟中位数均低于 5ms，均无重试或非 200 响应
+
 ## v0.1.29
 
 - 新增 Gemini 原生入口 `POST /v1beta/models/{model}:generateContent`、`:streamGenerateContent` 与 `:countTokens`；模型从 URL 路径解析，下游支持 `x-goog-api-key` 鉴权，`?key=` query 鉴权会被拒绝

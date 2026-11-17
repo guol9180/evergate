@@ -1112,6 +1112,24 @@
   - 2026-11-17 验证 `node --test scripts/release-gate.test.mjs` 4/4 通过（含精确 CHANGELOG、四包版本、RC 门禁 dry-run、非 main 失败）；`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web test` 4/4、`make build` 全部通过
   - 2026-11-17 验证 正式版门禁 dry-run v0.1.29 通过；用真实三平台二进制 staging `0.1.29`，四个包及主包 optionalDependencies 版本全部一致并通过门禁；通过代理 7897 只读实测 npm `dist-tags.latest` 查询成功
 
+### T47: 发布 v0.2.0（P3，用户指令）
+
+- 目标：将 `v0.1.29` 后的 P3 功能集合按 0.x 语义化版本规则发布为 `v0.2.0`，并验证新的发布门禁、GitHub Release 与 npm 四包分发链路
+- 版本判断：新增功能集合 → MINOR，即 `0.1.29 → 0.2.0`；未声明 `/v1`、admin API、配置与 DB 兼容策略稳定，不满足 1.0 触发条件，无需升 MAJOR
+- 验收标准：
+  1. `CHANGELOG.md` 含精确非空 `## v0.2.0` 段，正文完整覆盖 `v0.1.29` 后用户可见变更；
+  2. tag 提交在 `main` 历史且 `main` 已推送；发布前 `go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web test`、`make build`、`actionlint`、发布门禁全部通过；
+  3. push `v0.2.0` 后 Release workflow 成功，GitHub Release 为正式版、正文取自 CHANGELOG，二进制、安装器与 checksums 资产齐全；
+  4. npm 主包与三个平台子包均为 `0.2.0`，发布顺序为平台子包先行，`latest` 指向 `0.2.0`；
+  5. 下载 GitHub Windows 产物与 checksums 一致；npm 安装冒烟可启动并返回 `/healthz` 200；
+  6. 发版结果、Action/Run URL、资产与 npm dist-tags 证据回写本卡。
+- 边界：不改变业务 API/DB/schema；不夹带新功能；不改历史 tag；不手工修改 tag 派生版本；npm token 仅使用 GitHub Secrets
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认发版；版本判定 v0.2.0，开始整理 CHANGELOG 与发布前验证
+  - 2026-11-17 执行 `CHANGELOG.md` 新增精确 `## v0.2.0` 段，覆盖 Windows 安装器/GUI/托盘、协议化探测、模型发现、四协议 Playground、弹性布局与发布门禁；未夹带业务 API/DB/schema 改动
+  - 2026-11-17 验证 发布前门禁全部通过：`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web test` 4/4、`node --test scripts/release-gate.test.mjs` 4/4、`v0.2.0` release-gate dry-run、`actionlint`、`make build`
+
 ## 状态枚举
 
 
@@ -1140,7 +1158,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道；执行中：T47 发布 v0.2.0 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流 |
 
 ## 验收清单
 
