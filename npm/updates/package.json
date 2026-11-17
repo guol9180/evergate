@@ -1,0 +1,16 @@
+{
+  "name": "@heguoliang/evergate-updates",
+  "version": "0.0.0",
+  "description": "Versioned EverGate installer assets used by the built-in updater",
+  "homepage": "https://github.com/guol9180/evergate",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guol9180/evergate.git"
+  },
+  "license": "MIT",
+  "files": [
+    "artifacts/",
+    "README.md",
+    "LICENSE"
+  ]
+}

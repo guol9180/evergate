@@ -145,9 +145,10 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
         )}
 
         {!started && (
-          <Field label="下载通道" hint="标准安装版本从 GitHub Release 下载当前平台的版本化安装器或 Linux 归档。">
+          <Field label="下载通道" hint="自动模式优先从 npmmirror、官方 npm registry 下载完整更新包，失败后再回退 GitHub Release。">
             <Select value={source} onChange={(e) => setSource(e.target.value)}>
-              <option value="auto">自动选择当前平台安装包</option>
+              <option value="auto">自动（npm 镜像 → 官方 → GitHub）</option>
+              <option value="npm">仅 npm 更新包</option>
               <option value="github">GitHub Release 安装包</option>
             </Select>
           </Field>

@@ -38,7 +38,7 @@ jobs:
           cache: true
 
       - name: Test release gate
-        run: node --test scripts/release-gate.test.mjs
+        run: node --test scripts/release-gate.test.mjs scripts/stage-update-npm.test.mjs
 
       - name: Validate release tag and changelog
         id: gate
@@ -325,6 +325,10 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Fetch main for release gate
         run: git fetch --no-tags origin main
 
@@ -357,6 +361,44 @@ jobs:
           (cd verify && sha256sum "${artifacts[@]}" > "evergate_${version}_checksums.txt")
           gh release upload "$RELEASE_TAG" "verify/evergate_${version}_checksums.txt" --clobber
           (cd verify && sha256sum -c "evergate_${version}_checksums.txt")
+
+      - name: Publish npm update package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN is required for the npm update package"
+            exit 1
+          fi
+          version="${RELEASE_TAG#v}"
+          npm_tag=latest
+          if [[ "$version" == *-* ]]; then
+            npm_tag=next
+          fi
+          node scripts/stage-update-npm.mjs "$version" "$PWD/verify" "$PWD/dist-updates"
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
+          pkg=$(node -p "require('./dist-updates/package.json').name")
+          if npm view "$pkg@$version" version >/dev/null 2>&1; then
+            echo "$pkg@$version already published; skipping"
+          else
+            npm publish ./dist-updates --access public --tag "$npm_tag"
+          fi
+          npm dist-tag add "$pkg@$version" "$npm_tag" >/dev/null
+          deadline=$((SECONDS + 180))
+          while true; do
+            got=$(npm view "$pkg@$version" version 2>/dev/null || true)
+            tagged=$(npm view "$pkg" "dist-tags.$npm_tag" 2>/dev/null || true)
+            if [ "$got" = "$version" ] && [ "$tagged" = "$version" ]; then
+              break
+            fi
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$pkg registry metadata did not settle (version=$got tag=$tagged)"
+              exit 1
+            fi
+            sleep 5
+          done
+
           if [[ "$version" == *-* ]]; then
             gh release edit "$RELEASE_TAG" --prerelease
           else

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"evergate/internal/npmregistry"
 	"evergate/internal/update"
 )
 
@@ -40,6 +41,7 @@ type Options struct {
 	Executable     string // 为空时取 os.Executable()
 	Args           []string
 	WorkDir        string
+	Registries     []string
 	Latest         func(context.Context) (update.Status, error)
 	Client         *http.Client
 	Logger         *slog.Logger
@@ -109,6 +111,10 @@ func New(opt Options) *Manager {
 	if opt.Now == nil {
 		opt.Now = time.Now
 	}
+	if len(opt.Registries) == 0 {
+		opt.Registries = npmregistry.Default()
+	}
+	opt.Registries = npmregistry.Normalize(opt.Registries)
 	if opt.Client == nil {
 		opt.Client = &http.Client{Timeout: downloadTimeout}
 	}
@@ -174,7 +180,7 @@ func (m *Manager) Start(version, source string) (*Job, error) {
 	switch source {
 	case "", "auto":
 		source = "auto"
-	case "github":
+	case "npm", "github":
 	default:
 		return nil, fmt.Errorf("标准安装包更新不支持通道 %q", source)
 	}

@@ -13,6 +13,8 @@ const (
 	Official = "https://registry.npmjs.org"
 	// Package 是 EverGate npm 主包名，版本与 git tag 同源。
 	Package = "@heguoliang/evergate"
+	// UpdatesPackage 包含完整安装资产，仅供内置更新器使用。
+	UpdatesPackage = "@heguoliang/evergate-updates"
 )
 
 // Default 返回默认下载/检查链：镜像优先，官方兜底。

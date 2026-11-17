@@ -217,6 +217,7 @@ func run() error {
 	updater := selfupdate.New(selfupdate.Options{
 		CurrentVersion: version,
 		Args:           os.Args[1:],
+		Registries:     npmRegistries,
 		Latest:         updateChecker.Check,
 		Logger:         logger,
 		Now:            time.Now,

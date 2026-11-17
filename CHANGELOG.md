@@ -2,6 +2,14 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.4.0
+
+- 应用内更新新增 `@heguoliang/evergate-updates` 完整资产包，优先从 npmmirror → 官方 npm registry 下载 Windows 安装器或 Linux 归档，GitHub Release 仅作为备用
+- npm 更新包校验 `dist.integrity`（sha512）与包内 checksums（SHA256）；Windows 仍运行完整 setup，Linux 仍安全提取 tar.gz，不使用裸二进制替换安装形态
+- checksums 与安装资产 GET 对瞬态连接错误、429 与 5xx 执行三次有界重试，404、大小超限和完整性失败不重试
+- 更新弹窗恢复自动/npm/GitHub 三种通道选择，自动模式优先 npm 镜像；程序不写入任何本机代理地址，也不要求用户必须配置代理
+- 本版本继续发布 Windows 安装器与 Linux tar.gz；macOS 安装器仍因缺少 Developer ID 签名/公证凭据而不随本版本发布
+
 ## v0.3.1
 
 - 修复 Windows GUI 托盘 Logo 不显示：图标组资源实际 ID 为 2，改为按系统小图标尺寸使用 `LoadImageW` 加载，并移除静默回退系统空图标

@@ -6,16 +6,22 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"evergate/internal/npmregistry"
 )
 
 const (
@@ -26,14 +32,156 @@ const (
 )
 
 func (m *Manager) download(ctx context.Context, target, source string) ([]byte, string, error) {
-	if source != "auto" && source != "github" {
-		return nil, "", fmt.Errorf("标准安装包仅支持 GitHub Release，收到来源 %q", source)
+	switch source {
+	case "npm":
+		return m.downloadNPMChain(ctx, target)
+	case "github":
+		artifact, err := m.downloadReleaseAsset(ctx, target)
+		return artifact, "github", err
+	case "auto":
+		artifact, usedSource, npmErr := m.downloadNPMChain(ctx, target)
+		if npmErr == nil {
+			return artifact, usedSource, nil
+		}
+		m.opt.Logger.Warn("npm update package failed, falling back to GitHub", "error", npmErr, "target", target)
+		artifact, ghErr := m.downloadReleaseAsset(ctx, target)
+		if ghErr != nil {
+			return nil, "", fmt.Errorf("%v; github: %w", npmErr, ghErr)
+		}
+		return artifact, "github", nil
+	default:
+		return nil, "", fmt.Errorf("未知更新通道 %q", source)
 	}
-	artifact, err := m.downloadReleaseAsset(ctx, target)
+}
+
+type npmVersionMeta struct {
+	Dist struct {
+		Tarball   string `json:"tarball"`
+		Integrity string `json:"integrity"`
+	} `json:"dist"`
+}
+
+func (m *Manager) downloadNPMChain(ctx context.Context, target string) ([]byte, string, error) {
+	var failures []string
+	for _, registry := range m.opt.Registries {
+		artifact, err := m.downloadNPMFrom(ctx, registry, target)
+		if err == nil {
+			return artifact, "npm:" + npmregistry.Host(registry), nil
+		}
+		m.opt.Logger.Warn("npm update source failed",
+			slog.String("registry", registry), slog.String("target", target), slog.Any("error", err))
+		failures = append(failures, fmt.Sprintf("%s: %v", npmregistry.Host(registry), err))
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	if len(failures) == 0 {
+		return nil, "", errors.New("npm 更新源为空")
+	}
+	return nil, "", fmt.Errorf("npm（%s）", strings.Join(failures, "；"))
+}
+
+func (m *Manager) downloadNPMFrom(ctx context.Context, registry, target string) ([]byte, error) {
+	artifactName, checksumName, err := releaseAssetNames(m.opt.GOOS, m.opt.GOARCH, target)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	return artifact, "github", nil
+	metaURL := registry + "/" + npmregistry.UpdatesPackage + "/" + url.PathEscape(target)
+	body, err := httpGet(ctx, m.opt.Client, metaURL, maxMetadataSize)
+	if err != nil {
+		return nil, fmt.Errorf("查询 npm 更新包 %s 失败: %w", target, err)
+	}
+	var meta npmVersionMeta
+	if err := json.Unmarshal(body, &meta); err != nil {
+		return nil, fmt.Errorf("解析 npm 更新包元数据失败: %w", err)
+	}
+	if meta.Dist.Tarball == "" || meta.Dist.Integrity == "" {
+		return nil, errors.New("npm 更新包缺少 tarball 或 integrity")
+	}
+	if err := validateAssetURL(meta.Dist.Tarball); err != nil {
+		return nil, fmt.Errorf("npm tarball 地址不合法: %w", err)
+	}
+	tarball, err := httpGet(ctx, m.opt.Client, meta.Dist.Tarball, maxArtifactSize)
+	if err != nil {
+		return nil, fmt.Errorf("下载 npm 更新包失败: %w", err)
+	}
+	if err := verifyNPMIntegrity(tarball, meta.Dist.Integrity); err != nil {
+		return nil, err
+	}
+	artifact, checksums, err := extractNPMAssets(tarball, artifactName, checksumName)
+	if err != nil {
+		return nil, err
+	}
+	if err := verifyChecksum(artifact, checksums, artifactName); err != nil {
+		return nil, err
+	}
+	return artifact, nil
+}
+
+func verifyNPMIntegrity(tarball []byte, integrity string) error {
+	for _, field := range strings.Fields(integrity) {
+		if !strings.HasPrefix(field, "sha512-") {
+			continue
+		}
+		want := strings.TrimPrefix(field, "sha512-")
+		sum := sha512.Sum512(tarball)
+		got := base64.StdEncoding.EncodeToString(sum[:])
+		if got != want {
+			return errors.New("npm 更新包 integrity 校验失败")
+		}
+		return nil
+	}
+	return errors.New("npm 更新包未提供 sha512 integrity")
+}
+
+func extractNPMAssets(tarball []byte, artifactName, checksumName string) ([]byte, []byte, error) {
+	gz, err := gzip.NewReader(bytes.NewReader(tarball))
+	if err != nil {
+		return nil, nil, fmt.Errorf("解压 npm 更新包失败: %w", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	wanted := map[string]int64{
+		"package/artifacts/" + artifactName: maxArtifactSize,
+		"package/artifacts/" + checksumName: maxMetadataSize,
+	}
+	found := map[string][]byte{}
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("读取 npm 更新包失败: %w", err)
+		}
+		limit, ok := wanted[hdr.Name]
+		if !ok {
+			continue
+		}
+		if hdr.Typeflag != tar.TypeReg {
+			return nil, nil, fmt.Errorf("npm 更新包中的 %s 不是普通文件", hdr.Name)
+		}
+		if _, duplicate := found[hdr.Name]; duplicate {
+			return nil, nil, fmt.Errorf("npm 更新包包含重复 %s", hdr.Name)
+		}
+		if hdr.Size < 0 || hdr.Size > limit {
+			return nil, nil, fmt.Errorf("npm 更新包中的 %s 大小非法", hdr.Name)
+		}
+		data, err := io.ReadAll(io.LimitReader(tr, limit+1))
+		if err != nil {
+			return nil, nil, err
+		}
+		if int64(len(data)) > limit {
+			return nil, nil, fmt.Errorf("npm 更新包中的 %s 超过大小上限", hdr.Name)
+		}
+		found[hdr.Name] = data
+	}
+	artifact := found["package/artifacts/"+artifactName]
+	checksums := found["package/artifacts/"+checksumName]
+	if len(artifact) == 0 || len(checksums) == 0 {
+		return nil, nil, fmt.Errorf("npm 更新包缺少 %s 或 %s", artifactName, checksumName)
+	}
+	return artifact, checksums, nil
 }
 
 // downloadReleaseAsset 精确匹配当前版本、平台和 checksums 资产；任何缺失或重名都拒绝。
@@ -117,28 +265,51 @@ func releaseAssetNames(goos, goarch, version string) (artifact, checksums string
 }
 
 func httpGet(ctx context.Context, client *http.Client, rawURL string, max int64) ([]byte, error) {
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		body, retry, err := httpGetOnce(ctx, client, rawURL, max)
+		if err == nil {
+			return body, nil
+		}
+		lastErr = err
+		if !retry || attempt == 3 || ctx.Err() != nil {
+			return nil, err
+		}
+		timer := time.NewTimer(time.Duration(attempt) * 300 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
+}
+
+func httpGetOnce(ctx context.Context, client *http.Client, rawURL string, max int64) ([]byte, bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	req.Header.Set("User-Agent", "EverGate-SelfUpdate")
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, ctx.Err() == nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("HTTP %s", resp.Status)
+		retry := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+		return nil, retry, fmt.Errorf("HTTP %s", resp.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, max+1))
 	if err != nil {
-		return nil, err
+		return nil, ctx.Err() == nil, err
 	}
 	if int64(len(body)) > max {
-		return nil, fmt.Errorf("响应超过 %d 字节上限", max)
+		return nil, false, fmt.Errorf("响应超过 %d 字节上限", max)
 	}
-	return body, nil
+	return body, false, nil
 }
 
 func extractLinuxBinary(archive []byte) ([]byte, error) {

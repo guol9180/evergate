@@ -1280,6 +1280,55 @@
   - 2026-11-17 验证 公开资产包含 Windows setup 9,802,589B、Linux tar.gz 10,815,776B、checksums 205B；下载后 SHA256 全部一致；npm 四包 `latest` 均为 `0.3.1`
   - 2026-11-17 验证 按 init-project-docs 核查 README/AGENTS：README 更新 Go 1.25+、固定安装路径措辞并移除重复验证命令，改为引用 AGENTS；AGENTS 五条标准规范完整，目录表补 `internal/winres`，Release 规则与 macOS 条件开关保持一致
 
+### T54: 更新下载网络容错（P3，用户反馈）
+
+- 目标：解决 GitHub/Codeload 节点短暂连接失败导致本地更新立即中止的问题
+- 现状：`v0.3.1` checksums 公开 URL 跟随重定向后可下载；当前更新器对 checksum 请求没有瞬态网络重试
+- 验收标准：
+  1. checksums 与安装资产 GET 对连接错误、429 与 5xx 执行有界、可取消的短重试，最终失败仍返回明确阶段与错误
+  2. 404 等确定性客户端错误不重试，SHA256/签名失败不重试或降级
+  3. 不新增专用代理配置，不修改用户代理环境或 relay/健康探测等上游请求行为
+  4. 单测覆盖瞬时失败后成功、持续 5xx、404 不重试与重试预算耗尽；Go 测试、vet、前端测试/构建与 actionlint 通过
+- 边界：不把本机代理或全局 `HTTP_PROXY` 写入程序，不改变 GitHub 资产命名/checksums，不引入第三方 HTTP 库
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户反馈 v0.3.1 本地更新 checksums 连接超时；建立独立网络容错与更新专用代理任务
+  - 2026-11-17 执行 用户确认不希望程序内出现本机代理；撤销专用代理方案，仅保留连接错误/429/5xx 的有界重试，并已通过外部代理下载手动升级本机到官方 v0.3.1
+  - 2026-11-17 验证 `httpGet` 回归测试先以首次 502 立即失败稳定复现，修复后在第三次成功；持续 5xx 恰好尝试 3 次，404 只尝试 1 次；全量 Go 测试、vet 与构建通过
+
+### T55: npm 镜像更新资产包（P3，用户指令）
+
+- 目标：把完整安装资产发布到 npm 镜像，作为应用内更新的主通道，使无法直连 GitHub 的用户无需代理也能更新，GitHub 只作为备用
+- 方案：发布与 tag 同版本的 `@heguoliang/evergate-updates` 包，包内包含本次 Release 全部公开安装资产与 checksums；更新器优先从 npmmirror → 官方 npm 下载该 tarball，校验 `dist.integrity` 与内部 checksums 后提取当前平台资产
+- 验收标准：
+  1. 发布 job 在所有平台资产与 checksums 校验完成后 staging/publish `@heguoliang/evergate-updates`，主/预发布分别使用 `latest`/`next`
+  2. 包内只允许版本化公开资产与 checksums，不包含裸开发文件；包版本必须等于 tag 去掉 `v`
+  3. 更新器 auto 模式先 npm 双源、失败再 GitHub；npm tarball 必须 sha512 integrity + 内部 SHA256 双重校验并精确提取当前平台资产
+  4. Windows 仍执行完整 setup 安装器，Linux 仍安全提取 tar.gz；不以 npm 平台包二进制替代安装器
+  5. 单测覆盖 npm 命中、镜像切换、integrity/checksum 失败、缺资产、GitHub 回退与三平台资产选择；Go 测试、前端测试/构建、actionlint 和 workflow dry-run 通过
+- 边界：不写入或要求本地代理；不改变现有四个安装 npm 包含义；不发布裸二进制到 GitHub；不引入第三方更新库
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认方案 1：完整安装资产走 npm 镜像，GitHub 仅备用；开始实现更新包与自更新下载链
+  - 2026-11-17 执行 新增 `@heguoliang/evergate-updates` 模板与 staging 脚本，发布 job 在完整资产与 checksums 校验后创建第五个 npm 包；更新器恢复 npm/auto/github 通道并优先 npm 双源
+  - 2026-11-17 验证 单测覆盖 npm 命中、镜像切换、integrity/checksum 失败、缺资产、GitHub 回退与三平台资产名；真实下载 v0.3.1 资产 staging 后 `npm pack` 成功，包内含 Windows setup、Linux tar.gz、checksums，体积 20,074,907B
+
+### T56: 发布 v0.4.0（P3，用户指令）
+
+- 目标：发布 npm 镜像完整资产更新链路与网络重试修复为 `v0.4.0`，并验证更新包、GitHub Release、npm 四包与 checksums
+- 版本判断：新增 npm 更新资产包与更新通道能力，按 0.x 语义提升 MINOR：`0.3.1 → 0.4.0`
+- 验收标准：
+  1. `CHANGELOG.md` 含精确非空 `## v0.4.0` 段；tag 提交位于已推送 main 历史
+  2. 发布前 Go/前端测试、vet、三平台构建、npm update staging 测试、release-gate 与 actionlint 通过
+  3. GitHub 资产完成后发布 `@heguoliang/evergate-updates@0.4.0`，包含 Windows setup、Linux tar.gz 与 checksums，`latest=0.4.0`
+  4. 原有 npm 四包均为 `0.4.0` 且 `latest=0.4.0`；GitHub Release 仅含版本化安装资产与 checksums
+  5. npm 更新包下载后可通过 `dist.integrity`、内部 checksums 提取当前平台完整安装资产；GitHub 仅作为备用
+  6. 记录 Action URL、资产哈希、npm 五包 dist-tags 与更新包内容证据
+- 边界：不发布裸二进制；不要求或写入代理；不移动历史 tag；macOS 安装器继续由签名开关控制
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户指令完成方案 1 后发版；版本判定 v0.4.0
+
 ## 状态枚举
 
 

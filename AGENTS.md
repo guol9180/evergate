@@ -83,9 +83,9 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
 - `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
 - OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
-- npm 发布：主包 `@heguoliang/evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
+- npm 发布：主包 `@heguoliang/evergate` 不得包含平台二进制；主包、三个平台子包与 `@heguoliang/evergate-updates` 更新资产包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布，更新资产包在所有公开资产校验完成后发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
 - 公开 Release 只发布版本化安装资产/归档与 checksums，不得重新发布 Windows/macOS 裸二进制；macOS 资产受下方安装器开关约束。Windows GUI 使用 `windowsgui`、Per-Monitor V2 manifest 与 `internal/winres` 图标资源，console 不得嵌入 GUI 资源。Windows/macOS 必须保持单实例，自启动参数不得自动弹浏览器。
-- 一键更新只接受 GitHub Release 中与目标版本、OS、架构完全匹配的安装资产及同版本 checksums；npm 只用于版本发现和独立安装渠道，不得作为 GitHub 更新回退资产。Windows/macOS 必须退出后运行完整安装器，禁止替换 App/程序内单文件；macOS 必须校验 Developer ID 与 notarization。Linux 只从 tar.gz 安全提取唯一 `evergate`，同目录原子替换并保留备份；容器与 npm 安装拒绝应用内更新。
+- 一键更新优先从 npmmirror → 官方 npm registry 获取 `@heguoliang/evergate-updates` 完整资产包，双源失败才回退 GitHub Release。npm tarball 必须校验 sha512 integrity 与包内 SHA256 checksums；HTTP GET 对连接错误、429、5xx 使用有界短重试。Windows/macOS 必须运行完整安装器，禁止替换 App/程序内单文件；macOS 必须校验 Developer ID 与 notarization。Linux 只从 tar.gz 安全提取唯一 `evergate`，同目录原子替换并保留备份；容器与 npm 安装拒绝应用内更新。
 - 模型降级只能发生在 TokenAuth 与令牌治理之后、进入上游之前：预算触发必须使用请求开始时的剩余额度快照；候选模型必须通过令牌模型白名单；渠道耗尽触发必须先穷尽该模型的现有渠道/key 重试预算。降级边界必须写入 retry_trace（reason/from/to）并在请求日志保留 original_model 与实际 model，成本按实际命中渠道+模型价格快照计算；首 chunk 后禁止因降级重试。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
 
