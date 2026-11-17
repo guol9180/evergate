@@ -1131,6 +1131,7 @@
   - 2026-11-17 验证 发布前门禁全部通过：`go test -p 1 ./... -count=1`、`go vet ./...`、`npm --prefix web test` 4/4、`node --test scripts/release-gate.test.mjs` 4/4、`v0.2.0` release-gate dry-run、`actionlint`、`make build`
   - 2026-11-17 发版 Action 44040069449：门禁、三平台构建、npm staging 与四个 npm 包发布均成功；发布后的立即 `npm view` 遇到 registry 元数据传播延迟并返回 404，导致 Workflow 在 Release 创建前失败。已确认需将有界轮询加入 workflow；不移 tag，先验证四包可见后重跑同一 Workflow
   - 2026-11-17 修复 重跑后 release job 成功并创建 v0.2.0 正式 Release；Windows 安装器 job 因 Inno Setup 6.7.1 未附带 `ChineseSimplified.isl` 失败。计划改为缺少语言包时回退 Inno 自带语言，并为 Release Workflow 增加显式 tag 的 workflow_dispatch 重放能力，避免为工具链修复移动历史 tag
+  - 2026-11-17 修复 手动重放默认 checkout tag 源码，导致安装器仍使用旧 `.iss`；改为 dispatch 重放时保留 tag 业务二进制，仅从 `origin/main` 刷新发布工具脚本，继续验证 Inno 语言回退
 
 ## 状态枚举
 
