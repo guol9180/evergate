@@ -19,8 +19,10 @@ import (
 
 	"evergate/internal/admin"
 	"evergate/internal/appdir"
+	"evergate/internal/applog"
 	"evergate/internal/browser"
 	"evergate/internal/config"
+	"evergate/internal/desktop"
 	"evergate/internal/health"
 	"evergate/internal/metrics"
 	"evergate/internal/pool"
@@ -38,16 +40,23 @@ import (
 
 // version 由构建注入（make build 用 -ldflags 覆盖），开发态为 dev。
 var version = "dev"
+var activeLogPath string
 
 func main() {
 	if err := run(); err != nil {
 		slog.Error("evergate exited with error", slog.Any("error", err))
+		message := err.Error()
+		if activeLogPath != "" {
+			message += "\n\n日志：" + activeLogPath
+		}
+		desktop.ShowError("EverGate 启动失败", message)
 		os.Exit(1)
 	}
 }
 
 func run() error {
 	cfgPath := flag.String("config", "", "引导配置文件路径；留空时按平台规则发现")
+	autostart := flag.Bool("autostart", false, "由安装器的开机启动项拉起")
 	flag.Parse()
 	configExplicit := false
 	flag.Visit(func(f *flag.Flag) {
@@ -58,6 +67,50 @@ func run() error {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
+
+	paths, err := appdir.Discover(*cfgPath, configExplicit)
+	if err != nil {
+		return fmt.Errorf("resolve config/data paths: %w", err)
+	}
+	cfg, sqlitePath, err := resolveBootstrapConfig(paths)
+	if err != nil {
+		return err
+	}
+	paths.DataDir = filepath.Dir(sqlitePath)
+	logger, logPath, logCloser, err := applog.Open(paths.DataDir)
+	if err != nil {
+		return fmt.Errorf("open application log: %w", err)
+	}
+	activeLogPath = logPath
+	slog.SetDefault(logger)
+	defer func() { _ = logCloser.Close() }()
+
+	releaseInstance, primary, err := desktop.AcquireSingleInstance()
+	if err != nil {
+		return fmt.Errorf("acquire single instance: %w", err)
+	}
+	if !primary {
+		logger.Info("another EverGate instance is running", slog.Bool("autostart", *autostart))
+		if !*autostart {
+			adminURL := browser.AdminURL(cfg.Server.Port, cfg.Server.BasePath)
+			if openErr := browser.WaitUntilReady(adminURL, browser.Open, 100*time.Millisecond); openErr != nil {
+				logger.Warn("open existing admin UI failed", slog.Any("error", openErr), slog.String("url", adminURL))
+			}
+		}
+		return nil
+	}
+	defer releaseInstance()
+
+	if !paths.ConfigExists {
+		logger.Warn("config file not found, using defaults", slog.String("config", paths.ConfigPath))
+	}
+	cfg, secretsGenerated, err := ensureBootstrapSecrets(paths, cfg)
+	if err != nil {
+		return err
+	}
+	if secretsGenerated {
+		logger.Warn("generated missing secrets and wrote back to config", slog.String("config", paths.ConfigPath))
+	}
 
 	// T26：OTLP 默认关闭；仅标准环境变量存在时启用，且只支持 OTLP/HTTP JSON。
 	otelCfg := telemetry.FromEnv()
@@ -76,22 +129,6 @@ func run() error {
 				logger.Warn("otel shutdown failed", slog.Any("error", err))
 			}
 		}()
-	}
-
-	paths, err := appdir.Discover(*cfgPath, configExplicit)
-	if err != nil {
-		return fmt.Errorf("resolve config/data paths: %w", err)
-	}
-	if !paths.ConfigExists {
-		logger.Warn("config file not found, using defaults", slog.String("config", paths.ConfigPath))
-	}
-	cfg, sqlitePath, secretsGenerated, err := loadBootstrapConfig(paths)
-	if err != nil {
-		return err
-	}
-	paths.DataDir = filepath.Dir(sqlitePath)
-	if secretsGenerated {
-		logger.Warn("generated missing secrets and wrote back to config", slog.String("config", paths.ConfigPath))
 	}
 
 	db, err := store.Open(sqlitePath)
@@ -173,6 +210,10 @@ func run() error {
 	})
 	restartCh := make(chan struct{})
 	var restartOnce sync.Once
+	manualRestartCh := make(chan struct{})
+	var manualRestartOnce sync.Once
+	exitCh := make(chan struct{})
+	var exitOnce sync.Once
 	updater := selfupdate.New(selfupdate.Options{
 		CurrentVersion: version,
 		Args:           os.Args[1:],
@@ -253,20 +294,43 @@ func run() error {
 		slog.String("config_source", paths.Source),
 		slog.String("data_dir", paths.DataDir),
 		slog.String("db", sqlitePath),
+		slog.Bool("autostart", *autostart),
 	)
-	if cfg.Server.ShouldOpenBrowser() {
-		adminURL := browser.AdminURL(cfg.Server.Port, cfg.Server.BasePath)
+	adminURL := browser.AdminURL(cfg.Server.Port, cfg.Server.BasePath)
+	openAdmin := func() {
+		if err := browser.WaitUntilReady(adminURL, browser.Open, 100*time.Millisecond); err != nil {
+			logger.Warn("open admin UI failed", slog.Any("error", err), slog.String("url", adminURL))
+		}
+	}
+	if shouldOpenBrowser(cfg.Server, *autostart) {
 		go func() {
-			if err := browser.WaitUntilReady(adminURL, browser.Open, 100*time.Millisecond); err != nil {
-				logger.Warn("open admin UI failed", slog.Any("error", err), slog.String("url", adminURL))
-			}
+			openAdmin()
 		}()
 	}
+	stopTray, err := desktop.StartTray(desktop.TrayActions{
+		OpenAdmin: openAdmin,
+		OpenLogs: func() {
+			if err := desktop.OpenPath(filepath.Dir(activeLogPath)); err != nil {
+				logger.Warn("open log directory failed", slog.Any("error", err))
+			}
+		},
+		Restart: func() {
+			manualRestartOnce.Do(func() { close(manualRestartCh) })
+		},
+		Exit: func() {
+			exitOnce.Do(func() { close(exitCh) })
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("start system tray: %w", err)
+	}
+	defer stopTray()
 
 	// Windows 下以 Ctrl+C（SIGINT）为主，SIGTERM 兜底；最长 30s 排空（任务书 4.9）。
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	manualRestartRequested := false
 	select {
 	case err := <-errCh:
 		return fmt.Errorf("http server: %w", err)
@@ -274,41 +338,73 @@ func run() error {
 		logger.Info("shutdown signal received, draining requests (max 30s)")
 	case <-restartCh:
 		logger.Info("self-update restart requested, draining requests (max 30s)")
+	case <-manualRestartCh:
+		manualRestartRequested = true
+		logger.Info("tray restart requested, draining requests (max 30s)")
+	case <-exitCh:
+		logger.Info("tray exit requested, draining requests (max 30s)")
 	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("graceful shutdown: %w", err)
 	}
+	releaseInstance()
 	if spec, ok := updater.PendingLaunch(); ok {
 		if err := selfupdate.Spawn(spec); err != nil {
 			logger.Error("launch new version failed", slog.Any("error", err), slog.String("path", spec.Path))
 		} else {
 			logger.Info("new version launched", slog.String("path", spec.Path))
 		}
+	} else if manualRestartRequested {
+		workingDir, _ := os.Getwd()
+		spec := selfupdate.LaunchSpec{
+			Path: updater.Executable(), Args: append([]string(nil), os.Args[1:]...), Dir: workingDir,
+		}
+		if err := selfupdate.Spawn(spec); err != nil {
+			logger.Error("restart from tray failed", slog.Any("error", err), slog.String("path", spec.Path))
+		} else {
+			logger.Info("tray restart launched", slog.String("path", spec.Path))
+		}
 	}
 	logger.Info("evergate stopped")
 	return nil
 }
 
+func shouldOpenBrowser(server config.Server, autostart bool) bool {
+	return !autostart && server.ShouldOpenBrowser()
+}
+
 func loadBootstrapConfig(paths appdir.Paths) (config.Config, string, bool, error) {
+	cfg, sqlitePath, err := resolveBootstrapConfig(paths)
+	if err != nil {
+		return config.Config{}, "", false, err
+	}
+	cfg, generated, err := ensureBootstrapSecrets(paths, cfg)
+	return cfg, sqlitePath, generated, err
+}
+
+func resolveBootstrapConfig(paths appdir.Paths) (config.Config, string, error) {
 	cfg, err := config.Load(paths.ConfigPath)
 	if err != nil {
-		return config.Config{}, "", false, fmt.Errorf("load config: %w", err)
+		return config.Config{}, "", fmt.Errorf("load config: %w", err)
 	}
 	sqlitePath, err := appdir.SQLitePath(paths.ConfigPath, paths.DataDir, cfg.Storage.SQLitePath)
 	if err != nil {
-		return config.Config{}, "", false, fmt.Errorf("resolve sqlite path: %w", err)
+		return config.Config{}, "", fmt.Errorf("resolve sqlite path: %w", err)
 	}
 	if !paths.ConfigExists {
 		cfg.Storage.SQLitePath = sqlitePath
 	}
+	return cfg, sqlitePath, nil
+}
 
+func ensureBootstrapSecrets(paths appdir.Paths, cfg config.Config) (config.Config, bool, error) {
 	secretsGenerated := false
 	if cfg.Security.MasterKey == "" {
 		key, err := store.GenerateRandomKey()
 		if err != nil {
-			return config.Config{}, "", false, fmt.Errorf("generate master key: %w", err)
+			return config.Config{}, false, fmt.Errorf("generate master key: %w", err)
 		}
 		cfg.Security.MasterKey = key
 		secretsGenerated = true
@@ -316,15 +412,15 @@ func loadBootstrapConfig(paths appdir.Paths) (config.Config, string, bool, error
 	if cfg.Security.SessionSecret == "" {
 		key, err := store.GenerateRandomKey()
 		if err != nil {
-			return config.Config{}, "", false, fmt.Errorf("generate session secret: %w", err)
+			return config.Config{}, false, fmt.Errorf("generate session secret: %w", err)
 		}
 		cfg.Security.SessionSecret = key
 		secretsGenerated = true
 	}
 	if secretsGenerated {
 		if err := cfg.Persist(paths.ConfigPath); err != nil {
-			return config.Config{}, "", false, fmt.Errorf("persist generated secrets: %w", err)
+			return config.Config{}, false, fmt.Errorf("persist generated secrets: %w", err)
 		}
 	}
-	return cfg, sqlitePath, secretsGenerated, nil
+	return cfg, secretsGenerated, nil
 }

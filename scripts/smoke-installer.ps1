@@ -16,7 +16,12 @@ $separateDataDir = Join-Path $root 'separate-data'
 $installerLog = Join-Path $root 'install.log'
 $stdoutLog = Join-Path $root 'evergate.stdout.log'
 $stderrLog = Join-Path $root 'evergate.stderr.log'
+$applicationLog = Join-Path $dataDir 'logs\evergate.log'
 $registryPath = 'HKCU:\Software\EverGate'
+$runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+$runValueName = 'EverGate'
+$runKeyExisted = Test-Path $runKey
+$savedRunValue = $null
 $registryNames = @('InstallDir', 'ConfigPath', 'DataDir')
 $registryExisted = Test-Path $registryPath
 $savedRegistry = @{}
@@ -25,9 +30,20 @@ $process = $null
 New-Item -ItemType Directory -Force -Path $root | Out-Null
 
 try {
+  if ($runKeyExisted) {
+    try {
+      $savedRunValue = Get-ItemPropertyValue -Path $runKey -Name $runValueName
+    } catch {
+      $savedRunValue = $null
+    }
+  }
   if ($registryExisted) {
     foreach ($name in $registryNames) {
-      $savedRegistry[$name] = Get-ItemPropertyValue -Path $registryPath -Name $name -ErrorAction SilentlyContinue
+      try {
+        $savedRegistry[$name] = Get-ItemPropertyValue -Path $registryPath -Name $name
+      } catch {
+        $savedRegistry[$name] = $null
+      }
     }
   }
 
@@ -57,6 +73,12 @@ try {
   Set-Content -Path $configPath -Value $template -NoNewline -Encoding utf8
 
   $exe = Join-Path $installDir 'evergate.exe'
+  $peBytes = [IO.File]::ReadAllBytes($exe)
+  $peOffset = [BitConverter]::ToInt32($peBytes, 0x3c)
+  $subsystem = [BitConverter]::ToUInt16($peBytes, $peOffset + 24 + 68)
+  if ($subsystem -ne 2) {
+    throw "installed executable subsystem=$subsystem, want Windows GUI (2)"
+  }
   $process = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
 
@@ -80,14 +102,40 @@ try {
   if (-not (Test-Path $configPath) -or -not (Test-Path $databasePath)) {
     throw "expected config/database files are missing"
   }
+  if (-not (Test-Path $applicationLog)) {
+    throw "application log file is missing: $applicationLog"
+  }
   $persisted = Get-Content -Raw $configPath
   if ($persisted -notmatch 'master_key:\s+"[^"]+"' -or $persisted -notmatch 'session_secret:\s+"[^"]+"') {
     throw "generated secrets were not persisted"
+  }
+  $duplicate = Start-Process -FilePath $exe -WindowStyle Hidden -Wait -PassThru -ArgumentList @('--autostart')
+  if ($duplicate.ExitCode -ne 0) {
+    throw "duplicate GUI instance exited with $($duplicate.ExitCode)"
+  }
+  if ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 "http://127.0.0.1:$port/healthz").StatusCode -ne 200) {
+    throw "primary instance stopped after duplicate launch"
   }
 
   Stop-Process -Id $process.Id -Force
   $process.WaitForExit()
   $process = $null
+
+  $badConfig = Join-Path $root 'invalid-evergate.yml'
+  Set-Content -Path $badConfig -Value 'server: [' -Encoding utf8
+  $failed = Start-Process -FilePath $exe -WindowStyle Hidden -PassThru -ArgumentList @("-config `"$badConfig`"")
+  $badDeadline = (Get-Date).AddSeconds(8)
+  $failureTitle = ''
+  do {
+    Start-Sleep -Milliseconds 200
+    $failed.Refresh()
+    $failureTitle = $failed.MainWindowTitle
+  } while (-not $failureTitle -and -not $failed.HasExited -and (Get-Date) -lt $badDeadline)
+  if ($failureTitle -notlike '*EverGate 启动失败*') {
+    if (-not $failed.HasExited) { Stop-Process -Id $failed.Id -Force }
+    throw "GUI startup failure dialog not found; title=$failureTitle exit=$($failed.HasExited)"
+  }
+  Stop-Process -Id $failed.Id -Force
 
   $uninstaller = Join-Path $installDir 'unins000.exe'
   if (-not (Test-Path $uninstaller)) {
@@ -106,6 +154,7 @@ try {
   $installSeparate = Start-Process -FilePath $Installer -WindowStyle Hidden -Wait -PassThru -ArgumentList @(
     '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-',
     "/DIR=$installDir", "/CONFIGDIR=$separateConfigDir", "/DATADIR=$separateDataDir",
+    '/TASKS=autostart',
     "/LOG=$installerLog"
   )
   if ($installSeparate.ExitCode -ne 0) {
@@ -119,6 +168,10 @@ try {
   if (-not (Test-Path $separateConfigDir) -or -not (Test-Path $separateDataDir)) {
     throw "separate storage directories were not created"
   }
+  $autostartValue = Get-ItemPropertyValue -Path $runKey -Name $runValueName
+  if ($autostartValue -ne "`"$installDir\evergate.exe`" --autostart") {
+    throw "autostart registry value mismatch: $autostartValue"
+  }
 
   $uninstaller = Join-Path $installDir 'unins000.exe'
   $uninstallSeparate = Start-Process -FilePath $uninstaller -WindowStyle Hidden -Wait -PassThru -ArgumentList @(
@@ -129,6 +182,15 @@ try {
   }
   if (-not (Test-Path $separateConfigDir) -or -not (Test-Path $separateDataDir)) {
     throw "silent uninstall should preserve separate storage directories"
+  }
+  $survivingAutostart = $null
+  try {
+    $survivingAutostart = Get-ItemPropertyValue -Path $runKey -Name $runValueName
+  } catch {
+    $survivingAutostart = $null
+  }
+  if ($survivingAutostart) {
+    throw "autostart registry value survived uninstall"
   }
 
   Write-Output "installer-smoke: ok (port=$port, unified=$storageRoot, separate-config=$separateConfigDir, separate-data=$separateDataDir)"
@@ -147,6 +209,15 @@ try {
     }
   } else {
     Remove-Item -Path $registryPath -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  if ($runKeyExisted) {
+    if ($savedRunValue) {
+      Set-ItemProperty -Path $runKey -Name $runValueName -Value $savedRunValue
+    } else {
+      Remove-ItemProperty -Path $runKey -Name $runValueName -ErrorAction SilentlyContinue
+    }
+  } else {
+    Remove-Item -Path $runKey -Force -ErrorAction SilentlyContinue
   }
   if (Test-Path $root) {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue

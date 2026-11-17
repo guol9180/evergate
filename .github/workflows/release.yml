@@ -34,7 +34,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME}"
           LDFLAGS="-s -w -X main.version=${VERSION}"
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o release/evergate-windows-amd64.exe ./cmd/evergate
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags windowsgui -ldflags "$LDFLAGS -H windowsgui" -o release/evergate-windows-amd64.exe ./cmd/evergate
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o release/evergate-windows-amd64-console.exe ./cmd/evergate
           CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o release/evergate-linux-amd64   ./cmd/evergate
           CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o release/evergate-darwin-arm64  ./cmd/evergate
           sha256sum release/* > release/checksums.txt
@@ -135,7 +136,7 @@ jobs:
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          go build -ldflags $ldflags -o release/evergate-windows-amd64.exe ./cmd/evergate
+          go build -tags windowsgui -ldflags "$ldflags -H windowsgui" -o release/evergate-windows-amd64.exe ./cmd/evergate
 
       - name: Build installer
         shell: pwsh

@@ -38,6 +38,7 @@ Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: unchecked
+Name: "autostart"; Description: "登录 Windows 时自动启动 EverGate（不自动打开浏览器）"; GroupDescription: "附加任务："; Flags: unchecked
 
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "evergate.exe"; Flags: ignoreversion
@@ -50,6 +51,7 @@ Name: "{autodesktop}\EverGate"; Filename: "{app}\evergate.exe"; Tasks: desktopic
 Root: HKCU; Subkey: "Software\EverGate"; ValueType: string; ValueName: "InstallDir"; ValueData: "{app}"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\EverGate"; ValueType: string; ValueName: "ConfigPath"; ValueData: "{code:GetConfigPath}"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\EverGate"; ValueType: string; ValueName: "DataDir"; ValueData: "{code:GetDataDir}"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "EverGate"; ValueData: """{app}\evergate.exe"" --autostart"; Tasks: autostart; Flags: uninsdeletevalue
 
 [Run]
 Filename: "{app}\evergate.exe"; Description: "启动 EverGate"; Flags: nowait postinstall skipifsilent

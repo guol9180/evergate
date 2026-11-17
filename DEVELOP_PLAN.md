@@ -1045,9 +1045,18 @@
   9. WHEN 安装器启用开机自启 THEN 登录自动启动不自动弹浏览器；手动启动仍按 `open_browser` 执行；
   10. `CGO_ENABLED=0` 三平台构建通过、Linux/macOS 产物行为不变；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build`、`make build-all` 通过；Windows 托盘交互、单实例、失败兜底完成手工冒烟记录。
 - 边界：不做 WebView2 内嵌窗口/任务栏按钮；不做 Windows 服务与 UAC 提权；开机自启仅安装器可选勾选（默认关）；Linux/macOS 不引入托盘；不改管理台业务功能；不改变对外 API
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认采用系统托盘方案（非任务栏窗口）；建卡待 T40 后实施，范围含 GUI/console 双产物、托盘、单实例、日志落盘与启动失败兜底
+  - 2026-11-17 执行 T40 已完成并提交 `054a970`；T44 进入执行，先实现日志双写、GUI/console 双产物，再接 Windows 单实例和托盘
+  - 2026-11-17 执行 新增 `internal/applog`：slog JSON 同时写 stdout 与 `<data-dir>/logs/evergate.log`，10MB 滚动并保留 `.1`；新增 `internal/desktop`：Windows GUI 单实例、Shell_NotifyIcon 托盘、打开管理台/日志/重启/退出、启动失败 MessageBox
+  - 2026-11-17 执行 main 接入单实例、托盘、手动重启与优雅退出；自更新/托盘重启在拉起新进程前释放命名互斥。安装器新增可选开机自启 Run 项，`--autostart` 禁止自动打开浏览器
+  - 2026-11-17 执行 Makefile 与 Release 改为 GUI/console 双 Windows 产物：规范 `evergate-windows-amd64.exe` 为 GUI，新增 `evergate-windows-amd64-console.exe`；npm Windows 垫片 detached 启动 GUI，Linux/macOS 保持等待前台进程
+  - 2026-11-17 验证 GUI smoke：安装版 PE subsystem=2、console subsystem=3；GUI 启动后托盘注册成功、`/healthz` 200、日志文件生成；重复 `--autostart` 启动退出且主实例继续健康；非法配置显示“EverGate 启动失败”对话框
+  - 2026-11-17 验证 安装器自启动 Run 值写入、卸载时移除，统一/分离存储与静默卸载保留数据继续通过；测试后 HKCU EverGate/Run 原值恢复，临时目录清理
+  - 2026-11-17 验证 托盘菜单四个动作回调有 Windows 单测；实际图标注册与 GUI 进程启动已冒烟，未使用自动化点击菜单项
+  - 2026-11-17 验证 `go test ./... -count=1`、`go vet ./...`、`npm --prefix web test`、`npm --prefix web run build`、`make build`、`make build-all`、`gofmt`、`node --check`、`git diff --check` 全部通过
+  - 2026-11-17 交付 T44 验收标准满足；Linux/macOS 行为保持 console + 前台进程模式，GUI/托盘仅 Windows
 
 ### T45: 开发计划评审问题修正（P0，用户指令）
 
@@ -1106,7 +1115,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段，规划中） | 执行顺序：T42 渠道探测协议化 → T43 渠道模型目录发现与令牌模型选择器 → T40 Windows 安装器与可选择的配置/数据目录 → T44 Windows 无控制台启动与系统托盘 → T41 Playground 四协议调试 → T39 全弹性布局与间距系统重构；T46 版本发布门禁与预发布通道（任意时点，建议下次发版前），全部 planned | 本顺序是当前阶段的权威执行顺序，优先满足依赖；按任务卡验收。不改变下游 `/v1` API 与数据库 schema；T43 允许新增 admin 管理端点，T40/T44 允许改变安装、启动与本地日志行为，T46 允许调整发布流水线与 tag 门禁 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘；待执行：T41 Playground 四协议调试 → T39 全弹性布局与间距系统重构，以及 T46 版本发布门禁与预发布通道（建议下次发版前） | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T43/T40/T44 已按卡面扩展 admin、安装、启动与本地日志能力，T46 完成后才允许调整发布流水线与 tag 门禁 |
 
 ## 验收清单
 

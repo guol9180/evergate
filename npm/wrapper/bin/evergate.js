@@ -31,11 +31,20 @@ try {
   process.exit(1)
 }
 
-const child = spawn(binary, process.argv.slice(2), { stdio: 'inherit' })
+const windowsGUI = process.platform === 'win32'
+const child = spawn(binary, process.argv.slice(2), {
+  stdio: windowsGUI ? 'ignore' : 'inherit',
+  detached: windowsGUI,
+  windowsHide: windowsGUI,
+})
 child.on('error', (err) => {
   console.error(`evergate: failed to start ${binary}: ${err.message}`)
   process.exit(1)
 })
+if (windowsGUI) {
+  child.unref()
+  process.exit(0)
+}
 child.on('exit', (code, signal) => {
   if (signal) {
     process.kill(process.pid, signal)

@@ -13,6 +13,7 @@
 ```
 cmd/evergate/main.go   # 唯一入口：加载配置 → 迁移 DB → 启动 HTTP
 internal/config/       # YAML 引导配置加载
+internal/applog/       # 运行日志 stdout + 大小滚动文件双写
 internal/server/       # Gin 路由注册、中间件（鉴权/日志/recovery）
 internal/relay/        # 核心代理：上游请求构造、SSE 透传、超时控制
 internal/reqconfig/    # X-EverGate-Config 请求级白名单覆盖解析与脱敏摘要
@@ -28,6 +29,7 @@ internal/health/       # 周期模型列表轻量探测、key cooldown 持久化
 internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
 internal/usage/        # 模型价格快照、请求成本、UTC 日幂等聚合与报表查询
 internal/browser/      # 启动后打开管理台的系统浏览器封装
+internal/desktop/      # Windows GUI 单实例、托盘菜单与可见错误提示
 internal/update/       # 版本检查：npm dist-tags 优先、GitHub Release 元数据/兜底
 internal/metrics/      # 进程内 Prometheus 注册表、文本曝光与 loopback 限制
 internal/telemetry/    # 可选 OTLP/HTTP JSON 链路导出（无 SDK 依赖，默认关闭）
@@ -36,6 +38,7 @@ internal/npmregistry/  # npm registry 默认链（npmmirror → 官方）与规�
 npm/wrapper/           # npm 主包模板（启动垫片，不含二进制）
 npm/platform/          # npm 平台子包模板（版本/os/cpu 由发布脚本注入）
 scripts/               # 构建与发布辅助脚本（如 stage-npm.mjs）
+installer/             # Windows Inno Setup 安装器脚本
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）
 web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
 docs/                  # 设计文档与需求（开发任务书等）
@@ -64,7 +67,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 管理台 API 返回统一 JSON 结构；任何接口不得回显上游 key 明文。
 - 前端路由守卫依赖的服务端状态（如 `['me']`）被 mutation 改变时，必须在成功回调同步更新 TanStack Query 缓存；仅重新导航不得依赖旧缓存判断。
 - 前端图表统一使用 Recharts 共享组件（参照 `web/src/components/TrendChart.tsx`），不得手写 div/SVG 图表；图表宽度 100%，高度必须由响应式规则或 flex 填充，禁止在卡片内留下大块空白；引入图表库需按路由懒加载，避免进入首屏 bundle。
-- 运行日志（slog JSON 到 stdout）与请求日志（入库供管理台查询）分离。
+- 运行日志（slog JSON 同时写 stdout 与数据目录 `logs/evergate.log`，按大小滚动）与请求日志（入库供管理台查询）分离；GUI 构建无有效 stdout 时不得影响文件日志。
 - 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
 - 渠道健康探测只能调用模型列表 GET，不得触发推理接口：OpenAI 兼容渠道使用 `GET {base_url}/models` 与 Bearer；Anthropic 原生渠道使用 `GET {base_url}/v1/models`、`x-api-key` 与固定 `anthropic-version: 2023-06-01`；Gemini 原生渠道使用 `GET {base_url}/v1beta/models` 与 `x-goog-api-key`，禁止 `?key=`。协议选择优先级 Anthropic → Gemini → OpenAI 兼容。404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
 - 模型目录发现只能读取上游模型列表，不得触发推理或改变 key 调度状态。拉取结果按 Anthropic `after_id` / Gemini `pageToken` 分页，最多 10 页、500 个唯一模型；OpenAI 兼容协议不猜测非标准游标。渠道 `Models` 始终是对外模型名：选择上游模型时必须反查 `model_mapping`，多对一时每个对外别名单独作为候选，禁止把映射目标直接写入 `Models`。
@@ -80,6 +83,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
 - OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
 - npm 发布：主包 `@heguoliang/evergate` 不得包含平台二进制；主包与三个平台子包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
+- Windows 产物分 GUI/console 双版本：`evergate-windows-amd64.exe` 使用 `windowsgui` tag 与 `-H windowsgui`，负责托盘和 npm/安装版；`evergate-windows-amd64-console.exe` 保留终端日志排障。GUI 必须保持单实例，重复启动只打开现有管理台；自启动参数不得自动弹浏览器。
 - 一键更新：版本检查与 npm 下载链默认 `npmmirror → registry.npmjs.org`，每个源独立超时，均失败才回退 GitHub；`EVERGATE_NPM_REGISTRY` 只能把链收窄为指定源，不得引入任意下载地址。GitHub 仅用于补充更新说明/资产或兜底，不可达不得阻塞已由 npm 确认的更新。下载必须校验 npm `dist.integrity`（sha512）或 GitHub `checksums.txt`（SHA256）；替换只允许同目录改名交换并保留旧版本备份，失败不得破坏原二进制；重启必须沿用 30s 优雅停机；禁止引入第三方自更新库。
 - 模型降级只能发生在 TokenAuth 与令牌治理之后、进入上游之前：预算触发必须使用请求开始时的剩余额度快照；候选模型必须通过令牌模型白名单；渠道耗尽触发必须先穷尽该模型的现有渠道/key 重试预算。降级边界必须写入 retry_trace（reason/from/to）并在请求日志保留 original_model 与实际 model，成本按实际命中渠道+模型价格快照计算；首 chunk 后禁止因降级重试。
 - 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。

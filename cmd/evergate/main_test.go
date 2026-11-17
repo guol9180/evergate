@@ -71,3 +71,18 @@ security:
 		t.Fatalf("sqlite path = %q, want %q", sqlitePath, want)
 	}
 }
+
+func TestShouldOpenBrowserHonorsAutostart(t *testing.T) {
+	server := config.Default().Server
+	if !shouldOpenBrowser(server, false) {
+		t.Fatal("manual launch should honor open_browser=true")
+	}
+	if shouldOpenBrowser(server, true) {
+		t.Fatal("autostart must not open the browser")
+	}
+	disabled := false
+	server.OpenBrowser = &disabled
+	if shouldOpenBrowser(server, false) {
+		t.Fatal("manual launch should honor open_browser=false")
+	}
+}

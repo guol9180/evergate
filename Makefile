@@ -2,6 +2,7 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
+WINDOWS_GUI_LDFLAGS := $(LDFLAGS) -H windowsgui
 ifeq ($(OS),Windows_NT)
   EXT := .exe
 endif
@@ -22,11 +23,16 @@ icon:
 
 # 三平台交叉编译（任务书 4.9）；target 级 export 保证 Windows make 兼容
 build-all: build-web
-build-all: $(addprefix bin/evergate-,windows-amd64.exe linux-amd64 darwin-arm64)
+build-all: bin/evergate-windows-amd64.exe bin/evergate-windows-amd64-console.exe bin/evergate-linux-amd64 bin/evergate-darwin-arm64
 
 bin/evergate-windows-amd64.exe: export GOOS := windows
 bin/evergate-windows-amd64.exe: export GOARCH := amd64
 bin/evergate-windows-amd64.exe: build-web
+	go build -tags windowsgui -ldflags "$(WINDOWS_GUI_LDFLAGS)" -o $@ ./cmd/evergate
+
+bin/evergate-windows-amd64-console.exe: export GOOS := windows
+bin/evergate-windows-amd64-console.exe: export GOARCH := amd64
+bin/evergate-windows-amd64-console.exe: build-web
 	go build -ldflags "$(LDFLAGS)" -o $@ ./cmd/evergate
 
 bin/evergate-linux-amd64: export GOOS := linux

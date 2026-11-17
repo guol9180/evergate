@@ -9,7 +9,7 @@
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white&style=flat-square)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
 
-**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供 Windows x64 安装版（推荐普通用户）、Windows x64 便携版、Linux x64 与 macOS Apple Silicon 单二进制。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
+**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供 Windows x64 安装版（推荐普通用户，GUI + 系统托盘）、Windows x64 便携/排障版、Linux x64 与 macOS Apple Silicon 单二进制。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
 
 Windows 安装器当前未接入代码签名证书；首次运行可能触发 SmartScreen 或“未知发布者”提示，请核对 Release 资产与 `checksums.txt` 后再继续。
 
@@ -27,9 +27,9 @@ Windows 安装器当前未接入代码签名证书；首次运行可能触发 Sm
 
 ```bash
 # 方式一：Windows 安装版（推荐）
-# 运行 evergate-setup-<version>.exe；安装器可选择配置与数据目录
+# 运行 evergate-setup-<version>.exe；安装器可选择配置、数据目录与可选开机自启
 
-# 方式二：直接下载便携版或 Linux/macOS 单二进制后运行
+# 方式二：直接下载 Windows console 排障版或 Linux/macOS 单二进制后运行
 ./evergate
 
 # 方式三：npm 全局安装（Windows x64 / Linux x64 / macOS Apple Silicon）
@@ -48,6 +48,8 @@ npm 安装会自动选择本平台子包，实际运行仍是原生单二进制�
 2. 启动后访问管理台 `http://localhost:8787/`（初始账号 `admin/admin123`，仅用于本机初始化，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`
 3. 在管理台添加渠道并创建下游令牌
 4. 客户端只需改 base_url 为 `http://localhost:8787/v1` 并使用下游令牌
+
+Windows 安装版启动后常驻系统托盘，提供打开管理台、查看日志、重启和退出；关闭浏览器不会停止服务。运行日志位于数据目录下的 `logs/evergate.log`，并按大小保留滚动备份。
 
 存活检查 `GET /healthz`。默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改。路径发现顺序、默认目录和安装器存储选项见 [docs/运维配置.md](./docs/运维配置.md#配置与数据路径)。
 
