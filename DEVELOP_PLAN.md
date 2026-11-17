@@ -80,7 +80,7 @@
 ### T3: 调度内核（P0，纯逻辑先写测试）
 
 - 目标：错误分类器 → cooldown 状态机 → key 池调度 → 路由器；表驱动单测覆盖任务书 4.5 节全部规则
-- 验收标准：`go test ./internal/retry/... ./internal/pool/... ./internal/router/...` 全部通过；调度器分支覆盖率 ≥ 90%（对应验收清单 #10）
+- 验收标准：`go test ./internal/retry/... ./internal/pool/... ./internal/router/...` 全部通过；调度器关键状态/分支场景均有表驱动断言，标准 Go 语句覆盖率 ≥ 90%（对应验收清单 #10；不得用语句覆盖率冒充分支覆盖率）
 - 边界：不接 HTTP；不接真实上游
 - 状态：done
 - 进度：
@@ -695,7 +695,7 @@
 - 目标：统一管理台全部页面的标题层级、间距、表格滚动、表单控件与抽屉响应式，逐页在 1280×800 与 390×844 截图验收
 - 验收标准：
   1. Dashboard / 渠道 / 令牌 / 请求日志 / Playground / 用量成本 / 系统设置 / 登录 / 改密页统一使用 `PageHeader`（独立登录页除外）与一致的标题/描述字号；
-  2. 所有数据表在窄屏只产生卡片内横向滚动，页面级 `scrollWidth == innerWidth`；表格设置合理 min-width，不压缩到不可读；
+  2. 所有数据表在窄屏只产生卡片内横向滚动，页面级满足 `documentElement.scrollWidth <= documentElement.clientWidth`；表格设置合理 min-width，不压缩到不可读；
   3. Drawer 在窄屏占满宽度、Dialog 表单在窄屏单列；Switch/Select 使用共享组件，图标按钮具备 aria-label；
   4. 每个页面在 1280×800 与 390×844 均截图复核，无控件拉伸、错位、徽标换行破版或页面横向溢出；
   5. `npm --prefix web run build`、`make build` 通过，`web/dist` 同步提交。
@@ -718,6 +718,7 @@
     10 条路由 × 2 视口再次全部 `scrollWidth == innerWidth`
   - 2026-11-13 交付 提交 8c0c7ed、tag v0.1.20；Release Action 43353805492 成功（2m27s），4 个 assets
     与 CHANGELOG 正文齐全；工作区干净
+  - 2026-11-17 修正 T45 复核发现历史验收度量写法不可靠：后续页面溢出判定统一为 `documentElement.scrollWidth <= documentElement.clientWidth`，本次仅修文档，不重跑历史代码验证
 
 ### T33: 用量趋势图表组件化与自适应布局（P1，用户指令）
 
@@ -886,9 +887,9 @@
   1. WHEN 视口 ≥360 THEN `Layout` 内容区移除 `max-w-7xl`，仅保留随视口缩放的页面 padding；1920/2560 下内容区占满剩余宽度，不再出现固定封顶；
   2. WHEN 视口从 360 连续增大到 2560 THEN 侧栏宽度单调不减、内容区宽度单调不减；1279→1280 不再出现 151px 的内容区回退；
   3. 间距统一为 CSS token：`--eg-page-x`、`--eg-page-y`、`--eg-section-gap`、`--eg-card-pad`、`--eg-grid-gap`、`--eg-control-gap`、`--eg-cell-x`、`--eg-cell-y`，并落地到 `Layout`、`Card`、`PageHeader`、`Th`、`Td`、`Dialog`、`Drawer`；页面主布局不得继续散落固定 `p-4/p-6/gap-4`；
-  4. WHEN 360/390/768/1024/1280/1440/1600/1920/2560 THEN 所有页面 `document.scrollWidth == innerWidth`；≥1024 数据表不需要卡片内横向滚动；<1024 只允许表格容器内滚动；
+  4. WHEN 360/390/768/1024/1280/1440/1600/1920/2560 THEN 所有页面满足 `document.documentElement.scrollWidth <= document.documentElement.clientWidth` 且 body 不产生页面级横向溢出；≥1024 数据表不需要卡片内横向滚动；<1024 只允许表格容器内滚动；
   5. 栅格使用 `minmax(min(100%, Npx), 1fr)` 与响应式列数；Playground 左栏从固定 380px 改为 `clamp(280px, 24vw, 420px)`；Settings/Dashboard/Usage 在宽屏增加列数而不是拉伸单卡；
-  6. 表格按列优先级自适应：≥1024 展示全部关键列且不滚动；窄屏隐藏权重/最近探测等次要列，保留 `title`/详情入口，不删除数据能力；
+  6. 表格按列优先级自适应：≥1024 展示全部关键列且不滚动。按当前侧栏与 padding 公式，1024 视口内容宽约 906px，而渠道表当前 `min-width: 960px`；实施必须以实测可用宽度调整列优先级、压缩或隐藏次要列，不能只移除外层 `max-width`。窄屏隐藏权重/最近探测等次要列，保留 `title`/详情入口，不删除数据能力；
   7. 弹窗窄屏全宽、宽屏按比例；Drawer 窄屏全宽；按钮/输入框/图标按钮的触控尺寸与 `aria-label`/`title` 保持；
   8. 视觉验收覆盖 1280/1440/1920 桌面与 390/768 移动/平板截图；间距节奏一致、无贴边、无异常留白、无页面级横向溢出；
   9. `npm --prefix web run build`、`make build`、`go test -p 1 ./... -count=1` 通过；前端改动提交 `web/dist`
@@ -918,14 +919,14 @@
   1. WHEN 用户运行 Windows 安装器 THEN 提供安装目录选择（默认 `%LOCALAPPDATA%\Programs\EverGate`，按用户安装、默认不需要管理员权限），并提供开始菜单快捷方式、可选桌面快捷方式、安装后启动选项与卸载器；
   2. 安装器提供“存储位置”步骤：默认使用统一根目录 `%LOCALAPPDATA%\EverGate`，显示 `配置：<root>\evergate.yml` 与 `数据：<root>\data\evergate.db`；勾选“配置与数据使用同一目录”时只需选择一次；取消后可分别选择配置目录和数据目录；
   3. WHEN 用户自定义存储位置 THEN 安装器校验目录可写且不是程序安装目录；配置目录含主密钥等敏感信息，若位于共享目录、云同步目录或可移动盘需显式确认；数据目录位于 UNC 网络路径时拒绝（SQLite WAL 不可靠）；
-  4. WHEN 启动时未显式传 `-config` THEN 配置发现顺序为：显式 `-config` → `EVERGATE_CONFIG` → Windows 注册表 `HKCU\Software\EverGate\ConfigPath` → `%LOCALAPPDATA%\EverGate\evergate.yml` → exe 同目录 `evergate.yml`（旧便携模式）→ 当前目录 `evergate.yml`；
-  5. WHEN 首次启动且配置不存在 THEN 在选定配置目录创建默认配置并写回生成的密钥；默认 SQLite 路径为选定数据目录下的绝对路径，不得落在 cwd、下载目录或程序安装目录；
-  6. WHEN 配置中的 `storage.sqlite_path` 是相对路径 THEN 相对“配置文件所在目录”解析，而不是相对 cwd；显式 `-config` 的相对路径仍相对 cwd；
+  4. WHEN 显式传入 `-config` THEN 只使用该配置路径，其余发现来源不参与；WHEN 未显式传参 THEN 依次尝试 `EVERGATE_CONFIG` → Windows 注册表 `HKCU\Software\EverGate\ConfigPath` → `%LOCALAPPDATA%\EverGate\evergate.yml` → exe 同目录 `evergate.yml`（旧便携模式）→ 当前目录 `evergate.yml`；
+  5. WHEN 首次启动且配置不存在 THEN 在选定配置目录创建默认配置并写回生成的密钥；默认 SQLite 路径为选定数据目录下的绝对路径，不得落在 cwd、下载目录或程序安装目录。`Config.Default()`、`evergate.yml.example` 与首次落盘内容必须使用同一套路径规则，禁止继续把跨平台默认数据目录写成 `./data`；
+  6. 显式 `-config` 的相对路径相对 cwd 解析；配置内容中的 `storage.sqlite_path` 若为相对路径，统一相对最终配置文件所在目录解析，而不是相对 cwd 或进程启动目录；
   7. WHEN 旧便携用户已有 exe 同目录 `evergate.yml` 与 `data/` THEN 继续读取旧配置与原数据，不自动迁移、不覆盖；日志明确打印实际配置路径与数据路径；
   8. WHEN 应用启动 THEN 日志与管理台（系统设置或 Dashboard）显示只读的“配置文件路径 / 数据目录”，让用户能定位数据；
   9. 安装器把 `InstallDir` / `ConfigPath` / `DataDir` 写入 `HKCU\Software\EverGate`；快捷方式与直接双击 exe 都能通过注册表找到自定义配置；升级安装沿用既有路径，不重置用户选择；
   10. 卸载器默认只删除程序文件、快捷方式与注册表项，保留自定义配置与数据目录内容；删除用户数据必须由用户显式勾选；
-  11. Linux 使用 `$XDG_CONFIG_HOME/evergate` + `$XDG_DATA_HOME/evergate`（缺省 `~/.config`、`~/.local/share`），macOS 使用 `~/Library/Application Support/EverGate`；Windows 默认统一根目录为 `%LOCALAPPDATA%\EverGate`（配置含密钥，不使用漫游目录）；
+  11. Linux 新安装默认使用 `$XDG_CONFIG_HOME/evergate` + `$XDG_DATA_HOME/evergate`（缺省 `~/.config`、`~/.local/share`），macOS 新安装使用 `~/Library/Application Support/EverGate`；Windows 默认统一根目录为 `%LOCALAPPDATA%\EverGate`（配置含密钥，不使用漫游目录）。已有便携配置仍按 #7 原路径读取；
   12. 发布流水线新增 Windows 安装器构建与 Release 资产（如 `evergate-setup-<version>.exe`），图标沿用品牌 logo；README 下载指引区分“安装版（推荐普通用户）”与“便携版（高级用户）”；
   13. 测试覆盖配置发现顺序（含注册表）、默认路径生成、统一/分离目录、相对路径解析、旧便携模式、显式 `-config`；安装器至少完成一次静默安装到临时目录 + 自定义存储目录 → 启动 `/healthz` → 卸载 → 配置与数据保留的冒烟测试
 - 边界：不做 MSI / Microsoft Store / 自动签名；本轮不接入代码签名证书，SmartScreen 提示如实写入 README；不做数据迁移向导（旧便携模式只兼容不搬迁）；不改变业务 API 与数据库 schema；安装器仅 Windows，Linux/macOS 继续使用便携包
@@ -941,17 +942,18 @@
   - 2026-11-16 计划 用户要求安装时配置目录与数据目录都支持选择；卡面更新为“默认统一根目录 + 高级分别设置”，路径写入 `HKCU\Software\EverGate`，并补充共享/同步/UNC 目录风险校验
   - 2026-11-16 执行 安装 Inno Setup 7.1.1 x64 到 `D:\dev\environment\innosetup`；`ISCC.exe` 最小脚本编译成功（2.1MB setup 产物）并清理冒烟文件；编译器未输入授权时显示 Non-commercial use only，官方许可证允许商业用途但请求商用用户购买授权，个人/开源项目可按非商业模式使用
 - 实施步骤（确认后执行）：
-  - T40a 路径解析：新增 `internal/appdir` 与配置发现顺序（含 Windows 注册表）、统一/分离目录、相对 sqlite 路径解析、跨平台目录与测试
-  - T40b 启动接线：main 使用新解析器，首次生成配置写到选定配置目录，日志输出实际 config/data 路径
+  - T40a 路径解析：新增 `internal/appdir` 与配置发现顺序（含 Windows 注册表）、统一/分离目录、相对 sqlite 路径解析、跨平台目录与测试；覆盖显式参数/环境变量/注册表/默认目录/旧便携模式的优先级
+  - T40b 启动接线：main 使用新解析器，首次生成配置写到选定配置目录，日志输出实际 config/data 路径；同步 `Config.Default()`、配置模板与首次落盘的绝对数据路径
   - T40c 管理台展示：系统设置或 Dashboard 增加只读“配置文件 / 数据目录”信息
   - T40d 安装器：新增 `installer/evergate.iss`（Inno Setup），安装目录选择、存储位置页（统一/分离）、注册表路径、快捷方式、卸载保留数据、品牌图标
   - T40e 发布流水线：Windows runner 构建安装器、上传 Release 资产、更新 checksums 与 README 下载指引
-  - T40f 验收：路径单测 + 静默安装/启动/卸载冒烟 + 旧便携模式兼容验证
+  - T40f 文档同步：更新 `docs/运维配置.md` 的路径发现、数据位置与便携模式说明；按规范仅在定位/用法变化时同步 README
+  - T40g 验收：路径单测 + 静默安装/启动/卸载冒烟 + 旧便携模式兼容验证
 
 ### T41: Playground 四协议调试支持（P3，用户指令）
 
 - 目标：Playground 协议选择从 chat / responses 扩展为四协议（chat / responses / anthropic / gemini），与已交付的四个下游入口对齐；每个新协议在 Playground 层补公共 HTTP 边界回归测试
-- 动机：T37/T38 已交付，但 Playground 当前仅接受 chat/responses，新协议只能拿下游 token 用 curl 调试，绕过了 Playground 免 token + 命中链路可视化的核心价值；T39 布局重构还要改 Playground 左栏，先定协议结构可避免二次改动。渠道管理「测试连通性」仅探测 `GET {base_url}/models`，验证不了协议语义，不能替代本卡
+- 动机：T37/T38 已交付，但 Playground 当前仅接受 chat/responses，新协议只能拿下游 token 用 curl 调试，绕过了 Playground 免 token + 命中链路可视化的核心价值；T39 布局重构还要改 Playground 左栏，先定协议结构可避免二次改动。渠道管理「测试连通性」只验证协议对应的模型列表端点可达，验证不了推理请求与响应语义，不能替代本卡
 - 验收标准：
   1. WHEN Playground 选择 anthropic THEN 构造最小合法 Messages 请求（model / max_tokens=1024 / system? / messages / stream）并设置 `evergate.protocol=messagesProtocol`；非流式与流式均可用，命中摘要含渠道、上游模型、first_token_ms、usage、retry_trace，请求日志 `source=playground`；
   2. WHEN 选择 gemini THEN 构造最小合法 generateContent 请求（contents / systemInstruction? / generationConfig.maxOutputTokens / stream），并为 inner context 设置 `Params["action"]="models/{model}:generateContent|streamGenerateContent"`——Gemini handler 从 `c.Param("action")` 解析模型与方法，fake context 默认无此参数；
@@ -970,12 +972,13 @@
 - 动机：T37/T38 交付后探测仍固定拼接 `{base}/models` 并发送 Bearer；Anthropic 原生渠道应为 `/v1/models` + `x-api-key`，Gemini 应为 `/v1beta/models` + `x-goog-api-key`，现状必然 404/401 → 永久 inconclusive，渠道测试按钮对这两类渠道失效
 - 关键设计：探测协议按声明能力选择，优先级 Anthropic → Gemini → OpenAI 兼容（原生声明优先于兼容兜底）；不做多协议并存探测
 - 验收标准：
-  1. WHEN 渠道声明 Anthropic 原生能力 THEN 探测路径 `{base}/v1/models`，头 `x-api-key` + `anthropic-version`（客户端未带时用默认 `2023-06-01`），不发送 `Authorization`；
+  1. WHEN 渠道声明 Anthropic 原生能力 THEN 探测路径 `{base}/v1/models`，注入 `x-api-key` 与 `anthropic-version: 2023-06-01`，不发送 `Authorization`；
   2. WHEN 渠道声明 Gemini 原生能力 THEN 路径 `{base}/v1beta/models`，头 `x-goog-api-key`，请求 URL 不得包含 `?key=`；
   3. WHEN 渠道仅 OpenAI 兼容 THEN 维持 `{base}/models` + `Authorization: Bearer`，行为不变；
-  4. WHEN 上游 404/405 THEN 仍标记 inconclusive、释放 half-open 探测名额、不改变 key 调度状态（红线不变）；
+  4. WHEN 上游 404/405 THEN 仍标记 inconclusive、释放 half-open 探测名额、不改变 key 调度状态（红线不变）；Anthropic-compatible 上游未实现模型列表端点时不得宣称探测已修复；
   5. WHEN 探测成功 THEN `last_probe_*` 与渠道状态更新逻辑不变；`POST /admin/api/channels/:id/test` 返回结构不变；
-  6. 测试：health 包按三种协议各一条 httptest 用例（断言路径、鉴权头、无 query key 泄露）；admin testChannel 复用同一探测路径；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
+  6. 测试：health 包按三种协议各一条 httptest 用例（断言路径、鉴权头、无 query key 泄露）；admin testChannel 复用同一探测路径；404/405 的 inconclusive 与 half-open 释放不回归；
+  7. 文档同步：更新 AGENTS 健康探测红线、`internal/health` 目录说明与相关运维文档；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
 - 边界：不改调度/重试逻辑与数据库 schema；不解析模型列表（留给 T43）；不改渠道保存校验；不改 `/models` 之外的探测语义
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
@@ -984,14 +987,14 @@
 ### T43: 渠道模型目录发现与令牌模型选择器（P3，用户指令）
 
 - 目标：渠道表单提供「从上游拉取模型」（协议化列表调用 + 分页），候选多选后经用户确认写入「支持模型」；令牌「允许模型」改为从对外模型目录（启用渠道 `Models` 并集）选择并展示映射关系
-- 动机：支持模型目前纯手填；四种协议均提供模型列表接口；令牌白名单实际匹配对外模型名（= 支持模型），自由文本容易误填映射后的上游名导致 403
+- 动机：支持模型目前纯手填；OpenAI 兼容、Anthropic 与 Gemini 官方 API 形态提供模型列表接口，兼容实现可能不支持；令牌白名单实际匹配对外模型名（= 支持模型），自由文本容易误填映射后的上游名导致 403
 - 验收标准：
-  1. WHEN 渠道表单点击拉取 THEN 按能力调用 `{base}/models` / `{base}/v1/models` / `{base}/v1beta/models`（分页拉取，上限保护：≤10 页且 ≤500 条），返回候选列表；失败展示可诊断错误且不覆盖已填内容；
+  1. WHEN 渠道表单点击拉取 THEN 按能力调用 `{base}/models` / `{base}/v1/models` / `{base}/v1beta/models`。分页契约：Anthropic 使用 `limit` + `after_id`，读取 `has_more` / `last_id`；Gemini 使用 `pageToken`，读取 `nextPageToken`；OpenAI 兼容端点按 `data[].id` best-effort 读取，只有上游返回明确游标时才继续翻页。总上限 ≤10 页且 ≤500 条，跨页去重；失败展示可诊断错误且不覆盖已填内容；
   2. WHEN 用户勾选并确认 THEN 按用户选择的合并方式追加或替换到支持模型文本域；不自动保存渠道；可取消；
-  3. WHEN 渠道存在 `model_mapping` THEN 候选项展示 `对外名 → 上游名` 提示；
-  4. WHEN 令牌表单编辑允许模型 THEN 候选来自启用渠道 `Models` 并集（对外目录），含映射提示；保留手动输入并标注"须为对外模型名"；
-  5. 仅 admin 会话可用；拉取属管理元数据操作，不写 request_logs / 用量；任何响应不回显上游 key 明文；
-  6. 测试：admin 端点按协议 mock（路径、鉴权头、分页、上限保护）；前端构建；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
+  3. 候选必须显式区分 `对外名` 与 `上游名`。对每个拉取到的上游名 `U`，先反查所有满足 `model_mapping[P] == U` 的对外别名 `P`：存在别名时每个 `P` 作为可用候选并展示 `P → U`，选择后写入 `Models` 的是 `P`；无别名时才提供直连候选 `U → U` 并写入 `U`。禁止把映射目标 `U` 原样写入 `Models` 导致白名单与映射语义错位；
+  4. WHEN 令牌表单编辑允许模型 THEN 候选来自启用渠道 `Models` 并集（对外目录），含映射提示；该目录必须与下游 `GET /v1/models` 复用同一公共查询/归一化逻辑。保留手动输入并标注“须为对外模型名”；
+  5. 仅 admin 会话可用；拉取属管理元数据操作，不写 request_logs / 用量；任何响应不回显上游 key 明文；拉取失败不得改变 key 的 active/cooldown/disabled/half-open 状态；
+  6. 测试：admin 端点按协议 mock（路径、鉴权头、游标分页、跨页去重、10 页/500 条上限、映射别名多对一）；前端构建并覆盖合并/替换、取消和失败不覆盖；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过。
 - 边界：不自动覆盖或自动保存；不做模型能力/上下文长度探测；不拉取价格信息；不改路由语义（`Models` 仍为对外名）与数据库 schema；不复用 Playground/推理链路（纯管理元数据请求）
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
@@ -1002,25 +1005,41 @@
 - 目标：Windows 安装版以 GUI 子系统构建（双击无控制台窗口），常驻系统托盘；托盘菜单提供打开管理台 / 查看日志 / 重启 / 退出；单实例运行；运行日志落盘；安装器快捷方式与自更新均使用 GUI 产物，同时保留排障用控制台产物
 - 动机：当前双击 exe 弹出终端，误关终端即停止服务，体验差；托盘是后台客户端工具的行业惯例；T40 安装器已规划，需要与产物类型、快捷方式、日志路径配套
 - 关键设计：
-  - 双产物：`evergate.exe`（`-H windowsgui`）+ `evergate-console.exe`（现有控制台构建）；安装器快捷方式与 npm Windows 子包主命令指向 GUI 版；便携分发包保留 console 版供排障
-  - 托盘实现零新依赖：`golang.org/x/sys/windows` 调 `Shell_NotifyIcon` + 消息循环（锁定 OS 线程），图标由 `web/public/logo.svg` 派生 .ico；如确需第三方库，必须纯 Go 且 MIT/Apache，先更新依赖方案
+  - 双产物：`evergate.exe`（`-H windowsgui`）+ `evergate-console.exe`（现有控制台构建）；安装器快捷方式与 npm Windows 子包主命令指向 GUI 版；便携分发包保留 console 版供排障。Release/自更新继续用固定名称 `evergate-windows-amd64.exe` 承载 GUI 版，新增 `evergate-windows-amd64-console.exe`，避免破坏现有下载契约
+  - 托盘实现不新增模块：`golang.org/x/sys/windows` 在当前依赖图中已为 indirect，T44 直接 import 后转为 direct；用 `Shell_NotifyIcon` + 消息循环（锁定 OS 线程），图标由 `web/public/logo.svg` 派生 .ico。如确需第三方库，必须纯 Go 且 MIT/Apache，先更新依赖方案
   - 日志：slog 双写 stdout + 文件（GUI 构建 stdout 为空不报错），按大小滚动；托盘「查看日志」打开日志目录；启动失败需可见提示并给出日志路径——实施时将同步修订 AGENTS「运行日志到 stdout」规范
   - 单实例：命名互斥（`Local\EverGate`）；重复启动只唤起管理台后退出，不产生端口冲突
   - 退出：托盘「退出」触发现有 30s 优雅停机；关浏览器不影响服务
-  - 自更新：替换 GUI 产物，重启后恢复托盘；`.old` 备份清理沿用现有逻辑
+  - npm Windows 垫片指向 GUI 产物时必须 detached 且不等待常驻进程，关闭启动终端不得停止服务；启动失败由 GUI 错误提示与日志兜底
+  - 自动启动：安装器写入独立 autostart 标记或传入专用参数，自动启动时禁止因默认 `open_browser: true` 每次弹浏览器；用户手动双击或打开托盘菜单仍遵循现有开关
+  - 自更新：替换 GUI 产物，重启后恢复托盘；`.bak-*` 备份清理沿用现有逻辑
 - 验收标准：
   1. WHEN 双击安装版快捷方式 THEN 不出现控制台窗口，托盘出现 EverGate 图标，管理台按现有 `open_browser` 开关自动打开；
   2. WHEN 托盘菜单执行 THEN 「打开管理台」打开当前 base_url；「查看日志」打开日志目录；「重启」优雅停机后拉起新进程并恢复托盘；「退出」走 30s 排空后进程退出、托盘消失；
   3. WHEN 重复启动 exe THEN 不启动第二实例，只唤起管理台，无端口冲突；
   4. WHEN 启动失败（配置无效 / 端口占用 / DB 不可写） THEN 有可见错误提示（MessageBox 或托盘错误态）并给出日志文件路径；
   5. WHEN 运行产生日志 THEN 同时写 stdout 与滚动文件，路径遵循 T40 的数据目录规则；GUI 构建无 stdout 时不报错；
-  6. WHEN 自更新完成并重启 THEN 仍以 GUI 子系统运行并恢复托盘，`.old` 清理正常；
+  6. WHEN 自更新完成并重启 THEN 仍以 GUI 子系统运行并恢复托盘，`.bak-*` 清理正常；
   7. 便携包保留 `evergate-console.exe` 控制台体验；安装器可附带 console 版但快捷方式指向 GUI 版；
-  8. `CGO_ENABLED=0` 三平台构建通过、Linux/macOS 产物行为不变；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build`、`make build-all` 通过；Windows 托盘交互、单实例、失败兜底完成手工冒烟记录。
+  8. WHEN 通过 npm 在 Windows 启动 THEN 垫片不持续占用终端，关闭终端不影响常驻进程；启动失败仍可诊断；
+  9. WHEN 安装器启用开机自启 THEN 登录自动启动不自动弹浏览器；手动启动仍按 `open_browser` 执行；
+  10. `CGO_ENABLED=0` 三平台构建通过、Linux/macOS 产物行为不变；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build`、`make build-all` 通过；Windows 托盘交互、单实例、失败兜底完成手工冒烟记录。
 - 边界：不做 WebView2 内嵌窗口/任务栏按钮；不做 Windows 服务与 UAC 提权；开机自启仅安装器可选勾选（默认关）；Linux/macOS 不引入托盘；不改管理台业务功能；不改变对外 API
 - 状态：planned
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认采用系统托盘方案（非任务栏窗口）；建卡待 T40 后实施，范围含 GUI/console 双产物、托盘、单实例、日志落盘与启动失败兜底
+
+### T45: 开发计划评审问题修正（P0，用户指令）
+
+- 目标：修正 2026-11-17 计划评审发现的执行顺序、完成状态、覆盖率口径、路径语义、协议探测与 Windows 交付约定，使 P3 卡面可直接执行
+- 验收标准：P0 完成表述与非功能实测证据一致；P3 顺序不再与开发顺序规则冲突；T39 溢出测量方式正确；T40 配置/数据路径契约完整；T42 文档同步要求明确；T43 映射、分页与无副作用要求完整；T44 npm detach、自启动浏览器与产物命名完整；过期里程碑文案清理；`git diff --check` 通过且改动仅覆盖文档
+- 边界：只修 `DEVELOP_PLAN.md` 与 `AGENTS.md`；不实现 T39–T44 功能，不改代码，不新增依赖
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-17 计划 用户确认“全部修正”评审结论；建立本卡
+  - 2026-11-17 执行 修正 AGENTS 开发顺序、健康探测过渡规则与覆盖率口径；修正 P0/P1+/P3 里程碑、任务执行顺序和收入边界；补齐 T39 1024 可用宽度约束、T40 配置发现与路径契约、T42 协议探测文档同步、T43 映射/分页/无副作用、T44 npm detach/自启动/产物命名；清理 T32/T41/T43 旧口径
+  - 2026-11-17 验证 `git diff --check` 通过；改动范围仅 `AGENTS.md` 与 `DEVELOP_PLAN.md`；15 项关键修正断言全部存在；5 个本地 Markdown 链接可解析；52 个任务 ID 唯一，最新任务为 T45
+  - 2026-11-17 交付 评审结论全部回写计划与规范；T39–T44 仍为 planned，未提前实现功能
 
 ## 状态枚举
 
@@ -1046,15 +1065,15 @@
 
 | 里程碑 | 内容 | 完成判据 |
 |---|---|---|
-| P0（已完成） | T0–T7 全部 done | 下方「验收清单」全部通过 |
-| P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 已延后 |
-| P1+（当前增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
+| P0（功能完成，1 项性能待实测） | T0–T7 功能项全部 done | 「验收清单」1–10 全部通过；体积、内存、冷启动、三平台编译与优雅停机已有实测证据；`首 token 额外延迟 <5ms` 尚待真实上游环境实测，因此 P0 不宣称全部非功能项完成 |
+| P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
+| P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段，规划中） | T42 渠道探测协议化（planned，建议先做）；T43 渠道模型目录发现与令牌模型选择器（planned）；T40 Windows 安装器与可选择的配置/数据目录（planned）；T44 Windows 无控制台启动与系统托盘（planned）；T41 Playground 四协议调试支持（planned）；T39 全弹性布局与间距系统重构（planned） | 按任务卡验收；T42 先修复原生渠道探测回归，T43 交付模型发现，其后 T40 安装与数据落盘、T44 无控制台托盘体验、T41 四协议调试、T39 UI 全弹性（T39 会改 Playground 布局）；不改业务 API 与数据结构 |
+| P3（当前阶段，规划中） | 执行顺序：T42 渠道探测协议化 → T43 渠道模型目录发现与令牌模型选择器 → T40 Windows 安装器与可选择的配置/数据目录 → T44 Windows 无控制台启动与系统托盘 → T41 Playground 四协议调试 → T39 全弹性布局与间距系统重构，全部 planned | 本顺序是当前阶段的权威执行顺序，优先满足依赖；按任务卡验收。不改变下游 `/v1` API 与数据库 schema；T43 允许新增 admin 管理端点，T40/T44 允许改变安装、启动与本地日志行为 |
 
 ## 验收清单
 
-P0 完成的唯一定义（全部通过才算 done）：
+P0 功能完成定义（1–10 全部通过）：
 
 1. `make build` 产出单二进制；`./evergate` 启动后 `:8787/v1/*`（端口经 evergate.yml 可配）与管理台同时可用
 2. 故障切换（非流式）：配置双渠道，mock 主渠道返回 500 → 请求自动落到次渠道，客户端收到正常响应且无感知
@@ -1065,7 +1084,7 @@ P0 完成的唯一定义（全部通过才算 done）：
 7. 全部渠道耗尽：返回 503 + OpenAI 格式错误体，管理台渠道状态显示 down
 8. 重启进程：渠道/密钥/令牌/日志完整保留，cooldown 状态从 DB 恢复
 9. 上游 key 在 DB 中为密文；管理台任何接口不回显明文
-10. 调度器（状态机+错误分类）单元测试覆盖 ≥ 90% 分支；提供基于 httptest mock 上游的集成测试
+10. 调度器（状态机+错误分类）关键状态/分支场景均有表驱动断言，标准 Go 语句覆盖率 ≥ 90%；提供基于 httptest mock 上游的集成测试。覆盖率报告必须标注为语句覆盖率，不得冒充分支覆盖率
 
 非功能验收项：二进制体积 < 30MB；空闲内存 < 50MB；冷启动 < 1s（到 /healthz 200）；网关自身首 token 额外延迟 < 5ms（与直连对比）；三平台交叉编译通过；优雅停机（SIGINT/SIGTERM 后停止接新请求，在途请求最长 30s 排空）。
 
