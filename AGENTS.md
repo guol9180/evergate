@@ -38,6 +38,7 @@ internal/selfupdate/   # 安装包级更新：版本化资产、校验、安装�
 internal/npmregistry/  # npm registry 默认链（npmmirror → 官方）与规范化公共定义
 npm/wrapper/           # npm 主包模板（启动垫片，不含二进制）
 npm/platform/          # npm 平台子包模板（版本/os/cpu 由发布脚本注入）
+npm/updates/           # npm 完整安装资产更新包模板（内置更新器使用）
 scripts/               # 构建与发布辅助脚本（如 stage-npm.mjs）
 installer/             # Windows Inno Setup 与 macOS 自定义安装器
 web/                   # React 管理台源码（构建产物 go:embed 嵌入）

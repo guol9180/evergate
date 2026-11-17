@@ -45,6 +45,8 @@ go run ./cmd/evergate   # 开发态直接运行
 
 npm 安装会自动选择本平台子包，实际运行仍是原生单二进制。国内网络可用 `npm i -g @heguoliang/evergate --registry=https://registry.npmmirror.com`。
 
+安装版应用内更新优先从 npmmirror / 官方 npm registry 下载完整安装资产，GitHub Release 仅作备用；不需要为本机代理配置专用环境变量。
+
 1. 桌面安装器使用固定程序、配置与数据路径，不提供目录选择；高级用户仍可用 `-config <path>` 或 `EVERGATE_CONFIG` 覆盖配置位置
 2. 启动后访问管理台 `http://localhost:8787/`（初始账号 `admin/admin123`，仅用于本机初始化，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`
 3. 在管理台添加渠道并创建下游令牌
