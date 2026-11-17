@@ -1053,6 +1053,7 @@
   - 2026-11-17 执行 main 接入单实例、托盘、手动重启与优雅退出；自更新/托盘重启在拉起新进程前释放命名互斥。安装器新增可选开机自启 Run 项，`--autostart` 禁止自动打开浏览器
   - 2026-11-17 执行 Makefile 与 Release 改为 GUI/console 双 Windows 产物：规范 `evergate-windows-amd64.exe` 为 GUI，新增 `evergate-windows-amd64-console.exe`；npm Windows 垫片 detached 启动 GUI，Linux/macOS 保持等待前台进程
   - 2026-11-17 验证 GUI smoke：安装版 PE subsystem=2、console subsystem=3；GUI 启动后托盘注册成功、`/healthz` 200、日志文件生成；重复 `--autostart` 启动退出且主实例继续健康；非法配置显示“EverGate 启动失败”对话框
+  - 2026-11-17 验证 Windows npm 本地 staging：wrapper 0.27s 返回、GUI 子进程保持运行且 `/healthz` 200；测试进程与临时目录已清理
   - 2026-11-17 验证 安装器自启动 Run 值写入、卸载时移除，统一/分离存储与静默卸载保留数据继续通过；测试后 HKCU EverGate/Run 原值恢复，临时目录清理
   - 2026-11-17 验证 托盘菜单四个动作回调有 Windows 单测；实际图标注册与 GUI 进程启动已冒烟，未使用自动化点击菜单项
   - 2026-11-17 验证 `go test ./... -count=1`、`go vet ./...`、`npm --prefix web test`、`npm --prefix web run build`、`make build`、`make build-all`、`gofmt`、`node --check`、`git diff --check` 全部通过
