@@ -107,3 +107,58 @@ jobs:
           files: release/*
           body: ${{ steps.changelog.outputs.body }}
           generate_release_notes: true
+
+  windows-installer:
+    needs: release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Windows binary
+        shell: pwsh
+        run: |
+          npm --prefix web ci
+          npm --prefix web run build
+          New-Item -ItemType Directory -Force release | Out-Null
+          $ldflags = "-s -w -X main.version=$env:GITHUB_REF_NAME"
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          go build -ldflags $ldflags -o release/evergate-windows-amd64.exe ./cmd/evergate
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1).FullName
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          & $iscc "/DAppVersion=$version" `
+            "/DSourceExe=$env:GITHUB_WORKSPACE\release\evergate-windows-amd64.exe" `
+            "/DOutputDir=$env:GITHUB_WORKSPACE\release-installer" `
+            "$env:GITHUB_WORKSPACE\installer\evergate.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
+
+      - name: Attach installer and refresh checksums
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          $installer = "release-installer/evergate-setup-$version.exe"
+          if (-not (Test-Path $installer)) { throw "installer asset missing: $installer" }
+          gh release download $env:GITHUB_REF_NAME --pattern checksums.txt --dir release --clobber
+          $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
+          Add-Content release/checksums.txt "$hash  evergate-setup-$version.exe"
+          gh release upload $env:GITHUB_REF_NAME $installer release/checksums.txt --clobber

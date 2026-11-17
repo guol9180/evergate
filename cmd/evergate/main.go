@@ -6,11 +6,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"evergate/internal/admin"
+	"evergate/internal/appdir"
 	"evergate/internal/browser"
 	"evergate/internal/config"
 	"evergate/internal/health"
@@ -46,8 +47,14 @@ func main() {
 }
 
 func run() error {
-	cfgPath := flag.String("config", "evergate.yml", "引导配置文件路径")
+	cfgPath := flag.String("config", "", "引导配置文件路径；留空时按平台规则发现")
 	flag.Parse()
+	configExplicit := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "config" {
+			configExplicit = true
+		}
+	})
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
@@ -71,40 +78,23 @@ func run() error {
 		}()
 	}
 
-	cfg, err := config.Load(*cfgPath)
+	paths, err := appdir.Discover(*cfgPath, configExplicit)
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return fmt.Errorf("resolve config/data paths: %w", err)
 	}
-	if _, statErr := os.Stat(*cfgPath); errors.Is(statErr, fs.ErrNotExist) {
-		logger.Warn("config file not found, using defaults", slog.String("config", *cfgPath))
+	if !paths.ConfigExists {
+		logger.Warn("config file not found, using defaults", slog.String("config", paths.ConfigPath))
 	}
-
-	// 首次启动：生成空缺的 master_key / session_secret 并写回配置文件（任务书 4.7）。
-	secretsGenerated := false
-	if cfg.Security.MasterKey == "" {
-		key, err := store.GenerateRandomKey()
-		if err != nil {
-			return fmt.Errorf("generate master key: %w", err)
-		}
-		cfg.Security.MasterKey = key
-		secretsGenerated = true
+	cfg, sqlitePath, secretsGenerated, err := loadBootstrapConfig(paths)
+	if err != nil {
+		return err
 	}
-	if cfg.Security.SessionSecret == "" {
-		key, err := store.GenerateRandomKey()
-		if err != nil {
-			return fmt.Errorf("generate session secret: %w", err)
-		}
-		cfg.Security.SessionSecret = key
-		secretsGenerated = true
-	}
+	paths.DataDir = filepath.Dir(sqlitePath)
 	if secretsGenerated {
-		if err := cfg.Persist(*cfgPath); err != nil {
-			return fmt.Errorf("persist generated secrets: %w", err)
-		}
-		logger.Warn("generated missing secrets and wrote back to config", slog.String("config", *cfgPath))
+		logger.Warn("generated missing secrets and wrote back to config", slog.String("config", paths.ConfigPath))
 	}
 
-	db, err := store.Open(cfg.Storage.SQLitePath)
+	db, err := store.Open(sqlitePath)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
@@ -208,16 +198,19 @@ func run() error {
 		Tracer:    tracer,
 	})
 	adminAPI := admin.New(admin.Options{
-		DB:         db,
-		MasterKey:  cfg.Security.MasterKey,
-		Pool:       poolMgr,
-		Session:    admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
-		Update:     updateChecker,
-		Settings:   settingsMgr,
-		Health:     prober,
-		Usage:      usageMgr,
-		Playground: relayHandler.HandlePlayground,
-		SelfUpdate: updater,
+		DB:           db,
+		MasterKey:    cfg.Security.MasterKey,
+		Pool:         poolMgr,
+		Session:      admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
+		Update:       updateChecker,
+		Settings:     settingsMgr,
+		Health:       prober,
+		Usage:        usageMgr,
+		ConfigPath:   paths.ConfigPath,
+		DataDir:      paths.DataDir,
+		ConfigSource: paths.Source,
+		Playground:   relayHandler.HandlePlayground,
+		SelfUpdate:   updater,
 	})
 
 	engine := server.New(server.Options{
@@ -256,7 +249,10 @@ func run() error {
 		slog.String("version", version),
 		slog.String("addr", addr),
 		slog.String("base_path", cfg.Server.BasePath),
-		slog.String("db", cfg.Storage.SQLitePath),
+		slog.String("config", paths.ConfigPath),
+		slog.String("config_source", paths.Source),
+		slog.String("data_dir", paths.DataDir),
+		slog.String("db", sqlitePath),
 	)
 	if cfg.Server.ShouldOpenBrowser() {
 		adminURL := browser.AdminURL(cfg.Server.Port, cfg.Server.BasePath)
@@ -293,4 +289,42 @@ func run() error {
 	}
 	logger.Info("evergate stopped")
 	return nil
+}
+
+func loadBootstrapConfig(paths appdir.Paths) (config.Config, string, bool, error) {
+	cfg, err := config.Load(paths.ConfigPath)
+	if err != nil {
+		return config.Config{}, "", false, fmt.Errorf("load config: %w", err)
+	}
+	sqlitePath, err := appdir.SQLitePath(paths.ConfigPath, paths.DataDir, cfg.Storage.SQLitePath)
+	if err != nil {
+		return config.Config{}, "", false, fmt.Errorf("resolve sqlite path: %w", err)
+	}
+	if !paths.ConfigExists {
+		cfg.Storage.SQLitePath = sqlitePath
+	}
+
+	secretsGenerated := false
+	if cfg.Security.MasterKey == "" {
+		key, err := store.GenerateRandomKey()
+		if err != nil {
+			return config.Config{}, "", false, fmt.Errorf("generate master key: %w", err)
+		}
+		cfg.Security.MasterKey = key
+		secretsGenerated = true
+	}
+	if cfg.Security.SessionSecret == "" {
+		key, err := store.GenerateRandomKey()
+		if err != nil {
+			return config.Config{}, "", false, fmt.Errorf("generate session secret: %w", err)
+		}
+		cfg.Security.SessionSecret = key
+		secretsGenerated = true
+	}
+	if secretsGenerated {
+		if err := cfg.Persist(paths.ConfigPath); err != nil {
+			return config.Config{}, "", false, fmt.Errorf("persist generated secrets: %w", err)
+		}
+	}
+	return cfg, sqlitePath, secretsGenerated, nil
 }

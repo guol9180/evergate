@@ -5,6 +5,7 @@
 web/node_modules/
 web/tsconfig.app.tsbuildinfo
 release-local/
+release-installer/
 dist-npm/
 dist-e2e/
 *.tgz

@@ -75,6 +75,11 @@ export interface SystemSettings extends SystemSettingsValues {
 
 export interface SystemSettingsResponse {
   settings: SystemSettings
+  paths?: {
+    config_path: string
+    data_dir: string
+    config_source: string
+  }
   scope: {
     runtime_source: string
     hot_update_enabled: boolean

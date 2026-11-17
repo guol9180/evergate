@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 
@@ -14,6 +15,11 @@ import (
 // Persist 将 security 密钥写回 path。已有文件按行替换空值以保留注释；
 // 文件不存在或无法按行替换时整体 YAML 重写（注释丢失但密钥不丢）。
 func (c Config) Persist(path string) error {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("create config directory: %w", err)
+		}
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, fs.ErrNotExist) {

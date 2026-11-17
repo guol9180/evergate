@@ -9,7 +9,9 @@
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white&style=flat-square)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
 
-**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供三平台单二进制（Windows x64 / Linux x64 / macOS Apple Silicon）。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
+**下载**：[GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 提供 Windows x64 安装版（推荐普通用户）、Windows x64 便携版、Linux x64 与 macOS Apple Silicon 单二进制。版本变更见 [CHANGELOG.md](./CHANGELOG.md)。
+
+Windows 安装器当前未接入代码签名证书；首次运行可能触发 SmartScreen 或“未知发布者”提示，请核对 Release 资产与 `checksums.txt` 后再继续。
 
 ## 能力概览
 
@@ -24,14 +26,17 @@
 ## 快速开始
 
 ```bash
-# 方式一：直接下载 Release 单二进制后运行
+# 方式一：Windows 安装版（推荐）
+# 运行 evergate-setup-<version>.exe；安装器可选择配置与数据目录
+
+# 方式二：直接下载便携版或 Linux/macOS 单二进制后运行
 ./evergate
 
-# 方式二：npm 全局安装（Windows x64 / Linux x64 / macOS Apple Silicon）
+# 方式三：npm 全局安装（Windows x64 / Linux x64 / macOS Apple Silicon）
 npm i -g @heguoliang/evergate
 evergate
 
-# 方式三：源码构建（web/dist 已入库，后端构建无需 Node）
+# 方式四：源码构建（web/dist 已入库，后端构建无需 Node）
 make build              # → bin/evergate(.exe)，React 管理台已嵌入
 make build-all          # 三平台交叉编译：windows/amd64、linux/amd64、darwin/arm64
 go run ./cmd/evergate   # 开发态直接运行
@@ -39,12 +44,12 @@ go run ./cmd/evergate   # 开发态直接运行
 
 npm 安装会自动选择本平台子包，实际运行仍是原生单二进制。国内网络可用 `npm i -g @heguoliang/evergate --registry=https://registry.npmmirror.com`。
 
-1. 复制配置模板：`cp evergate.yml.example evergate.yml`（密钥留空则首次启动自动生成并写回）
+1. 默认配置与数据写入平台用户目录；Windows 安装器允许选择统一根目录或分别选择配置/数据目录。便携部署仍可复制 `evergate.yml.example` 到 exe 同目录，或用 `-config <path>` 显式指定
 2. 启动后访问管理台 `http://localhost:8787/`（初始账号 `admin/admin123`，仅用于本机初始化，首登强制改密）；默认启动自动打开浏览器，服务器部署可设 `server.open_browser: false`
 3. 在管理台添加渠道并创建下游令牌
 4. 客户端只需改 base_url 为 `http://localhost:8787/v1` 并使用下游令牌
 
-存活检查 `GET /healthz`。默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改。
+存活检查 `GET /healthz`。默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改。路径发现顺序、默认目录和安装器存储选项见 [docs/运维配置.md](./docs/运维配置.md#配置与数据路径)。
 
 ## 安全模型
 

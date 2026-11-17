@@ -91,7 +91,7 @@ func (d Duration) MarshalYAML() (any, error) {
 func Default() Config {
 	return Config{
 		Server:  Server{Port: 8787, BasePath: "", OpenBrowser: boolPtr(true)},
-		Storage: Storage{SQLitePath: "./data/evergate.db", LogRetentionDays: 14},
+		Storage: Storage{SQLitePath: "", LogRetentionDays: 14},
 		Defaults: Defaults{
 			ConnectTimeout:    Duration{Duration: 10 * time.Second},
 			FirstTokenTimeout: Duration{Duration: 30 * time.Second},
@@ -136,9 +136,6 @@ func (c Config) Validate() error {
 	}
 	if c.Server.BasePath != "" && (!strings.HasPrefix(c.Server.BasePath, "/") || strings.HasSuffix(c.Server.BasePath, "/")) {
 		return fmt.Errorf("server.base_path 必须以 / 开头且不以 / 结尾，当前 %q", c.Server.BasePath)
-	}
-	if c.Storage.SQLitePath == "" {
-		return errors.New("storage.sqlite_path 不能为空")
 	}
 	if c.Storage.LogRetentionDays < 1 {
 		return fmt.Errorf("storage.log_retention_days 必须 >= 1，当前 %d", c.Storage.LogRetentionDays)

@@ -45,6 +45,9 @@ type Options struct {
 	Health          *health.Prober
 	Usage           *usage.Manager
 	SelfUpdate      *selfupdate.Manager
+	ConfigPath      string
+	DataDir         string
+	ConfigSource    string
 	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
 	Playground gin.HandlerFunc
 }
@@ -235,6 +238,11 @@ func (a *API) getSystemSettings(c *gin.Context) {
 	snapshot := a.opt.Settings.Snapshot()
 	ok(c, gin.H{
 		"settings": snapshot,
+		"paths": gin.H{
+			"config_path":   a.opt.ConfigPath,
+			"data_dir":      a.opt.DataDir,
+			"config_source": a.opt.ConfigSource,
+		},
 		"scope": gin.H{
 			"runtime_source":     "SQLite runtime_settings（首次初始化来自 evergate.yml）",
 			"hot_update_enabled": true,

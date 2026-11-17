@@ -45,7 +45,7 @@ func TestPersistReplacesEmptySecretsAndKeepsComments(t *testing.T) {
 }
 
 func TestPersistCreatesFileWhenMissing(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "evergate.yml")
+	path := filepath.Join(t.TempDir(), "nested", "config", "evergate.yml")
 	cfg := Default()
 	cfg.Security.MasterKey = "abc"
 	if err := cfg.Persist(path); err != nil {

@@ -925,7 +925,7 @@
   7. WHEN 旧便携用户已有 exe 同目录 `evergate.yml` 与 `data/` THEN 继续读取旧配置与原数据，不自动迁移、不覆盖；日志明确打印实际配置路径与数据路径；
   8. WHEN 应用启动 THEN 日志与管理台（系统设置或 Dashboard）显示只读的“配置文件路径 / 数据目录”，让用户能定位数据；
   9. 安装器把 `InstallDir` / `ConfigPath` / `DataDir` 写入 `HKCU\Software\EverGate`；快捷方式与直接双击 exe 都能通过注册表找到自定义配置；升级安装沿用既有路径，不重置用户选择；
-  10. 卸载器默认只删除程序文件、快捷方式与注册表项，保留自定义配置与数据目录内容；删除用户数据必须由用户显式勾选；
+  10. 卸载器默认只删除程序文件、快捷方式与注册表项，保留自定义配置与数据目录内容；删除用户数据必须由用户显式勾选或 Yes/No 确认，静默卸载默认保留；
   11. Linux 新安装默认使用 `$XDG_CONFIG_HOME/evergate` + `$XDG_DATA_HOME/evergate`（缺省 `~/.config`、`~/.local/share`），macOS 新安装使用 `~/Library/Application Support/EverGate`；Windows 默认统一根目录为 `%LOCALAPPDATA%\EverGate`（配置含密钥，不使用漫游目录）。已有便携配置仍按 #7 原路径读取；
   12. 发布流水线新增 Windows 安装器构建与 Release 资产（如 `evergate-setup-<version>.exe`），图标沿用品牌 logo；README 下载指引区分“安装版（推荐普通用户）”与“便携版（高级用户）”；
   13. 测试覆盖配置发现顺序（含注册表）、默认路径生成、统一/分离目录、相对路径解析、旧便携模式、显式 `-config`；安装器至少完成一次静默安装到临时目录 + 自定义存储目录 → 启动 `/healthz` → 卸载 → 配置与数据保留的冒烟测试
@@ -936,11 +936,19 @@
   - 配置含主密钥，默认放 `%LOCALAPPDATA%` 而非漫游 `%APPDATA%`；自定义到共享/同步/可移动目录必须警告，UNC 数据目录直接拒绝
   - 默认 SQLite 使用绝对路径；相对路径统一相对配置文件目录
   - 自更新仍替换 exe 同目录文件；默认按用户安装到 `%LOCALAPPDATA%\Programs\EverGate`，避免 Program Files 写权限问题
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户反馈首次运行会把存储路径留在当前位置；核查确认当前默认 `evergate.yml` 与 `./data/evergate.db` 均相对 cwd，发布资产只有 portable exe、无安装器；建立本卡待确认
   - 2026-11-16 计划 用户要求安装时配置目录与数据目录都支持选择；卡面更新为“默认统一根目录 + 高级分别设置”，路径写入 `HKCU\Software\EverGate`，并补充共享/同步/UNC 目录风险校验
   - 2026-11-16 执行 安装 Inno Setup 7.1.1 x64 到 `D:\dev\environment\innosetup`；`ISCC.exe` 最小脚本编译成功（2.1MB setup 产物）并清理冒烟文件；编译器未输入授权时显示 Non-commercial use only，官方许可证允许商业用途但请求商用用户购买授权，个人/开源项目可按非商业模式使用
+  - 2026-11-17 执行 用户确认继续 P3；T40 进入执行，先完成 `internal/appdir` 路径发现与启动接线，再接安装器和发布流水线
+  - 2026-11-17 执行 新增 `internal/appdir`：显式参数 → `EVERGATE_CONFIG` → Windows 注册表 → 平台默认 → 旧便携 → cwd；支持 Linux XDG、macOS Application Support、Windows `%LOCALAPPDATA%\EverGate`、相对 SQLite 路径与注册表数据目录
+  - 2026-11-17 执行 main 改为统一路径解析；首次配置写到选定目录、SQLite 使用选定数据目录绝对路径，启动日志和系统设置页展示实际配置/数据/来源。`config.Default()` 与模板改用空 SQLite 路径哨兵，Persist 自动创建父目录
+  - 2026-11-17 执行 新增 Inno Setup 安装器：按用户安装、可选桌面快捷方式、统一/分离存储页、注册表三项、目录可写/安装目录/UNC/网络盘校验、云同步/可移动盘确认、交互卸载显式询问数据删除、静默卸载默认保留
+  - 2026-11-17 执行 Release 新增 Windows 安装器 job，构建 `evergate-setup-<version>.exe`、追加 SHA256 并上传 Release；README 与运维配置同步安装版/便携版、路径发现、旧便携兼容与 SmartScreen 说明
+  - 2026-11-17 验证 `go test ./... -count=1`、`go vet ./...`、`gofmt -l cmd internal`、`git diff --check` 通过；Windows/Linux/macOS 交叉构建通过
+  - 2026-11-17 验证 Inno Setup 7.1.1 编译成功；静默安装统一目录 → `/healthz` → 静默卸载保留数据，以及分离配置/数据目录 → 注册表写入 → 静默卸载保留目录均通过；测试后 HKCU 值已恢复且临时目录已清理
+  - 2026-11-17 交付 T40 验收标准满足；安装器保持未签名并已在 README 明确 SmartScreen 风险
 - 实施步骤（确认后执行）：
   - T40a 路径解析：新增 `internal/appdir` 与配置发现顺序（含 Windows 注册表）、统一/分离目录、相对 sqlite 路径解析、跨平台目录与测试；覆盖显式参数/环境变量/注册表/默认目录/旧便携模式的优先级
   - T40b 启动接线：main 使用新解析器，首次生成配置写到选定配置目录，日志输出实际 config/data 路径；同步 `Config.Default()`、配置模板与首次落盘的绝对数据路径

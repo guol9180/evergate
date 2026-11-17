@@ -8,6 +8,9 @@ import (
 
 func TestServerShouldOpenBrowser(t *testing.T) {
 	cfg := Default()
+	if cfg.Storage.SQLitePath != "" {
+		t.Fatalf("default sqlite path should be resolved by appdir, got %q", cfg.Storage.SQLitePath)
+	}
 	if !cfg.Server.ShouldOpenBrowser() {
 		t.Fatal("default should open browser for desktop launcher experience")
 	}

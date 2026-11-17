@@ -21,7 +21,7 @@ internal/pool/         # key 池调度器 + cooldown 状态机
 internal/affinity/     # X-Session-Id 会话亲和：SHA-256 指纹 + TTL + 有界 LRU
 internal/retry/        # 错误分类器 + 重试预算
 internal/provider/     # 跨协议上游公共能力：模型列表端点、鉴权与有界分页
-internal/appdir/       # 跨平台配置/数据目录解析（规划；T40 交付）
+internal/appdir/       # 跨平台配置发现、注册表读取与数据目录解析
 internal/store/        # GORM 模型与数据访问
 internal/admin/        # 管理台 API handlers
 internal/health/       # 周期模型列表轻量探测、key cooldown 持久化与健康状态合成
@@ -44,6 +44,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 ```
 
 - 业务数据（渠道/密钥/令牌）一律存 DB，不进 YAML；YAML 仅做引导。
+- 配置与数据路径统一由 `internal/appdir` 解析；配置发现的显式参数/环境变量/注册表/平台默认/旧便携顺序不得在 main、安装器或页面各自重写。配置内相对 SQLite 路径相对配置文件目录，不相对 cwd。
 - `web/dist` 随仓库提交（约 400KB），保证后端开发者无 Node 环境也能 `go build`；改前端后必须 `make build-web` 并提交更新后的 dist。
 - 品牌图标以 `web/public/logo.svg` 为唯一视觉源；更换图标后需重生成 `web/public/favicon.ico` 并执行 `make icon`，再提交派生产物。
 - Go 文件与包名小写；测试文件与被测文件同包（白盒）或 `_test` 包（黑盒）。

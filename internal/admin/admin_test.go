@@ -61,6 +61,8 @@ func newEnv(t *testing.T) *testEnv {
 	api := New(Options{
 		DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour),
 		Settings: settingMgr, Health: prober, Usage: usageMgr,
+		ConfigPath: filepath.Join(t.TempDir(), "evergate.yml"),
+		DataDir:    filepath.Join(t.TempDir(), "data"), ConfigSource: "default",
 		Playground: func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true, "data": gin.H{"stub": true}}) },
 	})
 	gin.SetMode(gin.TestMode)
@@ -196,6 +198,9 @@ func TestSystemSettingsHotUpdate(t *testing.T) {
 	}
 	if !strings.Contains(body, `"source":"evergate.yml"`) || !strings.Contains(body, `"hot_update_enabled":true`) {
 		t.Fatalf("设置响应缺少来源/热更新说明: %s", body)
+	}
+	if !strings.Contains(body, `"config_path":`) || !strings.Contains(body, `"data_dir":`) || !strings.Contains(body, `"config_source":"default"`) {
+		t.Fatalf("设置响应缺少只读路径信息: %s", body)
 	}
 
 	current := env.setting.Snapshot()

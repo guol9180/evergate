@@ -66,6 +66,26 @@ export default function Settings() {
         }
       />
 
+      {settings.data?.paths && (
+        <Card className="p-4 sm:p-5">
+          <h2 className="mb-3 text-sm font-semibold">本地路径</h2>
+          <dl className="grid gap-3 text-xs sm:grid-cols-3">
+            <div className="min-w-0">
+              <dt className="text-slate-400">配置文件</dt>
+              <dd className="mt-1 break-all font-mono text-slate-600">{settings.data.paths.config_path || '—'}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-slate-400">数据目录</dt>
+              <dd className="mt-1 break-all font-mono text-slate-600">{settings.data.paths.data_dir || '—'}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-slate-400">发现来源</dt>
+              <dd className="mt-1"><Badge tone="bg-slate-100 text-slate-600">{settings.data.paths.config_source || '未记录'}</Badge></dd>
+            </div>
+          </dl>
+        </Card>
+      )}
+
       <form onSubmit={onSubmit} className="space-y-4">
         <Card className="p-4 sm:p-5">
           <h2 className="mb-4 text-sm font-semibold">上游超时</h2>

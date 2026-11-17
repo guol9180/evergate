@@ -5,7 +5,7 @@ server:
   base_path: ""            # 可选挂在子路径下
   open_browser: true       # 启动后自动打开管理台；服务器部署可改为 false
 storage:
-  sqlite_path: ./data/evergate.db
+  sqlite_path: ""          # 留空使用平台数据目录；相对路径相对本配置文件目录
   log_retention_days: 14
 security:
   master_key: ""           # 为空则首次启动自动生成并写回；用于加密上游 key
