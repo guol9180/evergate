@@ -7,6 +7,9 @@
 #ifndef OutputDir
   #define OutputDir "..\release-installer"
 #endif
+#ifndef UseChineseLanguage
+  #define UseChineseLanguage 0
+#endif
 
 [Setup]
 AppId={{67AE737E-F141-45CB-A535-52DA6953F1F4}
@@ -34,7 +37,11 @@ CloseApplications=yes
 RestartApplications=no
 
 [Languages]
+#if UseChineseLanguage
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#else
+Name: "english"; MessagesFile: "compiler:Default.isl"
+#endif
 
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: unchecked

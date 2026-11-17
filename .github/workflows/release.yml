@@ -4,9 +4,18 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild, for example v0.2.0
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   release:
@@ -15,6 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@v4
         with:
@@ -35,7 +45,7 @@ jobs:
         run: |
           git fetch --no-tags origin main
           node scripts/release-gate.mjs \
-            --tag "$GITHUB_REF_NAME" \
+            --tag "$RELEASE_TAG" \
             --changelog CHANGELOG.md \
             --main-ref origin/main
 
@@ -46,7 +56,7 @@ jobs:
 
       - name: Build binaries
         run: |
-          VERSION="${GITHUB_REF_NAME}"
+          VERSION="${RELEASE_TAG}"
           LDFLAGS="-s -w -X main.version=${VERSION}"
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -tags windowsgui -ldflags "$LDFLAGS -H windowsgui" -o release/evergate-windows-amd64.exe ./cmd/evergate
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o release/evergate-windows-amd64-console.exe ./cmd/evergate
@@ -55,12 +65,12 @@ jobs:
           sha256sum release/* > release/checksums.txt
 
       - name: Stage npm packages
-        run: node scripts/stage-npm.mjs "${GITHUB_REF_NAME#v}" "$PWD/release" "$PWD/dist-npm"
+        run: node scripts/stage-npm.mjs "${RELEASE_TAG#v}" "$PWD/release" "$PWD/dist-npm"
 
       - name: Validate staged npm packages
         run: |
           node scripts/release-gate.mjs \
-            --tag "$GITHUB_REF_NAME" \
+            --tag "$RELEASE_TAG" \
             --changelog CHANGELOG.md \
             --main-ref origin/main \
             --staged-dir "$PWD/dist-npm"
@@ -83,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${RELEASE_TAG#v}"
           NPM_TAG="${{ steps.gate.outputs.npm_tag }}"
           WRAPPER_PKG=$(node -p "require('./dist-npm/evergate/package.json').name")
           LATEST_BEFORE=""
@@ -131,6 +141,7 @@ jobs:
       - name: Attach to Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: release/*
           body: ${{ steps.gate.outputs.body }}
           generate_release_notes: false
@@ -142,6 +153,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - uses: actions/setup-node@v4
         with:
@@ -160,7 +173,7 @@ jobs:
           npm --prefix web ci
           npm --prefix web run build
           New-Item -ItemType Directory -Force release | Out-Null
-          $ldflags = "-s -w -X main.version=$env:GITHUB_REF_NAME"
+          $ldflags = "-s -w -X main.version=$env:RELEASE_TAG"
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
@@ -172,10 +185,13 @@ jobs:
           choco install innosetup --no-progress -y
           $iscc = (Get-ChildItem 'C:\Program Files (x86)\Inno Setup*\ISCC.exe' | Select-Object -First 1).FullName
           if (-not $iscc) { throw "ISCC.exe not found" }
-          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $chineseIsl = 'C:\Program Files (x86)\Inno Setup 6\Languages\ChineseSimplified.isl'
+          $languageArg = if (Test-Path $chineseIsl) { '/DUseChineseLanguage=1' } else { '/DUseChineseLanguage=0' }
           & $iscc "/DAppVersion=$version" `
             "/DSourceExe=$env:GITHUB_WORKSPACE\release\evergate-windows-amd64.exe" `
             "/DOutputDir=$env:GITHUB_WORKSPACE\release-installer" `
+            $languageArg `
             "$env:GITHUB_WORKSPACE\installer\evergate.iss"
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed" }
 
@@ -184,10 +200,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          $version = $env:RELEASE_TAG.TrimStart('v')
           $installer = "release-installer/evergate-setup-$version.exe"
           if (-not (Test-Path $installer)) { throw "installer asset missing: $installer" }
-          gh release download $env:GITHUB_REF_NAME --pattern checksums.txt --dir release --clobber
+          gh release download $env:RELEASE_TAG --pattern checksums.txt --dir release --clobber
           $hash = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLower()
           Add-Content release/checksums.txt "$hash  evergate-setup-$version.exe"
-          gh release upload $env:GITHUB_REF_NAME $installer release/checksums.txt --clobber
+          gh release upload $env:RELEASE_TAG $installer release/checksums.txt --clobber
