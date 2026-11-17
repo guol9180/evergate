@@ -22,11 +22,11 @@ export default function ModelFallbackCard() {
   }, [fallbacks.data, rows])
 
   if (fallbacks.isPending) {
-    return <Card className="flex justify-center p-6"><Spinner className="h-5 w-5" /></Card>
+    return <Card className="flex justify-center"><Spinner className="h-5 w-5" /></Card>
   }
   if (fallbacks.isError || rows === null) {
     return (
-      <Card className="p-4">
+      <Card>
         <h2 className="mb-2 text-sm font-semibold">模型降级</h2>
         <ErrorText>{(fallbacks.error as Error)?.message || '降级链配置不可用'}</ErrorText>
       </Card>
@@ -40,8 +40,8 @@ export default function ModelFallbackCard() {
   const submit = () => save.mutate(rows.map(toPayload).filter(item => item.model.trim() || item.fallbacks.length))
 
   return (
-    <Card className="p-4 sm:p-5">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+    <Card>
+      <div className="eg-control-row mb-4 flex flex-wrap items-start justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={15} className="text-indigo-500" /> 模型降级</h2>
           <p className="mt-1 text-xs text-slate-500">令牌余额低于阈值或原模型渠道耗尽时，按顺序尝试低成本候选模型。</p>
@@ -56,9 +56,9 @@ export default function ModelFallbackCard() {
           暂无降级链；原模型渠道耗尽时保持 503 语义。
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-[var(--eg-control-gap)]">
           {rows.map((row, index) => (
-            <div key={index} className="grid gap-3 rounded-lg border border-slate-200 p-3 md:grid-cols-[minmax(0,1fr)_150px_minmax(0,1.5fr)_40px] md:items-start">
+            <div key={index} className="eg-grid rounded-lg border border-slate-200 p-3 min-[1100px]:grid-cols-[minmax(0,1fr)_150px_minmax(0,1.5fr)_40px] min-[1100px]:items-start">
               <Field label="源模型">
                 <Input value={row.model} onChange={(e) => update(index, { model: e.target.value })} placeholder="gpt-4o" />
               </Field>
@@ -86,7 +86,7 @@ export default function ModelFallbackCard() {
         </div>
       )}
 
-      <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+      <div className="mt-4 space-y-[var(--eg-control-gap)] border-t border-slate-100 pt-4">
         {save.isSuccess && <span className="text-xs text-emerald-600">已保存，新请求立即使用新降级链</span>}
         <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
         <div className="flex justify-end">

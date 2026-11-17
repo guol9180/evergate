@@ -28,17 +28,17 @@ export default function Logs() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
   return (
-    <div className="space-y-4">
+    <div className="eg-page-stack">
       <PageHeader title="请求日志" description="按模型、状态、渠道与令牌筛选；点击行查看命中链路与重试轨迹。" />
 
       {/* 筛选栏（gpt-load LogsFilterForm 模式） */}
-      <Card className="p-4">
-        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-end">
-          <div className="col-span-2 sm:w-44"><Input placeholder="模型" value={model} onChange={(e) => { setModel(e.target.value); setPage(1) }} /></div>
-          <div className="sm:w-28"><Input placeholder="状态码" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} /></div>
-          <div className="sm:w-28"><Input placeholder="渠道 ID" value={channelId} onChange={(e) => { setChannelId(e.target.value); setPage(1) }} /></div>
-          <div className="sm:w-28"><Input placeholder="令牌 ID" value={tokenId} onChange={(e) => { setTokenId(e.target.value); setPage(1) }} /></div>
-          <span className="col-span-2 text-xs text-slate-400 sm:pb-2"><Search size={14} className="inline" /> 输入即筛选</span>
+      <Card>
+        <div className="eg-grid eg-grid-auto items-end">
+          <div><Input placeholder="模型" value={model} onChange={(e) => { setModel(e.target.value); setPage(1) }} /></div>
+          <div><Input placeholder="状态码" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} /></div>
+          <div><Input placeholder="渠道 ID" value={channelId} onChange={(e) => { setChannelId(e.target.value); setPage(1) }} /></div>
+          <div><Input placeholder="令牌 ID" value={tokenId} onChange={(e) => { setTokenId(e.target.value); setPage(1) }} /></div>
+          <span className="text-xs text-slate-400"><Search size={14} className="inline" /> 输入即筛选</span>
         </div>
       </Card>
 
@@ -49,9 +49,13 @@ export default function Logs() {
           <Empty icon={<ScrollText size={36} />} title="暂无日志" hint="有请求经过网关后，这里会显示每次调用的完整轨迹" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px]">
+            <table className="w-full min-w-[700px] lg:min-w-0">
               <thead className="border-b border-slate-100 bg-slate-50/50">
-                <tr><Th>时间</Th><Th>模型</Th><Th>渠道</Th><Th>状态</Th><Th>首 token</Th><Th>总耗时</Th><Th>tokens</Th><Th>令牌</Th><Th>重试</Th></tr>
+                <tr>
+                  <Th>时间</Th><Th>模型</Th><Th className="hidden min-[1120px]:table-cell">渠道</Th><Th>状态</Th>
+                  <Th>首 token</Th><Th>总耗时</Th><Th>tokens</Th>
+                  <Th className="hidden min-[1180px]:table-cell">令牌</Th><Th className="hidden min-[1240px]:table-cell">重试</Th>
+                </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {logs.data?.items.map((l) => (
@@ -64,13 +68,13 @@ export default function Logs() {
                       )}
                       {l.source === 'playground' && <Badge tone="bg-indigo-100 text-indigo-700 ml-2">Playground</Badge>}
                     </Td>
-                    <Td className="text-slate-500">{l.channel_name || '—'}</Td>
+                    <Td className="hidden text-slate-500 min-[1120px]:table-cell">{l.channel_name || '—'}</Td>
                     <Td className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</Td>
                     <Td>{fmtMs(l.first_token_ms || undefined)}</Td>
                     <Td>{fmtMs(l.total_ms || undefined)}</Td>
                     <Td className="text-xs text-slate-500">{l.prompt_tokens}/{l.completion_tokens}</Td>
-                    <Td className="text-xs text-slate-500">{l.token_name || '—'}</Td>
-                    <Td>{(l.retry_trace?.length ?? 0) > 1 ? <Badge tone="bg-amber-100 text-amber-700">{l.retry_trace!.length} 次</Badge> : '—'}</Td>
+                    <Td className="hidden text-xs text-slate-500 min-[1180px]:table-cell">{l.token_name || '—'}</Td>
+                    <Td className="hidden min-[1240px]:table-cell">{(l.retry_trace?.length ?? 0) > 1 ? <Badge tone="bg-amber-100 text-amber-700">{l.retry_trace!.length} 次</Badge> : '—'}</Td>
                   </tr>
                 ))}
               </tbody>
@@ -78,7 +82,7 @@ export default function Logs() {
           </div>
         )}
         {/* 分页 */}
-        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
+        <div className="flex items-center justify-between border-t border-slate-100 text-xs text-slate-500" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
           <span>共 {fmtInt(total)} 条 · 第 {page}/{totalPages} 页</span>
           <div className="flex gap-1">
             <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(page - 1)}><ChevronLeft size={13} /></Button>
@@ -97,8 +101,8 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
   return (
     <Drawer open={!!log} onClose={onClose} title={`请求日志 #${log?.id ?? ''}`} wide>
       {log && (
-        <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div className="space-y-[var(--eg-section-gap)]">
+          <div className="grid grid-cols-1 gap-x-[var(--eg-grid-gap)] gap-y-2 text-sm sm:grid-cols-2">
             {[
               ['时间', fmtTime(log.created_at)],
               ['模型', log.model + (log.upstream_model && log.upstream_model !== log.model ? ` → ${log.upstream_model}` : '')],

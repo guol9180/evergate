@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+:root {
+  --eg-page-x: clamp(16px, 2.2vw, 40px);
+  --eg-page-y: clamp(16px, 1.6vw, 32px);
+  --eg-section-gap: clamp(16px, 1.4vw, 28px);
+  --eg-card-pad: clamp(14px, 1.2vw, 24px);
+  --eg-grid-gap: clamp(12px, 1vw, 20px);
+  --eg-control-gap: clamp(8px, 0.7vw, 14px);
+  --eg-cell-x: clamp(8px, 0.7vw, 16px);
+  --eg-cell-y: clamp(8px, 0.55vw, 12px);
+  --eg-sidebar-width: clamp(72px, calc(72px + (100vw - 1200px) * 0.25), 224px);
+}
+
 html, body, #root { height: 100%; }
 body {
   @apply text-slate-900 antialiased;
@@ -7,4 +19,44 @@ body {
     radial-gradient(circle at 88% -10%, rgba(79, 70, 229, 0.10), transparent 34%),
     linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   background-attachment: fixed;
+}
+
+.eg-sidebar {
+  width: var(--eg-sidebar-width);
+  container-type: inline-size;
+}
+
+.eg-sidebar-brand { justify-content: center; }
+.eg-sidebar-brand-logo { width: 3rem; justify-content: center; }
+.eg-nav-link { justify-content: center; }
+.eg-sidebar-label,
+.eg-sidebar-meta { display: none; }
+
+@container (min-width: 168px) {
+  .eg-sidebar-brand { justify-content: flex-start; }
+  .eg-sidebar-brand-logo { width: auto; justify-content: flex-start; padding-left: 0.75rem; }
+  .eg-nav-link { justify-content: flex-start; }
+  .eg-sidebar-label { display: inline; }
+  .eg-sidebar-meta { display: block; }
+}
+
+.eg-page {
+  min-width: 0;
+  padding: var(--eg-page-y) var(--eg-page-x);
+}
+
+.eg-page-stack { display: flex; flex-direction: column; gap: var(--eg-section-gap); }
+.eg-grid { display: grid; gap: var(--eg-grid-gap); }
+.eg-grid-auto { grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
+.eg-grid-auto-wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+.eg-page-header { gap: var(--eg-control-gap); }
+.eg-control-row { gap: var(--eg-control-gap); }
+.eg-card-fluid { padding: var(--eg-card-pad); }
+.eg-dialog-body { padding: var(--eg-card-pad); }
+.eg-dialog-footer { padding: var(--eg-control-gap) var(--eg-card-pad); }
+.eg-cell-x { padding-left: var(--eg-cell-x); padding-right: var(--eg-cell-x); }
+.eg-cell-y { padding-top: var(--eg-cell-y); padding-bottom: var(--eg-cell-y); }
+
+@media (max-width: 1023px) {
+  .eg-table-responsive { min-width: var(--eg-table-min, 720px); }
 }

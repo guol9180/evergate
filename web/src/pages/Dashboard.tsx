@@ -64,7 +64,7 @@ export default function Dashboard() {
   // 空状态：四步引导（new-api 快速上手模式）
   if (chs.length === 0) {
     return (
-      <div className="space-y-6">
+      <div className="eg-page-stack">
         {updateBanner}
         <PageHeader title="运行概览" description="本地网关、渠道健康与今日请求状态。" />
         <Card className="p-10">
@@ -99,7 +99,7 @@ export default function Dashboard() {
   })
 
   return (
-    <div className="space-y-6">
+    <div className="eg-page-stack">
       {updateBanner}
       <PageHeader
         title="运行概览"
@@ -126,7 +126,7 @@ export default function Dashboard() {
       </div>
 
       {/* 今日卡片 */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="eg-grid eg-grid-auto">
         {[
           { label: '今日请求', value: fmtInt(stats.requests), icon: Activity },
           { label: '成功率', value: stats.successRate != null ? `${stats.successRate}%` : '—', icon: Zap },
@@ -144,15 +144,20 @@ export default function Dashboard() {
       </div>
 
       {/* 渠道健康列表（HealthSummaryStrip 模式） */}
-      <Card>
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+      <Card flush>
+        <div className="eg-card-fluid flex items-center justify-between border-b border-slate-100">
           <h3 className="text-sm font-semibold">渠道健康</h3>
           <Link to="/channels" className="text-xs text-indigo-600 hover:underline">管理渠道</Link>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
+          <table className="w-full min-w-[620px] lg:min-w-0">
             <thead className="border-b border-slate-100 bg-slate-50/50">
-              <tr><Th>渠道</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>key / 可用</Th><Th>模型数</Th><Th>最近探测</Th><Th>异常摘要</Th><Th>更新时间</Th></tr>
+              <tr>
+                <Th>渠道</Th><Th>状态</Th><Th className="hidden min-[1120px]:table-cell">类型</Th>
+                <Th className="hidden min-[1200px]:table-cell">优先级</Th><Th>key / 可用</Th><Th>模型数</Th>
+                <Th className="hidden min-[1280px]:table-cell">最近探测</Th><Th className="hidden min-[1180px]:table-cell">异常摘要</Th>
+                <Th className="hidden min-[1280px]:table-cell">更新时间</Th>
+              </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {abnormal.map((c) => (
@@ -163,22 +168,22 @@ export default function Dashboard() {
                       <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
                     </Badge>
                   </Td>
-                  <Td className="text-slate-500">{c.type}</Td>
-                  <Td>{c.priority}</Td>
+                  <Td className="hidden text-slate-500 min-[1120px]:table-cell">{c.type}</Td>
+                  <Td className="hidden min-[1200px]:table-cell">{c.priority}</Td>
                   <Td>
                     <span className="font-medium">{c.available_key_count}</span>
                     <span className="text-slate-400"> / {c.key_count}</span>
                   </Td>
                   <Td>{(c.models || []).length}</Td>
-                  <Td className="text-xs text-slate-500">
+                  <Td className="hidden text-xs text-slate-500 min-[1280px]:table-cell">
                     {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : '未探测'}
                   </Td>
-                  <Td className="max-w-56">
+                  <Td className="hidden max-w-56 min-[1180px]:table-cell">
                     <div className="truncate text-xs text-slate-400" title={c.last_probe_error || undefined}>
                       {c.last_probe_error || '—'}
                     </div>
                   </Td>
-                  <Td className="text-xs text-slate-400">{fmtTime(c.updated_at)}</Td>
+                  <Td className="hidden text-xs text-slate-400 min-[1280px]:table-cell">{fmtTime(c.updated_at)}</Td>
                 </tr>
               ))}
             </tbody>

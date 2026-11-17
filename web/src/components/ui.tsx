@@ -77,18 +77,18 @@ export function Badge({ tone = 'bg-slate-100 text-slate-600', compact = false, c
   return <span className={`inline-flex items-center whitespace-nowrap rounded-full font-medium ${size} ${tone}`}>{children}</span>
 }
 
-export function Card({ className = '', children }: { className?: string; children: ReactNode }) {
-  return <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>{children}</div>
+export function Card({ className = '', children, flush = false }: { className?: string; children: ReactNode; flush?: boolean }) {
+  return <div className={`${flush ? '' : 'eg-card-fluid'} rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>{children}</div>
 }
 
 export function PageHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
   return (
-    <header className="flex flex-wrap items-start justify-between gap-3">
+    <header className="eg-page-header flex flex-wrap items-start justify-between">
       <div className="min-w-0">
         <h1 className="text-lg font-bold tracking-tight text-slate-900">{title}</h1>
         {description && <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>}
       </div>
-      {actions && <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0">{actions}</div>}
+      {actions && <div className="eg-control-row flex w-full flex-wrap items-center sm:w-auto sm:shrink-0">{actions}</div>}
     </header>
   )
 }
@@ -105,14 +105,14 @@ export function Dialog({ open, onClose, title, children, footer, wide }: { open:
   }, [open, onClose])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`flex max-h-[85vh] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-white shadow-xl`}>
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3.5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-[var(--eg-page-x)]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={`flex max-h-[90vh] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-white shadow-xl`}>
+        <div className="eg-dialog-body flex shrink-0 items-center justify-between border-b border-slate-100">
           <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
           <button onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={16} /></button>
         </div>
-        <div className="flex-1 overflow-auto px-5 py-4">{children}</div>
-        {footer && <div className="shrink-0 border-t border-slate-100 bg-white px-5 py-3">{footer}</div>}
+        <div className="eg-dialog-body flex-1 overflow-auto">{children}</div>
+        {footer && <div className="eg-dialog-footer shrink-0 border-t border-slate-100 bg-white">{footer}</div>}
       </div>
     </div>
   )
@@ -122,12 +122,12 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`flex h-full w-full ${wide ? 'sm:w-[560px]' : 'sm:w-[420px]'} flex-col bg-white shadow-2xl`}>
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3.5">
+      <div className={`flex h-full w-full ${wide ? 'sm:w-[min(560px,92vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-white shadow-2xl`}>
+        <div className="eg-dialog-body flex items-center justify-between border-b border-slate-100">
           <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
           <button onClick={onClose} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"><X size={16} /></button>
         </div>
-        <div className="flex-1 overflow-auto px-5 py-4">{children}</div>
+        <div className="eg-dialog-body flex-1 overflow-auto">{children}</div>
       </div>
     </div>
   )
@@ -149,9 +149,9 @@ export function ErrorText({ children }: { children?: ReactNode }) {
 }
 
 export function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <th className={`whitespace-nowrap px-3 py-2.5 text-left align-middle text-xs font-semibold uppercase tracking-wide text-slate-500 ${className}`}>{children}</th>
+  return <th className={`eg-cell-x eg-cell-y whitespace-nowrap text-left align-middle text-xs font-semibold uppercase tracking-wide text-slate-500 ${className}`}>{children}</th>
 }
 
 export function Td({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
-  return <td className={`px-3 py-2.5 align-middle text-sm text-slate-700 ${className}`} title={title}>{children}</td>
+  return <td className={`eg-cell-x eg-cell-y align-middle text-sm text-slate-700 ${className}`} title={title}>{children}</td>
 }

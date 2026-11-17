@@ -34,7 +34,7 @@ export default function Usage() {
   const successRate = data?.totals.requests ? (data.totals.success / data.totals.requests) * 100 : null
 
   return (
-    <div className="space-y-5">
+    <div className="eg-page-stack">
       <PageHeader
         title="用量成本"
         description="按 UTC 日聚合请求、token 与价格快照。"
@@ -45,8 +45,8 @@ export default function Usage() {
         }
       />
 
-      <Card className="p-4">
-        <div className="grid gap-3 md:grid-cols-5">
+      <Card>
+        <div className="eg-grid eg-grid-auto">
           <Field label="开始日期"><Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label="结束日期"><Input type="date" value={end} min={start} max={today()} onChange={(e) => setEnd(e.target.value)} /></Field>
           <Field label="渠道">
@@ -70,7 +70,7 @@ export default function Usage() {
         <div className="flex justify-center py-16"><Spinner className="h-6 w-6" /></div>
       ) : !data ? null : (
         <>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="eg-grid eg-grid-auto">
             <Metric label="请求数" value={fmtInt(data.totals.requests)} hint={`成功 ${fmtInt(data.totals.success)}`} />
             <Metric label="成功率" value={successRate == null ? '—' : `${successRate.toFixed(1)}%`} hint="2xx / 3xx" />
             <Metric label="Token" value={fmtInt(data.totals.tokens_in + data.totals.tokens_out)} hint={`输入 ${fmtInt(data.totals.tokens_in)} · 输出 ${fmtInt(data.totals.tokens_out)}`} />
@@ -82,12 +82,12 @@ export default function Usage() {
             />
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[1.3fr_1fr]">
+          <div className="eg-grid [grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))]">
             <TrendCard daily={daily} />
             <PriceCard />
           </div>
 
-          <div className="grid gap-5 lg:grid-cols-3">
+          <div className="eg-grid eg-grid-auto-wide">
             <TopCard title="Top 渠道" rows={data.top_channels} />
             <TopCard title="Top 模型" rows={data.top_models} />
             <TopCard title="Top 令牌" rows={data.top_tokens} />
@@ -100,7 +100,7 @@ export default function Usage() {
 
 function Metric({ label, value, hint, warning }: { label: string; value: string; hint: string; warning?: boolean }) {
   return (
-    <Card className="p-4">
+    <Card>
       <div className="text-xs text-slate-500">{label}</div>
       <div className={`mt-1 text-2xl font-bold ${warning ? 'text-amber-600' : 'text-slate-900'}`}>{value}</div>
       <div className="mt-1 text-xs text-slate-400">{hint}</div>
@@ -110,7 +110,7 @@ function Metric({ label, value, hint, warning }: { label: string; value: string;
 
 function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
   return (
-    <Card className="flex h-full flex-col p-4">
+    <Card className="flex h-full flex-col">
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-indigo-500" /> 日趋势</h3>
         <div className="flex items-center gap-3 text-xs text-slate-400">
@@ -149,8 +149,8 @@ function fillDailyGaps(points: UsageDailyPoint[], start?: string, end?: string):
 
 function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) {
   return (
-    <Card>
-      <h3 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold">{title}</h3>
+    <Card flush>
+      <h3 className="border-b border-slate-100 text-sm font-semibold" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>{title}</h3>
       {rows.length === 0 ? <Empty title="暂无数据" /> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[300px]">
@@ -211,7 +211,7 @@ function PriceCard() {
 
   if (prices.isPending) return <Card className="flex justify-center p-8"><Spinner /></Card>
   return (
-    <Card className="p-4">
+    <Card>
       <h3 className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign size={15} className="text-emerald-500" /> 模型价格</h3>
       <p className="mt-1 text-xs text-slate-400">单位：USD / 百万 token；价格只影响之后的新请求。</p>
       <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-slate-200 bg-slate-50/50 p-3">

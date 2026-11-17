@@ -8,6 +8,7 @@ release-local/
 release-installer/
 dist-npm/
 dist-e2e/
+/web/layout-audit/
 *.tgz
 
 # 运行时数据

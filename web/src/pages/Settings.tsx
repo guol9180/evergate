@@ -54,7 +54,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="eg-page-stack">
       <PageHeader
         title="系统设置"
         description="SQLite 是运行时配置的唯一事实源；首次初始化来自 evergate.yml，保存后无需重启。"
@@ -67,9 +67,9 @@ export default function Settings() {
       />
 
       {settings.data?.paths && (
-        <Card className="p-4 sm:p-5">
+        <Card>
           <h2 className="mb-3 text-sm font-semibold">本地路径</h2>
-          <dl className="grid gap-3 text-xs sm:grid-cols-3">
+          <dl className="eg-grid eg-grid-auto-wide text-xs">
             <div className="min-w-0">
               <dt className="text-slate-400">配置文件</dt>
               <dd className="mt-1 break-all font-mono text-slate-600">{settings.data.paths.config_path || '—'}</dd>
@@ -86,19 +86,19 @@ export default function Settings() {
         </Card>
       )}
 
-      <form onSubmit={onSubmit} className="space-y-4">
-        <Card className="p-4 sm:p-5">
+      <form onSubmit={onSubmit} className="space-y-[var(--eg-section-gap)]">
+        <Card>
           <h2 className="mb-4 text-sm font-semibold">上游超时</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="eg-grid eg-grid-auto-wide">
             <NumberField label="连接超时（秒）" hint="100ms - 5m" value={form.connectTimeoutSec} onChange={set('connectTimeoutSec')} />
             <NumberField label="首 token 超时（秒）" hint="100ms - 10m" value={form.firstTokenTimeoutSec} onChange={set('firstTokenTimeoutSec')} />
             <NumberField label="整体超时（秒）" hint="1s - 24h，不小于前两项" value={form.overallTimeoutSec} onChange={set('overallTimeoutSec')} />
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-5">
+        <Card>
           <h2 className="mb-4 text-sm font-semibold">重试与 cooldown</h2>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="eg-grid eg-grid-auto-wide">
             <NumberField label="最多重试渠道数" hint="1-10" value={form.retryChannels} onChange={set('retryChannels')} />
             <NumberField label="每渠道最多 key 数" hint="1-10" value={form.retryKeysPerChannel} onChange={set('retryKeysPerChannel')} />
             <NumberField label="重试总时长（秒）" hint="1s - 15m" value={form.retryTotalSec} onChange={set('retryTotalSec')} />
@@ -108,9 +108,9 @@ export default function Settings() {
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-5">
+        <Card>
           <h2 className="mb-4 text-sm font-semibold">维护任务</h2>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="eg-grid eg-grid-auto-wide">
             <NumberField label="日志保留天数" hint="1-3650" value={form.logRetentionDays} onChange={set('logRetentionDays')} />
             <NumberField label="健康探测间隔（秒）" hint="10s - 24h" value={form.healthProbeIntervalSec} onChange={set('healthProbeIntervalSec')} />
             <NumberField label="健康探测并发" hint="1-32" value={form.healthProbeConcurrency} onChange={set('healthProbeConcurrency')} />
@@ -118,7 +118,7 @@ export default function Settings() {
           </div>
         </Card>
 
-        <div className="space-y-3">
+        <div className="space-y-[var(--eg-control-gap)]">
           {save.isSuccess && <span className="text-xs text-emerald-600">已保存，新请求立即使用新配置</span>}
           <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
           <div className="flex justify-end">

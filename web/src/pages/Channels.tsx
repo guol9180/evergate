@@ -17,7 +17,7 @@ export default function Channels() {
   const items = [...(channels.data?.items ?? [])].sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.priority - b.priority || a.id - b.id)
 
   return (
-    <div className="space-y-4">
+    <div className="eg-page-stack">
       <PageHeader
         title="渠道管理"
         description="上游渠道、优先级权重与 key 池状态；展开行可管理凭据。"
@@ -29,11 +29,13 @@ export default function Channels() {
           <Empty icon={<Plug size={36} />} title="还没有渠道" hint="新建一个上游渠道，填入 base_url 与支持的模型" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[960px]">
+            <table className="w-full min-w-[720px] lg:min-w-0">
               <thead className="border-b border-slate-100 bg-slate-50/50">
                 <tr>
-                  <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th>类型</Th><Th>优先级</Th><Th>权重</Th>
-                  <Th>模型</Th><Th>key / 可用</Th><Th>最近探测</Th><Th>启用</Th><Th>测试</Th><Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
+                  <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th className="hidden min-[1120px]:table-cell">类型</Th>
+                  <Th className="hidden min-[1180px]:table-cell">优先级</Th><Th className="hidden min-[1220px]:table-cell">权重</Th>
+                  <Th>模型</Th><Th>key / 可用</Th><Th className="hidden min-[1280px]:table-cell">最近探测</Th>
+                  <Th>启用</Th><Th>测试</Th><Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -78,7 +80,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
             <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
           </Badge>
         </Td>
-        <Td>
+        <Td className="hidden min-[1120px]:table-cell">
           <div className="flex flex-col gap-1">
             <span className="inline-block max-w-[96px] truncate text-slate-500" title={c.type}>{c.type}</span>
             {(c.supports_responses || c.supports_anthropic || c.supports_gemini) && (
@@ -90,14 +92,14 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
             )}
           </div>
         </Td>
-        <Td>{c.priority}</Td>
-        <Td>{c.weight}</Td>
+        <Td className="hidden min-[1180px]:table-cell">{c.priority}</Td>
+        <Td className="hidden min-[1220px]:table-cell">{c.weight}</Td>
         <Td>{(c.models || []).length}</Td>
         <Td>
           <span className="font-medium">{c.available_key_count}</span>
           <span className="text-slate-400"> / {c.key_count}</span>
         </Td>
-        <Td className="max-w-56">
+        <Td className="hidden max-w-56 min-[1280px]:table-cell">
           <div className="text-xs text-slate-500">
             {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : '未探测'}
           </div>
@@ -147,12 +149,17 @@ function KeysPanel({ channelId }: { channelId: number }) {
   if (detail.isError) return <Card className="p-4"><ErrorText>{(detail.error as Error).message}</ErrorText></Card>
 
   return (
-    <Card className="p-4">
+    <Card>
       <h3 className="mb-3 text-sm font-semibold">上游 key（渠道：{detail.data.channel.name}）</h3>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[860px]">
+        <table className="w-full min-w-[700px] lg:min-w-0">
           <thead className="border-b border-slate-100 bg-slate-50/50">
-            <tr><Th>#</Th><Th>状态</Th><Th>权重</Th><Th>连续失败</Th><Th>退避档位</Th><Th>冷却剩余</Th><Th>成功/失败</Th><Th>最近错误</Th><Th>启用</Th><Th className="w-16"><span className="block pr-2.5 text-right">操作</span></Th></tr>
+            <tr>
+              <Th>#</Th><Th>状态</Th><Th>权重</Th><Th>连续失败</Th>
+              <Th className="hidden min-[1180px]:table-cell">退避档位</Th><Th>冷却剩余</Th>
+              <Th className="hidden min-[1220px]:table-cell">成功/失败</Th><Th className="hidden min-[1280px]:table-cell">最近错误</Th>
+              <Th>启用</Th><Th className="w-16"><span className="block pr-2.5 text-right">操作</span></Th>
+            </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {detail.data.keys.map((k, i) => {
@@ -165,10 +172,10 @@ function KeysPanel({ channelId }: { channelId: number }) {
                   </Td>
                   <Td>{k.weight}</Td>
                   <Td className={k.consecutive_fails > 0 ? 'text-amber-600 font-medium' : ''}>{k.consecutive_fails}</Td>
-                  <Td>L{k.level}</Td>
+                  <Td className="hidden min-[1180px]:table-cell">L{k.level}</Td>
                   <Td>{remain ? <span className="text-amber-600">{remain}</span> : '—'}</Td>
-                  <Td className="text-xs text-slate-500">{k.success_count}/{k.fail_count}</Td>
-                  <Td className="max-w-48 truncate text-xs text-slate-400" title={k.last_error}>{k.last_error || '—'}</Td>
+                  <Td className="hidden text-xs text-slate-500 min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
+                  <Td className="hidden max-w-48 truncate text-xs text-slate-400 min-[1280px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
                     <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={`启用 key ${i + 1}`} />
                   </Td>
@@ -277,7 +284,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         </div>
       }
     >
-      <form id={formID} onSubmit={onSubmit} className="space-y-4">
+      <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]">
         {!channel && (
           <div className="space-y-2">
             <Field label="供应商预设" hint="选择后自动填充 Base URL 与推荐配置，仍可手动调整">
@@ -300,7 +307,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             )}
           </div>
         )}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="eg-grid eg-grid-auto-wide">
           <Field label="名称"><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
           <Field label="类型">
             <Select value={type} onChange={(e) => setType(e.target.value)}>
@@ -334,7 +341,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             <Switch checked={supportsGemini} onChange={setSupportsGemini} label="原生支持 Gemini API" />
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="eg-grid eg-grid-auto-wide">
           <Field label="优先级" hint="越小越优先"><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
           <Field label="权重" hint="同优先级内加权随机"><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
         </div>

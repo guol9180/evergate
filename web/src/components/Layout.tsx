@@ -40,13 +40,13 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex h-full">
-      <aside className="flex w-[72px] shrink-0 flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur xl:w-56">
-        <div className="flex items-center gap-3 px-3 py-5">
-          <div className="flex w-12 shrink-0 items-center justify-center xl:w-auto xl:justify-start xl:pl-3">
+    <div className="flex h-full min-w-0">
+      <aside className="eg-sidebar flex shrink-0 flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur">
+        <div className="eg-sidebar-brand flex items-center gap-3 px-3 py-5">
+          <div className="eg-sidebar-brand-logo flex shrink-0 items-center">
             <img src="/logo.svg" alt="" width={20} height={20} className="shrink-0" />
           </div>
-          <div className="hidden min-w-0 xl:block">
+          <div className="eg-sidebar-meta min-w-0">
             <div className="text-sm font-bold text-slate-900">EverGate</div>
             <div className="text-[10px] text-slate-400">AI 网关管理台</div>
           </div>
@@ -57,18 +57,19 @@ export default function Layout() {
               key={item.to}
               to={item.to}
               end={item.end}
+              title={item.label}
               className={({ isActive }) =>
-                `flex items-center justify-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors xl:justify-start ${isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`
+                `eg-nav-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`
               }
             >
               <item.icon size={16} />
-              <span className="hidden xl:inline">{item.label}</span>
+              <span className="eg-sidebar-label">{item.label}</span>
             </NavLink>
           ))}
         </nav>
         <div className="space-y-3 border-t border-slate-100 p-3">
-          <div className="hidden px-2 text-xs text-slate-500 xl:block">👤 {me.data?.username}</div>
-          <div className="hidden px-2 text-[11px] leading-4 text-slate-400 xl:block">
+          <div className="eg-sidebar-meta px-2 text-xs text-slate-500">👤 {me.data?.username}</div>
+          <div className="eg-sidebar-meta px-2 text-[11px] leading-4 text-slate-400">
             {update.isPending
               ? '正在检查更新…'
               : update.isError
@@ -85,14 +86,14 @@ export default function Layout() {
           <button
             onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
             title="退出登录"
-            className="flex w-full items-center justify-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 xl:justify-start"
+            className="eg-nav-link flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
           >
-            <LogOut size={16} /> <span className="hidden xl:inline">退出登录</span>
+            <LogOut size={16} /> <span className="eg-sidebar-label">退出登录</span>
           </button>
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-7xl px-5 py-6 xl:px-8">
+      <main className="min-w-0 flex-1 overflow-auto">
+        <div className="eg-page">
           <Outlet />
         </div>
       </main>

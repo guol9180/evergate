@@ -77,16 +77,16 @@ export default function Playground() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="eg-page-stack">
       <PageHeader
         title={<span className="flex items-center gap-2"><FlaskConical size={18} /> Playground</span>}
         description="用管理台会话直接验证渠道与协议兼容性。请求复用网关调度与健康规则，并写入请求日志的 Playground 来源。"
         actions={<Badge tone="bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-100">管理台专用 · 不暴露密钥</Badge>}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
-        <Card className="min-w-0 self-start p-4 sm:p-5">
-          <div className="space-y-4">
+      <div className="eg-grid lg:grid-cols-[clamp(280px,24vw,420px)_minmax(0,1fr)]">
+        <Card className="min-w-0 self-start">
+          <div className="space-y-[var(--eg-control-gap)]">
             <div>
               <div className="mb-1.5 flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium text-slate-700">协议</span>
@@ -182,8 +182,8 @@ export default function Playground() {
           </div>
         </Card>
 
-        <Card className="flex min-w-0 flex-col overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
+        <Card flush className="flex min-w-0 flex-col overflow-hidden">
+          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
             <h2 className="text-sm font-semibold text-slate-800">响应</h2>
             <Badge tone="bg-slate-100 text-slate-600">{protocolLabel(protocol)}</Badge>
             {meta && (
@@ -196,7 +196,7 @@ export default function Playground() {
             )}
           </div>
 
-          <div ref={outputRef} aria-live="polite" className="max-h-[58vh] min-h-[300px] flex-1 overflow-auto px-4 py-4 sm:px-5">
+          <div ref={outputRef} aria-live="polite" className="max-h-[58vh] min-h-[300px] flex-1 overflow-auto" style={{ padding: 'var(--eg-card-pad)' }}>
             {output ? (
               <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-slate-700">
                 {output}
@@ -210,13 +210,13 @@ export default function Playground() {
           </div>
 
           {error && (
-            <div className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs leading-5 text-red-600 sm:px-5">
+            <div className="border-t border-red-100 bg-red-50 text-xs leading-5 text-red-600" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
               <span className="break-all">{error}</span>
             </div>
           )}
 
           {meta && (
-            <div className="border-t border-slate-100 bg-slate-50/60 px-4 py-4 sm:px-5">
+            <div className="border-t border-slate-100 bg-slate-50/60" style={{ padding: 'var(--eg-card-pad)' }}>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">命中链路</h3>
                 <span className="text-[11px] text-slate-400">已写入请求日志 · source=playground</span>

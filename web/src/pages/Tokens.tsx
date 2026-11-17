@@ -30,7 +30,7 @@ export default function Tokens() {
   if (tokens.isPending) return <div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>
 
   return (
-    <div className="space-y-4">
+    <div className="eg-page-stack">
       <PageHeader
         title="令牌管理"
         description="下游 API key、额度、有效期与访问白名单；明文 key 仅在创建时展示一次。"
@@ -41,11 +41,12 @@ export default function Tokens() {
           <Empty icon={<KeyRound size={36} />} title="还没有下游令牌" hint="创建令牌后发给客户端，作为调用网关的 API key" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px]">
+            <table className="w-full min-w-[700px] lg:min-w-0">
               <thead className="border-b border-slate-100 bg-slate-50/50">
                 <tr>
-                  <Th>名称</Th><Th>状态</Th><Th>额度</Th><Th>允许模型</Th><Th>IP 白名单</Th>
-                  <Th>过期时间</Th><Th>创建时间</Th><Th>启用</Th><Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
+                  <Th>名称</Th><Th>状态</Th><Th>额度</Th><Th>允许模型</Th><Th className="hidden min-[1180px]:table-cell">IP 白名单</Th>
+                  <Th>过期时间</Th><Th className="hidden min-[1240px]:table-cell">创建时间</Th><Th>启用</Th>
+                  <Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -71,13 +72,13 @@ export default function Tokens() {
                       </div>
                       {t.disable_fallback && <Badge tone="bg-amber-100 text-amber-700">禁止降级</Badge>}
                     </Td>
-                    <Td className="max-w-40 text-xs text-slate-500">
+                    <Td className="hidden max-w-40 text-xs text-slate-500 min-[1180px]:table-cell">
                       <div className="truncate" title={(t.allowed_ips || []).join(', ')}>
                         {(t.allowed_ips || []).join(', ') || '全部 IP'}
                       </div>
                     </Td>
                     <Td className="text-xs">{fmtTime(t.expired_at)}</Td>
-                    <Td className="text-xs text-slate-400">{fmtTime(t.created_at)}</Td>
+                    <Td className="hidden text-xs text-slate-400 min-[1240px]:table-cell">{fmtTime(t.created_at)}</Td>
                     <Td>
                       <Switch checked={t.enabled} onChange={(enabled) => update.mutate({ id: t.id, enabled })} label={`启用令牌 ${t.name}`} />
                     </Td>
@@ -125,7 +126,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   if (create.data) {
     return (
       <Dialog open onClose={onClose} title="令牌已创建">
-        <div className="space-y-4">
+        <div className="space-y-[var(--eg-control-gap)]">
           <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
             ⚠️ 请立即复制保存——明文 key 仅此一次显示，关闭后无法再次查看。
           </div>
@@ -178,8 +179,8 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
         </div>
       }
     >
-      <form id={formID} onSubmit={onSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]">
+        <div className="eg-grid eg-grid-auto-wide">
           <Field label="名称" hint="便于识别用途，如 cli-token、chatbox">
             <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="my-token" />
           </Field>
@@ -197,7 +198,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
           </div>
           <Switch checked={!disableFallback} onChange={(enabled) => setDisableFallback(!enabled)} label="允许模型降级" />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="eg-grid eg-grid-auto-wide">
           <div className="space-y-2">
             <div className="flex items-end justify-between gap-2">
               <label className="text-sm font-medium text-slate-700">允许模型（每行一个）</label>
