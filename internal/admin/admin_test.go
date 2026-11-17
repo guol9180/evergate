@@ -380,6 +380,42 @@ func TestChannelManualProbePersistsHealthView(t *testing.T) {
 	}
 }
 
+func TestChannelManualProbeUsesAnthropicProtocol(t *testing.T) {
+	env := newEnv(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/models" ||
+			r.Header.Get("x-api-key") != "sk-anthropic" ||
+			r.Header.Get("anthropic-version") != "2023-06-01" ||
+			r.Header.Get("Authorization") != "" ||
+			r.URL.RawQuery != "" {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+
+	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
+		fmt.Sprintf(`{"name":"probe-anthropic","type":"anthropic","base_url":%q,"models":["claude-test"],"supports_anthropic":true}`, server.URL))
+	if code != http.StatusOK {
+		t.Fatalf("create channel: %d %s", code, body)
+	}
+	if code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-anthropic"}`); code != http.StatusOK {
+		t.Fatalf("add key: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/test", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"result":"success"`) {
+		t.Fatalf("manual probe: %d %s", code, body)
+	}
+	if strings.Contains(body, "sk-anthropic") || strings.Contains(body, "key_cipher") {
+		t.Fatalf("manual probe leaked key material: %s", body)
+	}
+}
+
 func TestTokenManagement(t *testing.T) {
 	env := newEnv(t)
 	cookie, _ := login(t, env, "admin", "admin123")

@@ -212,6 +212,97 @@ func TestProbeInconclusiveKeepsHalfOpenAndReleasesSlot(t *testing.T) {
 	}
 }
 
+func TestProbeUsesProtocolModelListEndpoint(t *testing.T) {
+	cases := []struct {
+		name              string
+		supportsAnthropic bool
+		supportsGemini    bool
+		wantPath          string
+		wantAPIKeyHeader  string
+		wantAuth          string
+		wantVersion       string
+	}{
+		{
+			name: "anthropic", supportsAnthropic: true,
+			wantPath: "/v1/models", wantAPIKeyHeader: "x-api-key",
+			wantVersion: "2023-06-01",
+		},
+		{
+			name: "gemini", supportsGemini: true,
+			wantPath: "/v1beta/models", wantAPIKeyHeader: "x-goog-api-key",
+		},
+		{
+			name:     "openai-compatible",
+			wantPath: "/models", wantAuth: "Bearer sk-probe",
+		},
+		{
+			name:              "anthropic-precedes-gemini",
+			supportsAnthropic: true, supportsGemini: true,
+			wantPath: "/v1/models", wantAPIKeyHeader: "x-api-key",
+			wantVersion: "2023-06-01",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newProbeEnv(t, http.StatusOK, 0)
+			ch := env.createChannel(t, tc.name, true)
+			key := env.createKey(t, ch.ID, store.KeyStateActive, nil)
+
+			type capturedRequest struct {
+				path    string
+				query   string
+				headers http.Header
+			}
+			got := make(chan capturedRequest, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got <- capturedRequest{path: r.URL.Path, query: r.URL.RawQuery, headers: r.Header.Clone()}
+				w.WriteHeader(http.StatusOK)
+			}))
+			t.Cleanup(server.Close)
+
+			ch.BaseURL = server.URL
+			ch.SupportsAnthropic = tc.supportsAnthropic
+			ch.SupportsGemini = tc.supportsGemini
+			if err := env.db.Save(ch).Error; err != nil {
+				t.Fatalf("update channel protocol: %v", err)
+			}
+			env.prober.opt.Client = server.Client()
+
+			result, err := env.prober.ProbeChannel(context.Background(), ch, []*store.ChannelKey{key}, time.Second, time.Minute)
+			if err != nil {
+				t.Fatalf("probe: %v", err)
+			}
+			if result.Result != ProbeResultSuccess {
+				t.Fatalf("result = %#v", result)
+			}
+
+			request := <-got
+			if request.path != tc.wantPath {
+				t.Fatalf("path = %q, want %q", request.path, tc.wantPath)
+			}
+			if request.query != "" {
+				t.Fatalf("probe query must be empty, got %q", request.query)
+			}
+			if auth := request.headers.Get("Authorization"); auth != tc.wantAuth {
+				t.Fatalf("Authorization = %q, want %q", auth, tc.wantAuth)
+			}
+			if tc.wantAPIKeyHeader == "" {
+				if request.headers.Get("x-api-key") != "" || request.headers.Get("x-goog-api-key") != "" {
+					t.Fatalf("OpenAI-compatible probe leaked protocol auth headers: %#v", request.headers)
+				}
+				return
+			}
+			if key := request.headers.Get(tc.wantAPIKeyHeader); key != "sk-probe" {
+				t.Fatalf("%s = %q, want sk-probe", tc.wantAPIKeyHeader, key)
+			}
+			if version := request.headers.Get("anthropic-version"); version != tc.wantVersion {
+				t.Fatalf("anthropic-version = %q, want %q", version, tc.wantVersion)
+			}
+		})
+	}
+}
+
 func TestSchedulerSkipsDisabledChannel(t *testing.T) {
 	env := newProbeEnv(t, http.StatusOK, 0)
 	enabled := env.createChannel(t, "enabled", true)

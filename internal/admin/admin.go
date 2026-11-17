@@ -494,7 +494,7 @@ func (a *API) toggleChannel(c *gin.Context) {
 	ok(c, gin.H{"enabled": ch.Enabled})
 }
 
-// testChannel 手动连通测试：与后台健康探测共用 GET {base_url}/models 路径，
+// testChannel 手动连通测试：与后台健康探测共用协议化模型列表 GET，
 // 结果同样驱动 half_open/cooldown 状态机并持久化渠道健康摘要。
 func (a *API) testChannel(c *gin.Context) {
 	ch, found := a.loadChannel(c)

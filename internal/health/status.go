@@ -22,7 +22,7 @@ func AvailableKeyCount(keys []*store.ChannelKey, stateFn func(int64) string) int
 
 // DeriveStatus 将实时 key 状态与最近轻量探测结果合成渠道状态。
 // down 优先；存在不可用 key 或最近探测失败为 degraded；
-// /models 路径不支持时为 inconclusive，不用一次不可判定的探测否定整个渠道。
+// 模型列表路径不支持时为 inconclusive，不用一次不可判定的探测否定整个渠道。
 func DeriveStatus(ch *store.Channel, keys []*store.ChannelKey, stateFn func(int64) string) string {
 	if ch == nil || !ch.Enabled || AvailableKeyCount(keys, stateFn) == 0 {
 		return store.ChannelStatusDown

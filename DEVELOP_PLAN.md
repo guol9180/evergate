@@ -980,9 +980,14 @@
   6. 测试：health 包按三种协议各一条 httptest 用例（断言路径、鉴权头、无 query key 泄露）；admin testChannel 复用同一探测路径；404/405 的 inconclusive 与 half-open 释放不回归；
   7. 文档同步：更新 AGENTS 健康探测红线、`internal/health` 目录说明与相关运维文档；`go test ./... -count=1`、`go vet ./...`、`make build` 通过。
 - 边界：不改调度/重试逻辑与数据库 schema；不解析模型列表（留给 T43）；不改渠道保存校验；不改 `/models` 之外的探测语义
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认建卡：修复 T37/T38 交付后原生渠道探测失效的回归缺口；各协议模型列表端点调研结论见 2026-11-16 会话（Anthropic `/v1/models`、Gemini `/v1beta/models`、OpenAI 兼容 `{base}/models`）
+  - 2026-11-17 执行 用户确认按 P3 计划开始开发；T42 进入执行，先补三协议探测回归测试，再改公共探测路径
+  - 2026-11-17 执行 `internal/health` 新增统一 `modelListEndpointFor`：按 Anthropic → Gemini → OpenAI 兼容选择路径与鉴权；admin 手动探测继续调用同一 `Prober`，无第二套协议分支；错误文案改为输出实际列表路径
+  - 2026-11-17 验证 红测复现 Anthropic/Gemini 均误打 `/models`、admin Anthropic 手动探测返回 403；修复后 `go test ./internal/health -run TestProbeUsesProtocolModelListEndpoint`、`go test ./internal/admin -run TestChannelManualProbe` 通过
+  - 2026-11-17 验证 `gofmt -l cmd internal` 无输出、`go vet ./...` 通过、`go test ./... -count=1` 全包通过、`make build` 成功；AGENTS 与 `docs/运维配置.md` 健康探测口径已同步
+  - 2026-11-17 交付 T42 验收标准全部满足；Anthropic-compatible 无模型列表端点的 404/405 仍按 inconclusive 处理，不改变 key 调度状态
 
 ### T43: 渠道模型目录发现与令牌模型选择器（P3，用户指令）
 

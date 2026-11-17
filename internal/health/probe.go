@@ -21,6 +21,8 @@ const (
 	ProbeResultSuccess      = "success"
 	ProbeResultFailure      = "failure"
 	ProbeResultInconclusive = "inconclusive"
+
+	defaultAnthropicVersion = "2023-06-01"
 )
 
 var (
@@ -42,7 +44,7 @@ type ProberOptions struct {
 	Now       func() time.Time
 }
 
-// Prober 执行 GET {base_url}/models，并同步驱动 key 状态机与渠道健康字段。
+// Prober 执行协议对应的模型列表 GET，并同步驱动 key 状态机与渠道健康字段。
 type Prober struct {
 	opt ProberOptions
 }
@@ -149,16 +151,49 @@ type probeResponse struct {
 	Err        error
 }
 
+type modelListEndpoint struct {
+	Path    string
+	SetAuth func(*http.Request, string)
+}
+
+func modelListEndpointFor(ch *store.Channel) modelListEndpoint {
+	switch {
+	case ch.SupportsAnthropic:
+		return modelListEndpoint{
+			Path: "/v1/models",
+			SetAuth: func(req *http.Request, key string) {
+				req.Header.Set("x-api-key", key)
+				req.Header.Set("anthropic-version", defaultAnthropicVersion)
+			},
+		}
+	case ch.SupportsGemini:
+		return modelListEndpoint{
+			Path: "/v1beta/models",
+			SetAuth: func(req *http.Request, key string) {
+				req.Header.Set("x-goog-api-key", key)
+			},
+		}
+	default:
+		return modelListEndpoint{
+			Path: "/models",
+			SetAuth: func(req *http.Request, key string) {
+				req.Header.Set("Authorization", "Bearer "+key)
+			},
+		}
+	}
+}
+
 func (p *Prober) doModelsProbe(ctx context.Context, ch *store.Channel, plainKey string, timeout time.Duration) probeResponse {
 	probeCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	url := strings.TrimSuffix(ch.BaseURL, "/") + "/models"
+	endpoint := modelListEndpointFor(ch)
+	url := strings.TrimSuffix(ch.BaseURL, "/") + endpoint.Path
 	req, reqErr := http.NewRequestWithContext(probeCtx, http.MethodGet, url, nil)
 	if reqErr != nil {
 		return probeResponse{Message: reqErr.Error(), Err: reqErr}
 	}
-	req.Header.Set("Authorization", "Bearer "+plainKey)
+	endpoint.SetAuth(req, plainKey)
 	req.Header.Set("Accept", "application/json")
 
 	start := p.opt.Now()
@@ -171,7 +206,7 @@ func (p *Prober) doModelsProbe(ctx context.Context, ch *store.Channel, plainKey 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	snippet := summarizeBody(body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		message := fmt.Sprintf("上游 /models 探测失败（HTTP %d）", resp.StatusCode)
+		message := fmt.Sprintf("上游 %s 探测失败（HTTP %d）", endpoint.Path, resp.StatusCode)
 		if snippet != "" {
 			message += ": " + snippet
 		}
