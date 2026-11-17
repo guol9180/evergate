@@ -1124,7 +1124,7 @@
   5. 下载 GitHub Windows 产物与 checksums 一致；npm 安装冒烟可启动并返回 `/healthz` 200；
   6. 发版结果、Action/Run URL、资产与 npm dist-tags 证据回写本卡。
 - 边界：不改变业务 API/DB/schema；不夹带新功能；不改历史 tag；不手工修改 tag 派生版本；npm token 仅使用 GitHub Secrets
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-17 计划 用户确认发版；版本判定 v0.2.0，开始整理 CHANGELOG 与发布前验证
   - 2026-11-17 执行 `CHANGELOG.md` 新增精确 `## v0.2.0` 段，覆盖 Windows 安装器/GUI/托盘、协议化探测、模型发现、四协议 Playground、弹性布局与发布门禁；未夹带业务 API/DB/schema 改动
@@ -1132,6 +1132,10 @@
   - 2026-11-17 发版 Action 44040069449：门禁、三平台构建、npm staging 与四个 npm 包发布均成功；发布后的立即 `npm view` 遇到 registry 元数据传播延迟并返回 404，导致 Workflow 在 Release 创建前失败。已确认需将有界轮询加入 workflow；不移 tag，先验证四包可见后重跑同一 Workflow
   - 2026-11-17 修复 重跑后 release job 成功并创建 v0.2.0 正式 Release；Windows 安装器 job 因 Inno Setup 6.7.1 未附带 `ChineseSimplified.isl` 失败。计划改为缺少语言包时回退 Inno 自带语言，并为 Release Workflow 增加显式 tag 的 workflow_dispatch 重放能力，避免为工具链修复移动历史 tag
   - 2026-11-17 修复 手动重放默认 checkout tag 源码，导致安装器仍使用旧 `.iss`；改为 dispatch 重放时保留 tag 业务二进制，仅从 `origin/main` 刷新发布工具脚本，继续验证 Inno 语言回退
+  - 2026-11-17 执行 发布链修复提交并推送：npm 元数据按 6 分钟有界轮询；`workflow_dispatch` 支持显式 tag；Inno 语言文件缺失时回退自带语言；dispatch 重放只刷新安装器工具脚本，不改变 tag 业务二进制
+  - 2026-11-17 交付 tag v0.2.0 指向 `8be9434`；最终发布重放 Action 44043717583 全绿（release 45s、windows-installer 2m40s），Release 地址 `https://github.com/guol9180/evergate/releases/tag/v0.2.0` 且 GitHub Latest 已指向 v0.2.0
+  - 2026-11-17 验证 GitHub Release 为正式版，正文取自 CHANGELOG；6 个资产齐全：Windows GUI、Windows console、Linux amd64、macOS arm64、Windows 安装器与 checksums.txt。全部下载后按 checksums basename 校验 SHA256 均一致
+  - 2026-11-17 验证 npm 四包 `@heguoliang/evergate` 与三个平台子包均为 0.2.0，`dist-tags.latest` 均为 0.2.0；临时全局安装主包后平台子包自动选择，隔离配置启动 `/healthz` 返回 200；测试进程与临时目录已清理
 
 ## 状态枚举
 
@@ -1161,7 +1165,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道；执行中：T47 发布 v0.2.0 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0 | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T39/T41/T43/T40/T44 已按卡面扩展 UI、Playground、admin、安装、启动与本地日志能力；T46 已落实 tag/CHANGELOG/main/npm 四包门禁及 `latest`/`next` 分流；T47 已完成正式 Release、npm 四包、资产校验与安装冒烟 |
 
 ## 验收清单
 
