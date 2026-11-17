@@ -71,11 +71,7 @@ func (r *Relay) HandleGemini(c *gin.Context) {
 	}
 	setGeminiOriginalBody(c, body)
 
-	modelJSON, _ := json.Marshal(model)
-	streamJSON, _ := json.Marshal(method == geminiMethodStream)
-	wire["model"] = modelJSON
-	wire["stream"] = streamJSON
-	dispatchBody, err := json.Marshal(wire)
+	dispatchBody, err := geminiDispatchBody(body, model, method)
 	if err != nil {
 		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "重构请求体失败")
@@ -88,6 +84,18 @@ func (r *Relay) HandleGemini(c *gin.Context) {
 	trace, status, errType, errMsg := r.dispatch(c, hit)
 	r.finishRequest(c, start, hit, trace, status, errType, errMsg)
 	req.setResult(trace, status, errType, errMsg)
+}
+
+func geminiDispatchBody(body []byte, model, method string) ([]byte, error) {
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return nil, err
+	}
+	modelJSON, _ := json.Marshal(model)
+	streamJSON, _ := json.Marshal(method == geminiMethodStream)
+	wire["model"] = modelJSON
+	wire["stream"] = streamJSON
+	return json.Marshal(wire)
 }
 
 func parseGeminiAction(action string) (model, method string, err error) {

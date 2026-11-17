@@ -194,6 +194,110 @@ func TestPlaygroundResponsesNonStreamAndStream(t *testing.T) {
 	}
 }
 
+func TestPlaygroundMessagesNonStreamAndStream(t *testing.T) {
+	env := newEnv(t)
+	var upstreamBodies []string
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/v1/messages") {
+			t.Errorf("path = %q, want /v1/messages", r.URL.Path)
+		}
+		upstreamBodies = append(upstreamBodies, body)
+		var req map[string]any
+		_ = json.Unmarshal([]byte(body), &req)
+		if req["model"] != "claude-upstream" || req["max_tokens"] != float64(1024) ||
+			req["system"] != "be brief" || req["stream"] == true {
+			if req["stream"] != true {
+				t.Errorf("unexpected Messages body: %s", body)
+			}
+		}
+		if req["stream"] == true {
+			writeSSEEvents(w,
+				"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_pg\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-upstream\",\"content\":[],\"usage\":{\"input_tokens\":4,\"output_tokens\":1}}}\n\n",
+				"event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"native messages\"}}\n\n",
+				"event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}\n\n",
+				"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+			)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg_pg","type":"message","role":"assistant","content":[{"type":"text","text":"native messages"}],"model":"claude-upstream","usage":{"input_tokens":4,"output_tokens":2}}`))
+	})
+	env.addAnthropicChannel(t, "pg-messages", up.server.URL, 0, []string{"claude-x"}, map[string]string{"claude-x": "claude-upstream"}, "sk-ant")
+
+	rec, envelope := env.playground(t, `{"protocol":"anthropic","model":"claude-x","system":"be brief","prompt":"hello","stream":false}`)
+	if rec.Code != http.StatusOK || !envelope.OK || !strings.Contains(string(envelope.Data.Response), "native messages") {
+		t.Fatalf("non-stream: %d %s", rec.Code, rec.Body.String())
+	}
+	if envelope.Data.Meta.Protocol != "anthropic" || envelope.Data.Meta.UpstreamModel != "claude-upstream" ||
+		envelope.Data.Meta.Usage.TotalTokens != 6 {
+		t.Fatalf("meta = %+v", envelope.Data.Meta)
+	}
+
+	rec, _ = env.playground(t, `{"protocol":"anthropic","model":"claude-x","system":"be brief","prompt":"hello","stream":true}`)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "content_block_delta") ||
+		!strings.Contains(body, "native messages") || !strings.Contains(body, "event: evergate.meta") {
+		t.Fatalf("stream: %d %s", rec.Code, body)
+	}
+	if meta := parsePlaygroundMeta(t, body); meta.Usage.TotalTokens != 7 {
+		t.Fatalf("stream meta = %+v", meta)
+	}
+	if len(upstreamBodies) != 2 {
+		t.Fatalf("upstream requests = %d", len(upstreamBodies))
+	}
+}
+
+func TestPlaygroundGeminiNonStreamAndStream(t *testing.T) {
+	env := newEnv(t)
+	var paths []string
+	var bodies []string
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		bodies = append(bodies, body)
+		var req map[string]any
+		_ = json.Unmarshal([]byte(body), &req)
+		if req["systemInstruction"] == nil || req["contents"] == nil || req["generationConfig"] == nil {
+			t.Errorf("unexpected Gemini body: %s", body)
+		}
+		if strings.HasSuffix(r.URL.Path, ":streamGenerateContent") {
+			writeSSEEvents(w,
+				"data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"native gemini\"}]},\"finishReason\":\"STOP\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":5,\"candidatesTokenCount\":2,\"thoughtsTokenCount\":1,\"totalTokenCount\":8}}\n\n",
+			)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"candidates":[{"content":{"role":"model","parts":[{"text":"native gemini"}]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2,"thoughtsTokenCount":1,"totalTokenCount":8}}`))
+	})
+	env.addGeminiChannel(t, "pg-gemini", up.server.URL, 0, []string{"gemini-x"}, map[string]string{"gemini-x": "gemini-upstream"}, "sk-gem")
+
+	rec, envelope := env.playground(t, `{"protocol":"gemini","model":"gemini-x","system":"be brief","prompt":"hello","stream":false}`)
+	if rec.Code != http.StatusOK || !envelope.OK || !strings.Contains(string(envelope.Data.Response), "native gemini") {
+		t.Fatalf("non-stream: %d %s", rec.Code, rec.Body.String())
+	}
+	if envelope.Data.Meta.Protocol != "gemini" || envelope.Data.Meta.UpstreamModel != "gemini-upstream" ||
+		envelope.Data.Meta.Usage.TotalTokens != 8 {
+		t.Fatalf("meta = %+v", envelope.Data.Meta)
+	}
+
+	rec, _ = env.playground(t, `{"protocol":"gemini","model":"gemini-x","system":"be brief","prompt":"hello","stream":true}`)
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "native gemini") ||
+		!strings.Contains(body, "event: evergate.meta") {
+		t.Fatalf("stream: %d %s", rec.Code, body)
+	}
+	if meta := parsePlaygroundMeta(t, body); meta.Usage.TotalTokens != 8 {
+		t.Fatalf("stream meta = %+v", meta)
+	}
+	if len(paths) != 2 ||
+		!strings.HasSuffix(paths[0], "/v1beta/models/gemini-upstream:generateContent") ||
+		!strings.HasSuffix(paths[1], "/v1beta/models/gemini-upstream:streamGenerateContent") {
+		t.Fatalf("paths = %#v", paths)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("bodies = %d", len(bodies))
+	}
+}
+
 func TestPlaygroundFailoverAndInvalidModel(t *testing.T) {
 	env := newEnv(t)
 	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {

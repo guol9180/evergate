@@ -71,17 +71,39 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
 		return
 	}
+	dispatchBody := body
+	geminiMethodName := ""
+	if req.Protocol == "gemini" {
+		geminiMethodName = geminiMethodGenerate
+		if req.Stream {
+			geminiMethodName = geminiMethodStream
+		}
+		dispatchBody, err = geminiDispatchBody(body, req.Model, geminiMethodName)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "构造 Gemini 请求失败"})
+			return
+		}
+	}
 
 	writer := newPlaygroundWriter(c.Writer)
 	inner, _ := gin.CreateTestContext(writer)
 	inner.Request = c.Request.Clone(c.Request.Context())
-	inner.Request.Body = io.NopCloser(bytes.NewReader(body))
-	inner.Request.ContentLength = int64(len(body))
+	inner.Request.Body = io.NopCloser(bytes.NewReader(dispatchBody))
+	inner.Request.ContentLength = int64(len(dispatchBody))
 	inner.Request.Header.Set("Content-Type", "application/json")
 	inner.Set(ctxPlayground, true)
-	if req.Protocol == "responses" {
+	switch req.Protocol {
+	case "responses":
 		inner.Set("evergate.protocol", responsesProtocol)
 		setResponsesOriginalBody(inner, body)
+	case "anthropic":
+		inner.Set("evergate.protocol", messagesProtocol)
+		setMessagesOriginalBody(inner, body)
+	case "gemini":
+		inner.Set("evergate.protocol", geminiProtocol)
+		inner.Set(geminiMethodKey, geminiMethodName)
+		inner.Params = gin.Params{{Key: "action", Value: fmt.Sprintf("models/%s:%s", req.Model, geminiMethodName)}}
+		setGeminiOriginalBody(inner, body)
 	}
 
 	start := r.opt.Now()
@@ -135,8 +157,10 @@ func parsePlaygroundRequest(c *gin.Context) (playgroundRequest, error) {
 	if req.Protocol == "" {
 		req.Protocol = "chat"
 	}
-	if req.Protocol != "chat" && req.Protocol != "responses" {
-		return req, fmt.Errorf("protocol 仅支持 chat 或 responses")
+	switch req.Protocol {
+	case "chat", "responses", "anthropic", "gemini":
+	default:
+		return req, fmt.Errorf("protocol 仅支持 chat、responses、anthropic 或 gemini")
 	}
 	req.Model = strings.TrimSpace(req.Model)
 	req.System = strings.TrimSpace(req.System)
@@ -157,10 +181,33 @@ func parsePlaygroundRequest(c *gin.Context) (playgroundRequest, error) {
 }
 
 func buildPlaygroundBody(req playgroundRequest) ([]byte, error) {
-	if req.Protocol == "responses" {
+	switch req.Protocol {
+	case "responses":
 		payload := map[string]any{"model": req.Model, "input": req.Prompt, "stream": req.Stream}
 		if req.System != "" {
 			payload["instructions"] = req.System
+		}
+		return json.Marshal(payload)
+	case "anthropic":
+		payload := map[string]any{
+			"model": req.Model, "max_tokens": 1024, "stream": req.Stream,
+			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
+		}
+		if req.System != "" {
+			payload["system"] = req.System
+		}
+		return json.Marshal(payload)
+	case "gemini":
+		payload := map[string]any{
+			"contents": []map[string]any{{
+				"role": "user", "parts": []map[string]string{{"text": req.Prompt}},
+			}},
+			"generationConfig": map[string]any{"maxOutputTokens": 1024},
+		}
+		if req.System != "" {
+			payload["systemInstruction"] = map[string]any{
+				"parts": []map[string]string{{"text": req.System}},
+			}
 		}
 		return json.Marshal(payload)
 	}

@@ -970,9 +970,15 @@
   5. 测试：`playground_test.go` 为 anthropic / gemini 各补非流式与流式用例——断言上游路径（`/v1/messages`、`/v1beta/models/{model}:generateContent`）、Messages `max_tokens` 注入、Gemini 路径模型映射、SSE 透传与 `evergate.meta` 收尾；既有 chat/responses 用例不回归；
   6. `go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build` 通过，`web/dist` 同步提交。
 - 边界：Playground 仍只接受 prompt / system / model / stream 四个输入，不做工具调用、多模态、thinking/cache_control/safetySettings 开关；不做协议一致性全量测试（由 T37/T38 的 relay 公共边界矩阵负责）；不改 `/admin/api/playground` 之外的管理台接口；不改调度内核
-- 状态：planned
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-16 计划 用户确认建卡：范围=四协议调试 + 每协议 Playground 层回归；已核实 Gemini fake context 的 `Params["action"]` 是唯一结构性改动点；渠道管理「测试连通性」与 Playground 的分工差异见同日确认结论（探测 `/models` vs 端到端推理）
+  - 2026-11-17 执行 T44 已完成；T41 进入执行，先补 Messages/Gemini Playground 非流式与流式红测
+  - 2026-11-17 执行 Playground 协议扩展到 chat/responses/anthropic/gemini；Messages 注入 `max_tokens=1024`、system 与 messages，Gemini 构造 contents/systemInstruction/generationConfig，并设置 `Params["action"]` 与内部 method
+  - 2026-11-17 执行 抽取 `geminiDispatchBody` 供真实 Gemini 入口与 Playground 共用；前端新增四协议统一增量/非流式文本提取纯函数与选择按钮
+  - 2026-11-17 验证 后端新增 Messages/Gemini Playground 非流式+流式公共 HTTP 边界测试：断言路径、模型映射、请求结构、usage、meta；既有 chat/responses 不回归
+  - 2026-11-17 验证 `npm --prefix web test` 4/4 通过，覆盖四协议流式增量与非流式文本；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web run build`、`make build`、`gofmt`、`git diff --check` 全部通过
+  - 2026-11-17 交付 T41 验收标准全部满足；Playground 仍受 admin session 保护且不签发下游 token
 
 ### T42: 渠道探测与连通测试协议化（P3，用户指令）
 
@@ -1116,7 +1122,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘；待执行：T41 Playground 四协议调试 → T39 全弹性布局与间距系统重构，以及 T46 版本发布门禁与预发布通道（建议下次发版前） | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T43/T40/T44 已按卡面扩展 admin、安装、启动与本地日志能力，T46 完成后才允许调整发布流水线与 tag 门禁 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器与可选择的配置/数据目录、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试；待执行：T39 全弹性布局与间距系统重构，以及 T46 版本发布门禁与预发布通道（建议下次发版前） | 按任务卡验收；不改变下游 `/v1` API 与数据库 schema；T41/T43/T40/T44 已按卡面扩展 Playground、admin、安装、启动与本地日志能力，T46 完成后才允许调整发布流水线与 tag 门禁 |
 
 ## 验收清单
 

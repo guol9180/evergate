@@ -11,7 +11,7 @@ const MAX_SYSTEM = 8000
 
 export default function Playground() {
   const channels = useChannels()
-  const [protocol, setProtocol] = useState<'chat' | 'responses'>('chat')
+  const [protocol, setProtocol] = useState<'chat' | 'responses' | 'anthropic' | 'gemini'>('chat')
   const [model, setModel] = useState('')
   const [system, setSystem] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -90,12 +90,14 @@ export default function Playground() {
             <div>
               <div className="mb-1.5 flex items-baseline justify-between gap-2">
                 <span className="text-sm font-medium text-slate-700">协议</span>
-                <span className="text-[11px] text-slate-400">Chat Completions / Responses API</span>
+                <span className="text-[11px] text-slate-400">Chat / Responses / Messages / Gemini</span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
                 {([
                   ['chat', 'Chat'],
                   ['responses', 'Responses'],
+                  ['anthropic', 'Messages'],
+                  ['gemini', 'Gemini'],
                 ] as const).map(([value, label]) => (
                   <button
                     key={value}
@@ -183,7 +185,7 @@ export default function Playground() {
         <Card className="flex min-w-0 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-3 sm:px-5">
             <h2 className="text-sm font-semibold text-slate-800">响应</h2>
-            <Badge tone="bg-slate-100 text-slate-600">{protocol === 'chat' ? 'Chat Completions' : 'Responses'}</Badge>
+            <Badge tone="bg-slate-100 text-slate-600">{protocolLabel(protocol)}</Badge>
             {meta && (
               <div className="ml-auto flex items-center gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusPill(meta.status)}`}>
@@ -254,6 +256,15 @@ export default function Playground() {
       </div>
     </div>
   )
+}
+
+function protocolLabel(protocol: 'chat' | 'responses' | 'anthropic' | 'gemini'): string {
+  switch (protocol) {
+    case 'responses': return 'Responses API'
+    case 'anthropic': return 'Anthropic Messages'
+    case 'gemini': return 'Gemini API'
+    default: return 'Chat Completions'
+  }
 }
 
 function statusPill(code: number): string {
