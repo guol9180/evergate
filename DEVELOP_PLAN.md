@@ -167,6 +167,7 @@
   - 2026-11-10 执行 web/embed.go（go:embed all:dist + fs.Sub 取根）；server/web.go（NoRoute SPA 服务：/v1 /admin /healthz 前缀走 404 JSON，未知路径回退 index.html；assets 长缓存 immutable）；main 接线 WebFS + version 改 var（-ldflags 注入 git describe）；Makefile：build（npm build → go build -s -w）与 build-all（target 级 export GOOS/GOARCH）；web/dist 入库（后端免 Node 构建）
   - 2026-11-10 验收 make build → bin/evergate.exe 26.98MB（<30MB ✅）；运行实测：healthz 200、管理台 / 200（HTML 含 React 挂载点与 assets）、SPA 回退 /channels 200、/v1/models 无令牌 401、/v1 未知路径 404 JSON、assets 缓存头 immutable——验收清单 #1 ✅；三平台交叉编译 windows/amd64 26.98MB + linux/amd64 26.58MB + darwin/arm64 25.26MB 全部 <30MB ✅；冷启动日志时间线 ~180ms（<1s ✅，PowerShell 测量工具 ~2s 开销已用日志时间线排除）；空闲私有内存 49.1MB / 工作集 18.3MB（<50MB ✅）；优雅停机此前多次验证 ✅
   - 2026-11-10 交付 T7 验收标准全部满足，P0 十项验收清单全部达成；首 token 额外延迟 <5ms 属 4.9 非功能项，待真实上游环境实测（本地 loopback 无法代表真实网络，如实标注）
+  - 2026-11-17 验证 真实上游首 token 额外延迟补测（严格关闭 HTTP_PROXY / HTTPS_PROXY / ALL_PROXY，不使用代理）：复制 `D:\software\evergate` 配置与 SQLite 到隔离目录并以当前构建启动；直连与网关均测首条 SSE `data:`，各 30 组交替配对，预热 3 组。ZAI `glm-5.3-flash` 30/30 成功，客户端收到首 data 耗时中位数 932.19ms、网关内部 first_token 中位数 928ms，同请求网关链额外耗时中位数 3.771ms、p95 5.098ms、最大 6.035ms；DeepSeek `deepseek-flash` 30/30 成功，客户端中位数 125.20ms、内部中位数 124ms，额外耗时中位数 3.727ms、p95 5.881ms、最大 6.008ms。两渠道各 33 条网关日志（含预热）均无重试、无非 200；按原验收“中位数 <5ms”判定通过，p95 如实保留
 
 ### T7b: 安全检查、公开发布与自动打包（P0，用户指令）
 
