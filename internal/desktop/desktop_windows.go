@@ -40,7 +40,6 @@ const (
 	menuRestart       = 1003
 	menuExit          = 1004
 	errorAlreadyExist = 183
-	idiApplication    = 32512
 )
 
 var (
@@ -57,7 +56,6 @@ var (
 	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
 	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
 	procPostMessageW        = user32.NewProc("PostMessageW")
-	procLoadIconW           = user32.NewProc("LoadIconW")
 	procCreatePopupMenu     = user32.NewProc("CreatePopupMenu")
 	procAppendMenuW         = user32.NewProc("AppendMenuW")
 	procTrackPopupMenu      = user32.NewProc("TrackPopupMenu")
@@ -70,6 +68,10 @@ var (
 	procCreateMutexW        = kernel32.NewProc("CreateMutexW")
 	trayWindowProcCallback  = windows.NewCallback(trayWindowProc)
 )
+
+var loadTrayIcon = func() (windows.Handle, error) {
+	return 0, errors.New("tray icon loader is not configured")
+}
 
 type point struct {
 	X int32
@@ -284,14 +286,13 @@ func destroyTrayWindow(hwnd windows.Handle) error {
 }
 
 func addTrayIcon(hwnd windows.Handle) error {
-	instance, _, _ := procGetModuleHandleW.Call(0)
-	icon, _, _ := procLoadIconW.Call(instance, 1)
-	if icon == 0 {
-		icon, _, _ = procLoadIconW.Call(0, idiApplication)
+	icon, err := loadTrayIcon()
+	if err != nil {
+		return fmt.Errorf("load tray icon: %w", err)
 	}
 	data := notifyIconData{
 		HWnd: hwnd, UID: 1, Flags: nifMessage | nifIcon | nifTip,
-		CallbackMessage: trayCallbackMsg, Icon: windows.Handle(icon), Version: notifyIconVer4,
+		CallbackMessage: trayCallbackMsg, Icon: icon, Version: notifyIconVer4,
 	}
 	data.CbSize = uint32(unsafe.Sizeof(data))
 	copyUTF16(data.Tip[:], "EverGate")

@@ -7,6 +7,31 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class EverGateIconVerify {
+  [DllImport("shell32.dll", CharSet=CharSet.Unicode)]
+  static extern uint ExtractIconEx(string file, int index, IntPtr[] large, IntPtr[] small, uint count);
+  [DllImport("user32.dll", SetLastError=true)]
+  static extern bool DestroyIcon(IntPtr icon);
+  public static string Check(string file) {
+    var large = new IntPtr[1];
+    var small = new IntPtr[1];
+    uint count = ExtractIconEx(file, 0, large, small, 1);
+    try {
+      if (count == 0 || large[0] == IntPtr.Zero || small[0] == IntPtr.Zero) {
+        throw new InvalidOperationException("GUI executable does not expose a valid associated icon");
+      }
+      return "count=" + count;
+    } finally {
+      if (large[0] != IntPtr.Zero) DestroyIcon(large[0]);
+      if (small[0] != IntPtr.Zero) DestroyIcon(small[0]);
+    }
+  }
+}
+'@
+
 function Read-PE {
   param([string]$Path)
   $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Path))
@@ -32,5 +57,6 @@ if (-not $guiPE.Text.Contains('PerMonitorV2') -or -not $guiPE.Text.Contains('Eve
 if ($consolePE.Text.Contains('PerMonitorV2') -or $consolePE.Text.Contains('EverGate.Desktop')) {
   throw 'console executable unexpectedly embeds the GUI DPI manifest'
 }
+$icon = [EverGateIconVerify]::Check((Resolve-Path -LiteralPath $Gui).Path)
 
-Write-Output "windows-gui-verify: ok (gui subsystem=2, console subsystem=3, PMv2=embedded)"
+Write-Output "windows-gui-verify: ok (gui subsystem=2, console subsystem=3, PMv2=embedded, icon=$icon)"

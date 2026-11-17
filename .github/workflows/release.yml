@@ -190,7 +190,9 @@ jobs:
 
       - name: Verify Windows GUI manifest
         shell: pwsh
-        run: ./scripts/verify-windows-gui.ps1 -Gui build/evergate.exe -Console build/evergate-console.exe
+        run: |
+          go test ./internal/winres -run TestLoadTrayIcon -count=1
+          ./scripts/verify-windows-gui.ps1 -Gui build/evergate.exe -Console build/evergate-console.exe
 
       - name: Build installer
         shell: pwsh
