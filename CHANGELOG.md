@@ -2,6 +2,17 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.3.0
+
+- 破坏性分发调整：公开 GitHub Release 不再提供 Windows/macOS 裸二进制，统一为 `evergate_<version>_<os>_<arch>[_setup].<ext>`；v0.2.0 及更早安装版本允许手动安装一次完成迁移
+- Windows 安装器改为固定程序、配置与数据路径，移除目录选择；安装流程统一为许可、新装/升级状态、可选登录自启、安装进度与可选立即启动，升级保留已有数据
+- macOS 新增 `EverGate.app` 菜单栏应用与单个 `.dmg` 安装器：不显示 Dock 图标，支持打开管理台、打开日志目录、重启、退出和单实例；正式包接入 Developer ID 签名与 notarization 门禁
+- Linux 公开产物统一为 `evergate_<version>_linux_amd64.tar.gz`，包内含 `evergate`、`LICENSE` 与 `README.md`，保持无托盘运行并可用于 Docker
+- Windows GUI 嵌入 Per-Monitor V2 DPI awareness manifest，改善高 DPI 与混合缩放显示器下的托盘原生菜单清晰度；托盘“查看日志”改为打开目录并选中当前 `evergate.log`
+- 一键更新改为安装包级链路：Windows/macOS 校验后退出并启动完整安装器，Linux 校验 tar.gz 后安全提取并原子替换，macOS 额外校验 notarization 与 Developer ID
+- 更新资产按版本、OS、架构和 checksums 精确匹配；npm 四包继续作为独立安装渠道，但不再作为 GitHub 更新回退资产，npm 安装用户通过 npm 更新
+- 更新弹窗新增安装阶段和下载/校验取消；发布门禁校验四类公开资产命名、版本与 checksums，完整资产齐备后才移动 GitHub Latest
+
 ## v0.2.0
 
 - Windows 分发升级：新增 Inno Setup 安装器，支持统一或分离的配置/数据目录、静默卸载保留数据、可选开机自启；配置路径统一由显式参数、环境变量、注册表、平台默认和便携目录发现
