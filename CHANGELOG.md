@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.5.2
+
+- 修复 JetBrains AI Assistant 生成 Git Commit Message 时约 10 秒后取消请求、正文不回显的问题：Chat Completions 的空闲保活从 SSE 注释帧改为不携带正文、角色、工具调用或 usage 的协议内空增量 `data:` 帧
+- 空增量帧不会伪装 `reasoning_content` 为正文，也不会改变真实上游事件、最终 usage 或额度结算；Responses、Messages 与 Gemini 的事件协议保持不变
+- 新增只识别 `data:` 事件的 Ktor 超时边界回归测试，覆盖“首角色帧 → 长静默 → 正文/usage”场景；本版本为只包含该流式修复的 PATCH 发布
+- 继续发布 Windows 安装器与 Linux tar.gz；macOS 安装器仍受 Developer ID 签名与 notarization 开关约束
+
 ## v0.5.1
 
 - 修复 OpenCode Go 渠道请求缺少 `x-opencode-session` 被上游拒绝的问题：优先转发下游同名会话头，其次复用 `X-Session-Id`，均缺失时生成稳定的单请求会话 ID；Playground 在当前页面内复用同一会话

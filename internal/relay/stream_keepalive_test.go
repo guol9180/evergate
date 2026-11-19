@@ -1,12 +1,19 @@
 package relay
 
 import (
+	"bufio"
+	"context"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"evergate/internal/store"
 )
 
 func TestSSEWriterKeepaliveDoesNotEmitDataFrames(t *testing.T) {
@@ -32,4 +39,126 @@ func TestSSEWriterKeepaliveDoesNotEmitDataFrames(t *testing.T) {
 	if strings.Contains(body, "data:") {
 		t.Fatalf("keepalive must not emit data frames: %q", body)
 	}
+}
+
+func TestChatSSEWriterKeepaliveIsEmptyDelta(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	w := newChatSSEWriter(c.Writer, "m")
+	w.interval = 10 * time.Millisecond
+	w.header()
+
+	stop := w.startKeepalive()
+	defer stop()
+
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for !strings.Contains(rec.Body.String(), "data:") && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"object":"chat.completion.chunk"`) ||
+		!strings.Contains(body, `"model":"m"`) ||
+		!strings.Contains(body, `"delta":{}`) {
+		t.Fatalf("chat keepalive is not a valid empty delta: %q", body)
+	}
+	for _, forbidden := range []string{`"content"`, `"role"`, `"tool_calls"`, `"finish_reason"`, `"usage"`, `"reasoning_content"`} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("chat keepalive contains %s: %q", forbidden, body)
+		}
+	}
+}
+
+func TestChatStreamKeepaliveResetsDataOnlyClientTimeout(t *testing.T) {
+	oldInterval := keepaliveInterval
+	keepaliveInterval = 20 * time.Millisecond
+	t.Cleanup(func() { keepaliveInterval = oldInterval })
+
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"s\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\n"))
+		w.(http.Flusher).Flush()
+		time.Sleep(140 * time.Millisecond)
+		_, _ = w.Write([]byte("data: {\"id\":\"s\",\"choices\":[{\"delta\":{\"content\":\"late\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: {\"id\":\"s\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":2,\"total_tokens\":10}}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+		w.(http.Flusher).Flush()
+	})
+	env.addChannel(t, "slow-stream", up.server.URL, 0, []string{"m"}, nil, "sk")
+	token, plain := env.addToken(t, "ktor-timeout", func(token *store.Token) { token.Quota = 20 })
+
+	var (
+		connMu sync.Mutex
+		conn   net.Conn
+	)
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			c, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+			if err == nil {
+				connMu.Lock()
+				conn = c
+				connMu.Unlock()
+			}
+			return c, err
+		},
+	}
+	t.Cleanup(transport.CloseIdleConnections)
+	client := &http.Client{Transport: transport}
+	req, err := http.NewRequest(http.MethodPost, env.authGateway(t).URL+"/v1/chat/completions",
+		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}],"stream":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+plain)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "ktor-client")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+
+	connMu.Lock()
+	streamConn := conn
+	connMu.Unlock()
+	if streamConn == nil {
+		t.Fatal("missing client connection")
+	}
+	if err := streamConn.SetReadDeadline(time.Now().Add(80 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+
+	var body strings.Builder
+	reader := bufio.NewReader(resp.Body)
+	for {
+		line, readErr := reader.ReadString('\n')
+		body.WriteString(line)
+		if strings.HasPrefix(line, "data:") {
+			if err := streamConn.SetReadDeadline(time.Now().Add(80 * time.Millisecond)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if readErr != nil {
+			t.Fatalf("stream timed out before late content: %v\nbody=%s", readErr, body.String())
+		}
+		if strings.TrimSpace(line) == "data: [DONE]" {
+			break
+		}
+	}
+	if !strings.Contains(body.String(), `"content":"late"`) {
+		t.Fatalf("late content missing: %s", body.String())
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if row := tokenRow(t, env, token.ID); row.UsedQuota == 10 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("used quota = %d, want 10", tokenRow(t, env, token.ID).UsedQuota)
 }

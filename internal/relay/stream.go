@@ -20,9 +20,8 @@ import (
 	"evergate/internal/store"
 )
 
-// keepaliveInterval SSE 空闲注释心跳间隔。JetBrains AI Assistant 等客户端可能在
-// 首个角色帧后等待真实文本时提前断开，5 秒心跳可避免这段静默期被误判为失联。
-const keepaliveInterval = 5 * time.Second
+// keepaliveInterval SSE 空闲心跳间隔。测试会缩短该值以模拟客户端静默超时。
+var keepaliveInterval = 5 * time.Second
 
 // streamResponse 处理流式透传：首 chunk 前是可重试窗口，首 chunk 写给客户端后
 // 永不重试，只能以 SSE error event 明确上报（任务书 4.5⑥ 红线）。
@@ -76,7 +75,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 	appendTrace("", "")
 	r.recordHit(c, hit, cand.Channel, key, cand.UpstreamModel, r.opt.Now().Sub(start))
 
-	w := newSSEWriter(c.Writer)
+	w := newChatSSEWriter(c.Writer, hitLoggedModel(c))
 	w.header()
 	w.writeFlush(first)
 
@@ -188,10 +187,38 @@ type sseWriter struct {
 	mu        sync.Mutex
 	lastWrite time.Time
 	interval  time.Duration
+	keepalive []byte
 }
 
 func newSSEWriter(w gin.ResponseWriter) *sseWriter {
 	return &sseWriter{w: w, lastWrite: time.Now(), interval: keepaliveInterval}
+}
+
+// newChatSSEWriter 使用合法空增量帧保活。Ktor 等客户端会忽略 SSE 注释，
+// 但对 data 事件应用静默超时；空 delta 不产生正文、角色、工具调用或 usage。
+func newChatSSEWriter(w gin.ResponseWriter, model string) *sseWriter {
+	s := newSSEWriter(w)
+	payload, _ := json.Marshal(struct {
+		ID      string `json:"id"`
+		Object  string `json:"object"`
+		Created int64  `json:"created"`
+		Model   string `json:"model"`
+		Choices []struct {
+			Index int      `json:"index"`
+			Delta struct{} `json:"delta"`
+		} `json:"choices"`
+	}{
+		ID:      "evergate-keepalive",
+		Object:  "chat.completion.chunk",
+		Created: time.Now().Unix(),
+		Model:   model,
+		Choices: []struct {
+			Index int      `json:"index"`
+			Delta struct{} `json:"delta"`
+		}{{Index: 0}},
+	})
+	s.keepalive = append(append([]byte("data: "), payload...), '\n', '\n')
+	return s
 }
 
 // header 写出 SSE 响应头（仅一次）。
@@ -231,7 +258,11 @@ func (s *sseWriter) startKeepalive() (stop func()) {
 				s.mu.Lock()
 				idle := time.Since(s.lastWrite)
 				if idle >= interval {
-					_, _ = s.w.Write([]byte(": keepalive\n\n"))
+					frame := s.keepalive
+					if len(frame) == 0 {
+						frame = []byte(": keepalive\n\n")
+					}
+					_, _ = s.w.Write(frame)
 					s.w.Flush()
 					s.lastWrite = time.Now()
 				}

@@ -71,6 +71,7 @@ Makefile               # 构建入口（前端构建 / 本机构建 / 三平台�
 - 前端图表统一使用 Recharts 共享组件（参照 `web/src/components/TrendChart.tsx`），不得手写 div/SVG 图表；图表宽度 100%，高度必须由响应式规则或 flex 填充，禁止在卡片内留下大块空白；引入图表库需按路由懒加载，避免进入首屏 bundle。
 - 运行日志（slog JSON 同时写 stdout 与数据目录 `logs/evergate.log`，按大小滚动）与请求日志（入库供管理台查询）分离；GUI 构建无有效 stdout 时不得影响文件日志。
 - 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
+- Chat Completions 的空闲保活必须发送协议内合法、无正文/角色/工具调用/usage 的空增量 `data:` 帧；不得只依赖 SSE 注释帧，因为 Ktor 等客户端会忽略注释并可能按 data 事件静默超时取消请求。
 - 渠道健康探测只能调用模型列表 GET，不得触发推理接口：OpenAI 兼容渠道使用 `GET {base_url}/models` 与 Bearer；Anthropic 原生渠道使用 `GET {base_url}/v1/models`、`x-api-key` 与固定 `anthropic-version: 2023-06-01`；Gemini 原生渠道使用 `GET {base_url}/v1beta/models` 与 `x-goog-api-key`，禁止 `?key=`。协议选择优先级 Anthropic → Gemini → OpenAI 兼容。404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
 - 模型目录发现只能读取上游模型列表，不得触发推理或改变 key 调度状态。拉取结果按 Anthropic `after_id` / Gemini `pageToken` 分页，最多 10 页、500 个唯一模型；OpenAI 兼容协议不猜测非标准游标。渠道 `Models` 始终是对外模型名：选择上游模型时必须反查 `model_mapping`，多对一时每个对外别名单独作为候选，禁止把映射目标直接写入 `Models`。
 - OpenCode Go 渠道必须兼容其路由约束：上游推理请求携带 `x-opencode-session`，来源优先级为下游同名头 → `X-Session-Id` → `evergate-<opaque-id>`；模型目录与健康探测统一映射到同源 `/inference/go/v1/models`，禁止在 `/inference/go/openai/v1/models` 猜测目录端点。
