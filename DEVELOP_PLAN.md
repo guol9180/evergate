@@ -1392,6 +1392,7 @@
   - 2026-11-19 执行 Chat Completions 空闲保活从 `: keepalive` 注释改为协议内合法空增量 `data:` 帧；帧内仅含 `chat.completion.chunk`、请求模型和 `delta:{}`，不含正文、角色、工具调用、finish_reason 或 usage。Responses/Messages/Gemini 仍保留原注释保活
   - 2026-11-19 验证 新增 Ktor 边界测试先红后绿：旧实现忽略注释帧后 80ms 超时，修复后跨过 140ms 正文静默期，收到 `late` 正文与 `[DONE]`，并按真实 usage 扣减 10 tokens；空增量帧结构与禁用字段另有单测覆盖
   - 2026-11-19 验证 `go test -p 1 ./... -count=1`、`go vet ./...`、`make build`、`git diff --check` 通过；完整构建首次在沙箱内因既有 `spawn EPERM` 失败，按项目规则在非沙箱环境重跑成功，产物 `bin/evergate.exe` 版本 `v0.5.1-1-ge889253-dirty`
+  - 2026-11-19 验收 `v0.5.2` 用户实测仍未解决；结构化日志显示入口仍是 `/v1/chat/completions`，ZAI 在可见正文前持续发送 `reasoning_content`，空增量 data 帧无法满足 JetBrains 的可见正文等待，问题转入 T61
 
 ### T60: 发布 v0.5.2（P2，用户指令，依赖 T59 实现）
 
@@ -1413,6 +1414,39 @@
   - 2026-11-19 验证 GitHub 资产：Windows setup 9,808,489B（SHA256 `0867f55ada8a37c1b5edeead4819ac3aef01a2e68e4213f72452f2d17aca4e6e`）、Linux tar.gz 10,824,251B（SHA256 `29edd9ee4cb1b732867ad34a4b10d894f9e06ff1fce6a068b9ae4b65698623c0`）、checksums 205B；下载后与 checksums 全部一致
   - 2026-11-19 验证 npm 五包 `@heguoliang/evergate`、win32-x64、linux-amd64、darwin-arm64、evergate-updates 均为 `0.5.2` 且 `latest=0.5.2`；更新包 integrity=`sha512-4qielFXNnzpRduUD88HAmBnbG/WxMc2IHAn2DCaLmBw0MVa+XawbQ60eq5vjT72x5U1RosbWjNb+nOAQxadQcA==`
   - 2026-11-19 验证 npmmirror 主包与更新包均返回 `0.5.2`/`latest=0.5.2`；实际 `npm pack @heguoliang/evergate-updates@0.5.2` 成功，tarball 20,090,581B、unpackedSize=20,634,671B，包含 Windows setup、Linux tar.gz 与 checksums，包内两项 SHA256 均校验一致
+
+### T61: JetBrains 对 ZAI reasoning-only 流的可见正文超时修复（P2，用户反馈）
+
+- 目标：修复 `v0.5.2` 后 JetBrains AI Assistant 仍在约 10 秒时取消请求的问题；当前证据显示问题已不再是 SSE 注释帧，而是 ZAI 在可见正文前持续输出非标准 `reasoning_content`
+- 背景证据：`v0.5.2` 请求日志 id 61–63 仍为 `ktor-client`、HTTP 200、首事件 737–1434ms、总耗时 9806–9992ms、usage=0；运行日志入口仍是 `/v1/chat/completions`，渠道表 `ZAI responses=true` 只是渠道能力标记，不代表本次实际入口。无代理直接诊断 ZAI 显示约 8.8 秒只发送 `reasoning_content`、`content` 为 0，之后才出现正文；显式 `thinking.type=disabled` 后约 940ms 即返回正文并在 1.57 秒完成
+- 验收标准：
+  1. WHEN `User-Agent` 包含 `ktor-client`、上游为 ZAI coding 路径且模型为 GLM THEN Chat Completions 请求在客户端未显式声明 thinking/reasoning 时注入 `thinking.type=disabled`，避免 reasoning-only 阶段触发 JetBrains 可见正文超时；
+  2. 客户端显式声明 `thinking`、`reasoning` 或 `reasoning_effort` 时不得覆盖；非 Ktor、非 ZAI coding 路径和非 GLM 模型完全不变；
+  3. HTTP 边界回归测试模拟只对非空正文重置超时的 Ktor 客户端：当前实现必须在 reasoning-only 静默期红灯，注入关闭思考后必须立即收到正文、`[DONE]` 并按真实 usage 结算；
+  4. 不把 `reasoning_content` 转换成正文，不发送伪正文或零宽字符，不切入口协议，不改变 Responses/Messages/Gemini 原生事件；
+  5. `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试/构建、`make build`、`git diff --check` 通过；
+  6. 真实 IDEA 重新生成 commit message 后正文回显，请求日志不再出现同次约 10 秒 `client_disconnected_no_usage_charge`。
+- 边界：不改 DB/schema 或管理台；不要求用户修改 IDEA 协议设置；不读取、输出或记录 key；不写入代理；只针对已实证的 ZAI coding + GLM + Ktor 组合做最小兼容
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-19 计划 `v0.5.2` 用户实测仍失败。核对结构化日志确认入口是 Chat Completions；抓取脱敏上游事件时间线后定位为 ZAI reasoning-only 流触发 JetBrains 可见正文超时，`thinking.type=disabled` 可将正文首事件从约 8.8 秒提前到约 0.94 秒
+  - 2026-11-19 执行 新增 Ktor + ZAI coding + GLM Chat 兼容策略：客户端未显式声明 `thinking` / `reasoning` / `reasoning_effort` 时注入 `thinking.type=disabled`；显式参数、非 Ktor、非 ZAI 路径、非 GLM 与非流式请求保持不变
+  - 2026-11-19 验证 HTTP 边界测试先红后绿：旧实现只收到 reasoning 与空增量心跳后 80ms 超时；修复后上游立即返回 `visible` 正文与 `[DONE]`，并按真实 usage 扣减 10 tokens；7 个策略边界表驱动场景通过
+  - 2026-11-19 验证 `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试 6/6、`make build`、`git diff --check` 通过；按用户指令以发布成功作为本次交付终点，不再阻塞等待 IDEA 实机复测
+
+### T62: 发布 v0.5.3（P2，用户指令，依赖 T61 实现）
+
+- 目标：将 Ktor/JetBrains + ZAI coding + GLM 的 reasoning-only 可见正文超时修复按 PATCH 语义发布为 `v0.5.3`
+- 版本判断：`v0.5.2 → v0.5.3`。仅修复线上兼容问题，不新增功能、不改 API/DB/schema
+- 验收标准：
+  1. `CHANGELOG.md` 含精确非空 `## v0.5.3` 段；tag 提交位于已推送 main 历史
+  2. 发布前 Go 全量测试、vet、前端测试、三平台构建、发布脚本和 release-gate 通过
+  3. workflow 全绿，GitHub Release 与 npm 五包均为 `0.5.3`；GitHub Latest 与 npm `latest` 指向 `0.5.3`
+  4. 以发布成功为交付终点；不再要求后续 IDEA 实机复测、截图或额外环境矩阵
+- 边界：不夹带新功能；不发布裸二进制或未签名 DMG；不改 DB/schema；不移动历史 tag
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-19 计划 用户指令直接发布并在发布成功后结束，不再执行后续复杂步骤
 
 ## 状态枚举
 

@@ -89,23 +89,7 @@ func TestChatStreamKeepaliveResetsDataOnlyClientTimeout(t *testing.T) {
 	env.addChannel(t, "slow-stream", up.server.URL, 0, []string{"m"}, nil, "sk")
 	token, plain := env.addToken(t, "ktor-timeout", func(token *store.Token) { token.Quota = 20 })
 
-	var (
-		connMu sync.Mutex
-		conn   net.Conn
-	)
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			c, err := (&net.Dialer{}).DialContext(ctx, network, addr)
-			if err == nil {
-				connMu.Lock()
-				conn = c
-				connMu.Unlock()
-			}
-			return c, err
-		},
-	}
-	t.Cleanup(transport.CloseIdleConnections)
-	client := &http.Client{Transport: transport}
+	client, streamConn := trackedStreamClient(t)
 	req, err := http.NewRequest(http.MethodPost, env.authGateway(t).URL+"/v1/chat/completions",
 		strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}],"stream":true}`))
 	if err != nil {
@@ -123,23 +107,62 @@ func TestChatStreamKeepaliveResetsDataOnlyClientTimeout(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 
-	connMu.Lock()
-	streamConn := conn
-	connMu.Unlock()
-	if streamConn == nil {
+	body := readSSEUntilDone(t, resp, streamConn(), 80*time.Millisecond, func(line string) bool {
+		return strings.HasPrefix(line, "data:")
+	})
+	if !strings.Contains(body, `"content":"late"`) {
+		t.Fatalf("late content missing: %s", body)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if row := tokenRow(t, env, token.ID); row.UsedQuota == 10 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("used quota = %d, want 10", tokenRow(t, env, token.ID).UsedQuota)
+}
+
+func trackedStreamClient(t *testing.T) (*http.Client, func() net.Conn) {
+	t.Helper()
+	var (
+		connMu sync.Mutex
+		conn   net.Conn
+	)
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			c, err := (&net.Dialer{}).DialContext(ctx, network, addr)
+			if err == nil {
+				connMu.Lock()
+				conn = c
+				connMu.Unlock()
+			}
+			return c, err
+		},
+	}
+	t.Cleanup(transport.CloseIdleConnections)
+	return &http.Client{Transport: transport}, func() net.Conn {
+		connMu.Lock()
+		defer connMu.Unlock()
+		return conn
+	}
+}
+
+func readSSEUntilDone(t *testing.T, resp *http.Response, conn net.Conn, timeout time.Duration, reset func(string) bool) string {
+	t.Helper()
+	if conn == nil {
 		t.Fatal("missing client connection")
 	}
-	if err := streamConn.SetReadDeadline(time.Now().Add(80 * time.Millisecond)); err != nil {
+	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 		t.Fatal(err)
 	}
-
 	var body strings.Builder
 	reader := bufio.NewReader(resp.Body)
 	for {
 		line, readErr := reader.ReadString('\n')
 		body.WriteString(line)
-		if strings.HasPrefix(line, "data:") {
-			if err := streamConn.SetReadDeadline(time.Now().Add(80 * time.Millisecond)); err != nil {
+		if reset(line) {
+			if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -150,15 +173,5 @@ func TestChatStreamKeepaliveResetsDataOnlyClientTimeout(t *testing.T) {
 			break
 		}
 	}
-	if !strings.Contains(body.String(), `"content":"late"`) {
-		t.Fatalf("late content missing: %s", body.String())
-	}
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if row := tokenRow(t, env, token.ID); row.UsedQuota == 10 {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("used quota = %d, want 10", tokenRow(t, env, token.ID).UsedQuota)
+	return body.String()
 }

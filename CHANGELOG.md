@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.5.3
+
+- 修复 JetBrains AI Assistant 调用 ZAI coding + GLM Chat 流时，在可见正文出现前长期只接收 `reasoning_content` 并在约 10 秒后取消的问题
+- Ktor/JetBrains 请求未显式声明 `thinking`、`reasoning` 或 `reasoning_effort` 时，ZAI 上游请求自动关闭 thinking；显式思考请求、非 Ktor 客户端、非 ZAI 渠道和非 GLM 模型保持原行为
+- 不把 `reasoning_content` 伪造成正文，不发送伪内容，也不改变 Responses、Messages 或 Gemini 原生事件协议
+- 本版本为只包含该流式兼容修复的 PATCH 发布；继续发布 Windows 安装器与 Linux tar.gz，macOS 安装器仍受签名与 notarization 开关约束
+
 ## v0.5.2
 
 - 修复 JetBrains AI Assistant 生成 Git Commit Message 时约 10 秒后取消请求、正文不回显的问题：Chat Completions 的空闲保活从 SSE 注释帧改为不携带正文、角色、工具调用或 usage 的协议内空增量 `data:` 帧

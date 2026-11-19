@@ -526,6 +526,9 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			return outcomeNextKey
 		}
 	}
+	if stream && !nativeGemini && !nativeMessages && !nativeResponses {
+		upBody = applyKtorZAIThinkingPolicy(c.Request.UserAgent(), ch.BaseURL, stream, upBody)
+	}
 
 	ctx, cancel := context.WithTimeout(spanCtx, overall)
 	defer cancel()
