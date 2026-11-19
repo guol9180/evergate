@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.5.0
+
+- 修复 JetBrains AI Assistant 生成 Git Commit Message 时，上游在首个角色帧后短暂没有文本增量导致客户端提前断开的问题：流式响应空闲期间改为每 5 秒发送标准 SSE 注释心跳，真实内容帧、usage 与首 token 语义保持不变
+- 请求日志页新增手动刷新按钮；刷新沿用当前筛选条件与页码，并显示刷新状态
+- 渠道预设新增 OpenCode Go，自动填充官方 OpenAI 兼容端点 `https://opencode.ai/inference/go/openai/v1` 与代表性模型
+- 本版本按 0.x 新增功能规则提升 MINOR；继续发布 Windows 安装器与 Linux tar.gz，macOS 安装器仍因缺少 Developer ID 签名/公证凭据而不随本版本发布
+
 ## v0.4.0
 
 - 应用内更新新增 `@heguoliang/evergate-updates` 完整资产包，优先从 npmmirror → 官方 npm registry 下载 Windows 安装器或 Linux 归档，GitHub Release 仅作为备用

@@ -73,6 +73,17 @@ export const CHANNEL_PRESETS: ChannelPreset[] = [
     modelsPlaceholder: 'glm-4.6',
   },
   {
+    id: 'opencode-go',
+    label: 'OpenCode Go',
+    baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    type: 'openai-compatible',
+    supportsResponses: true,
+    supportsAnthropic: false,
+    defaultName: 'opencode-go',
+    description: 'OpenCode Go 订阅的 OpenAI 兼容端点；API key 从 OpenCode Console 获取。',
+    modelsPlaceholder: 'glm-5.3-flash\ngpt-6-luna\nkimi-k3',
+  },
+  {
     id: 'zai-coding',
     label: 'Z.ai Coding（国际版）',
     baseUrl: 'https://api.z.ai/api/coding/paas/v4',

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Search, ScrollText } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, Search, ScrollText } from 'lucide-react'
 import { useLogs } from '../api/hooks'
 import { Badge, Button, Card, Drawer, Empty, Input, PageHeader, Spinner, Td, Th } from '../components/ui'
 import RetryTimeline from '../components/RetryTimeline'
@@ -29,7 +29,16 @@ export default function Logs() {
 
   return (
     <div className="eg-page-stack">
-      <PageHeader title="请求日志" description="按模型、状态、渠道与令牌筛选；点击行查看命中链路与重试轨迹。" />
+      <PageHeader
+        title="请求日志"
+        description="按模型、状态、渠道与令牌筛选；点击行查看命中链路与重试轨迹。"
+        actions={(
+          <Button size="sm" variant="outline" disabled={logs.isFetching} onClick={() => void logs.refetch()}>
+            <RefreshCw size={14} className={logs.isFetching ? 'animate-spin' : ''} />
+            {logs.isFetching ? '刷新中…' : '刷新'}
+          </Button>
+        )}
+      />
 
       {/* 筛选栏（gpt-load LogsFilterForm 模式） */}
       <Card>

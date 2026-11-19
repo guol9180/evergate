@@ -1334,6 +1334,23 @@
   - 2026-11-17 验证 原有 npm 四包与 `@heguoliang/evergate-updates` 均为 `0.4.0` 且 `latest=0.4.0`；更新包 unpackedSize=20,629,738B，包含 Windows setup、Linux tar.gz 与 checksums
   - 2026-11-17 验证 npmmirror 首次 404 后通过公开同步接口触发，当前 metadata=200、tarball=200 且完整大小 20,085,868B；更新器无需代理即可使用镜像更新
 
+### T57: JetBrains AI Assistant 流式等待、日志刷新与 OpenCode 预设（P2，用户反馈）
+
+- 目标：修复 JetBrains AI Assistant 生成 Git Commit Message 时，上游流在首个角色帧后短暂静默导致客户端提前断开、内容无法回显的问题；请求日志页增加手动刷新；渠道预设增加 OpenCode Go 一键接入模板
+- 背景证据：本机 `idea.log` 的 commit message 请求结束后，网关请求日志状态 200、`stream=true`、`first_token_ms=801`、`total_ms=9987`、usage 为 0，错误被结算阶段归为 `client_disconnected_no_usage_charge`；上游尝试轨迹为成功，说明不是鉴权、路由或上游 5xx，而是首段真实文本前客户端已断开
+- 验收标准：
+  1. WHEN 流式响应建立后上游暂未产生文本增量 THEN EverGate 最多 5 秒发送一次标准 SSE 注释 keepalive，保持客户端连接且不改变 `data:` 内容、事件顺序、usage 或首 token 语义；
+  2. WHEN 请求日志页点击“刷新” THEN 使用当前筛选条件和页码重新请求日志；刷新中按钮显示旋转状态并禁用，不修改筛选条件、不重置分页；
+  3. WHEN 新建渠道选择 OpenCode 预设 THEN 自动填充 `https://opencode.ai/inference/go/openai/v1`、OpenAI 兼容类型、默认渠道名与代表性模型，用户只需录入 OpenCode Console 的 API key；
+  4. 测试覆盖 SSE 静默期心跳且不污染数据帧、前端保持当前日志查询参数刷新、OpenCode 预设字段正确；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web test`、`npm --prefix web run build`、`make build` 通过；
+  5. 按 0.x「新增功能 → MINOR」规则发布 `v0.5.0` Windows 安装器与 Linux tar.gz，更新 CHANGELOG、npm 五包与 GitHub Release 后回写 Action、资产哈希和 dist-tags 证据。
+- 边界：不伪造模型输出、不把 `reasoning_content` 当正文、不提高上游请求超时、不自动重试已写出首帧的请求；不改 API/DB schema；不写入代理；不要求用户配置 `x-opencode-session`；macOS 安装器继续受签名开关约束
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-19 计划 用户反馈 AI Assistant 生成 commit message 无回显，并提供网关断开日志；同时要求日志页手动刷新和 OpenCode 渠道预设。核实 IDEA BYOK 指向 `http://127.0.0.1:8787/v1`、失败请求 user-agent 为 `ktor-client`；OpenCode 官方 Chat Completions 基址为 `https://opencode.ai/inference/go/openai/v1`
+  - 2026-11-19 执行 SSE 注释心跳从 15 秒缩短为 5 秒，并通过可注入间隔的回归测试验证静默期只发送 `: keepalive`、不产生 `data:` 帧；请求日志页 PageHeader 新增保持当前 queryKey/分页的刷新按钮；渠道预设新增 OpenCode Go
+  - 2026-11-19 验证 `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试 6/6、前端生产构建、发布脚本测试 7/7、`make build`、`git diff --check` 与 actionlint 全部通过；本机沙箱内的 `spawn EPERM` 已按既有规则在非沙箱环境重跑通过
+
 ## 状态枚举
 
 

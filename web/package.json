@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node --experimental-strip-types --test tests/modelSelection.test.ts tests/playgroundProtocol.test.ts",
+    "test": "node --experimental-strip-types --test tests/modelSelection.test.ts tests/playgroundProtocol.test.ts tests/channelPresets.test.ts",
     "audit:layout": "node scripts/layout-audit.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"

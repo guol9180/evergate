@@ -20,8 +20,9 @@ import (
 	"evergate/internal/store"
 )
 
-// keepaliveInterval SSE 空闲注释心跳间隔（任务书 4.5⑥，防中间层掐断）。
-const keepaliveInterval = 15 * time.Second
+// keepaliveInterval SSE 空闲注释心跳间隔。JetBrains AI Assistant 等客户端可能在
+// 首个角色帧后等待真实文本时提前断开，5 秒心跳可避免这段静默期被误判为失联。
+const keepaliveInterval = 5 * time.Second
 
 // streamResponse 处理流式透传：首 chunk 前是可重试窗口，首 chunk 写给客户端后
 // 永不重试，只能以 SSE error event 明确上报（任务书 4.5⑥ 红线）。
@@ -186,10 +187,11 @@ type sseWriter struct {
 	w         gin.ResponseWriter
 	mu        sync.Mutex
 	lastWrite time.Time
+	interval  time.Duration
 }
 
 func newSSEWriter(w gin.ResponseWriter) *sseWriter {
-	return &sseWriter{w: w, lastWrite: time.Now()}
+	return &sseWriter{w: w, lastWrite: time.Now(), interval: keepaliveInterval}
 }
 
 // header 写出 SSE 响应头（仅一次）。
@@ -214,7 +216,11 @@ func (s *sseWriter) writeFlush(p []byte) {
 
 // startKeepalive 空闲超过间隔时向客户端发送 ": keepalive" 注释，返回停止函数。
 func (s *sseWriter) startKeepalive() (stop func()) {
-	ticker := time.NewTicker(keepaliveInterval)
+	interval := s.interval
+	if interval <= 0 {
+		interval = keepaliveInterval
+	}
+	ticker := time.NewTicker(interval)
 	done := make(chan struct{})
 	go func() {
 		for {
@@ -224,7 +230,7 @@ func (s *sseWriter) startKeepalive() (stop func()) {
 			case <-ticker.C:
 				s.mu.Lock()
 				idle := time.Since(s.lastWrite)
-				if idle >= keepaliveInterval {
+				if idle >= interval {
 					_, _ = s.w.Write([]byte(": keepalive\n\n"))
 					s.w.Flush()
 					s.lastWrite = time.Now()
