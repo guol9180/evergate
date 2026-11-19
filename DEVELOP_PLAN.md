@@ -1366,11 +1366,14 @@
   6. WHEN 请求日志页点击刷新 THEN 按钮宽度保持固定、文案不变，仅图标旋转和禁用状态变化，筛选区与日志卡片不得发生横向跳动；
   7. mock HTTP 边界覆盖会话三种来源、非 OpenCode 隔离、Playground 转发和 OpenCode 模型目录映射；完成全量测试、构建并发布 `v0.5.1` 补丁版
 - 边界：不改 DB/schema、不改 OpenCode 请求体、不引入新依赖、不读取或输出 OpenCode API key；仅对匹配 OpenCode Go 路径的渠道生效
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-19 计划 用户实测 Playground 被 OpenCode 以缺少 `x-opencode-session` 拒绝，且模型预览无法获取目录；OpenCode 文档要求客户端为每次会话发送稳定 ID，模型目录位于与 OpenAI 推理基址不同的 `/inference/go/v1/models`。日志刷新跳动定位为按钮文案宽度变化，改为固定宽度并保持文案
   - 2026-11-19 执行 relay 对 OpenCode Go 路径注入 `x-opencode-session`（下游同名头 → `X-Session-Id` → 随机 opaque ID），Playground 模块会话发送稳定 `X-Session-Id`；provider/admin/health 统一通过公共 `ModelListURL` 将 OpenCode OpenAI 推理基址映射到 `/inference/go/v1/models`；日志刷新按钮固定为 78px 且文案不再切换
   - 2026-11-19 验证 OpenCode 会话头来源优先级、Playground 转发、非 OpenCode 隔离、模型目录路径/鉴权、健康探测路径均有公共 HTTP 边界或 provider 测试；`go test -p 1 ./... -count=1`、`go vet ./...`、前端测试 6/6、前端生产构建、发布脚本测试 7/7 与 actionlint 通过
+  - 2026-11-19 交付 tag `v0.5.1` 指向 `204132a`；Release Action 44459431271 全绿（release/windows-installer/verify-release 成功，macOS 安装器按签名开关跳过），Release `https://github.com/guol9180/evergate/releases/tag/v0.5.1` 为 GitHub Latest
+  - 2026-11-19 验证 GitHub 资产：Windows setup 9,807,608B（SHA256 `c2512add6d6e095097c83ffc9b279900c99ded79ef3f7f2e84af4e6ed84f14dc`）、Linux tar.gz 10,823,466B（SHA256 `434a891d2f9dfb82c5fcb6e55b1da6e187bfcb3c56210a500cf3e83fe275fec2`）、checksums 205B；Action 下载并校验一致
+  - 2026-11-19 验证 npm 五包均为 `0.5.1` 且 `latest=0.5.1`；更新包 unpackedSize=20,633,005B、integrity=`sha512-n2ncVYp6i5y5V8/fmEEXxelsBK1b4kx4ydyAzrbQIhcoAdPKu5gFYvCAAOGTs67FHtVw3SugroublJ5/OuQ4WA==`，npmmirror 实际 `npm pack` 成功，tarball 20,088,365B
 
 ## 状态枚举
 
@@ -1400,7 +1403,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布；实现完成待环境验收：T48 macOS 安装体验、T49 Windows 托盘 DPI 截图矩阵、T50 macOS 安装包更新、T52 托盘 Logo 多 DPI 截图矩阵 | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49/T52 已修复当前环境问题与 Per-Monitor awareness，仍待完整缩放矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、v0.3.0/v0.3.1/v0.4.0/v0.5.0 Release、npm 五包与托盘 Logo 资源均已验证 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布、T58 OpenCode Go 会话头/模型目录/日志刷新稳定性与 v0.5.1 发布；实现完成待环境验收：T48 macOS 安装体验、T49 Windows 托盘 DPI 截图矩阵、T50 macOS 安装包更新、T52 托盘 Logo 多 DPI 截图矩阵 | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49/T52 已修复当前环境问题与 Per-Monitor awareness，仍待完整缩放矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、v0.3.0/v0.3.1/v0.4.0/v0.5.0/v0.5.1 Release、npm 五包与托盘 Logo 资源均已验证 |
 
 ## 验收清单
 
