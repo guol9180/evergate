@@ -1354,6 +1354,24 @@
   - 2026-11-19 验证 GitHub 资产：Windows setup 9,805,979B（SHA256 `ae17faeedb19e07794b96aee597e9378912c36e85fdd99211deb6b6b259ecba9`）、Linux tar.gz 10,822,882B（SHA256 `057b4c4917164ae93fee61168e903de416131855cee35e8153c99c2380e1ebd5`）、checksums 205B；Action 下载并校验一致
   - 2026-11-19 验证 npm 五包 `@heguoliang/evergate`、win32-x64、linux-amd64、darwin-arm64、evergate-updates 均为 `0.5.0` 且 `latest=0.5.0`；更新包 unpackedSize=20,630,792B、integrity=`sha512-GUEVOTLhhZynyQnNhUaHM73WraD69G+9Eh9Mpvsco6IlVZhwCYeINJTyd97xPL4K2DDL2WqsuV3bQmNtrI2T4A==`，npmmirror 实际 `npm pack` 成功，tarball 20,086,413B
 
+### T58: OpenCode Go 会话头、模型目录与日志刷新稳定性（P2，用户反馈）
+
+- 目标：修复 OpenCode Go 渠道在 Playground 及未显式携带供应商会话头的客户端中返回 `Request is missing x-opencode-session` 的问题，并修复把推理基址误当作模型目录基址导致无法拉取上游模型的问题
+- 验收标准：
+  1. WHEN 请求路由到 OpenCode Go 渠道（Base URL 路径包含 `/inference/go/`）THEN 上游请求必须携带非空 `x-opencode-session`；
+  2. 会话值优先级为下游 `x-opencode-session` → 下游 `X-Session-Id`（复用既有清洗上限）→ EverGate 生成 `evergate-<32位十六进制>`；
+  3. Playground 每次页面会话发送稳定的 `X-Session-Id`，同页多次测试复用同一会话，刷新页面后自然创建新会话；
+  4. 非 OpenCode 渠道不得收到 `x-opencode-session`；会话原文不写请求日志、不持久化、不包含任何 key；
+  5. WHEN 对 `https://opencode.ai/inference/go/openai/v1` 渠道路由执行模型目录预览/健康探测 THEN 使用 `https://opencode.ai/inference/go/v1/models`，不得请求错误的 `/openai/v1/models`；
+  6. WHEN 请求日志页点击刷新 THEN 按钮宽度保持固定、文案不变，仅图标旋转和禁用状态变化，筛选区与日志卡片不得发生横向跳动；
+  7. mock HTTP 边界覆盖会话三种来源、非 OpenCode 隔离、Playground 转发和 OpenCode 模型目录映射；完成全量测试、构建并发布 `v0.5.1` 补丁版
+- 边界：不改 DB/schema、不改 OpenCode 请求体、不引入新依赖、不读取或输出 OpenCode API key；仅对匹配 OpenCode Go 路径的渠道生效
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-19 计划 用户实测 Playground 被 OpenCode 以缺少 `x-opencode-session` 拒绝，且模型预览无法获取目录；OpenCode 文档要求客户端为每次会话发送稳定 ID，模型目录位于与 OpenAI 推理基址不同的 `/inference/go/v1/models`。日志刷新跳动定位为按钮文案宽度变化，改为固定宽度并保持文案
+  - 2026-11-19 执行 relay 对 OpenCode Go 路径注入 `x-opencode-session`（下游同名头 → `X-Session-Id` → 随机 opaque ID），Playground 模块会话发送稳定 `X-Session-Id`；provider/admin/health 统一通过公共 `ModelListURL` 将 OpenCode OpenAI 推理基址映射到 `/inference/go/v1/models`；日志刷新按钮固定为 78px 且文案不再切换
+  - 2026-11-19 验证 OpenCode 会话头来源优先级、Playground 转发、非 OpenCode 隔离、模型目录路径/鉴权、健康探测路径均有公共 HTTP 边界或 provider 测试；`go test -p 1 ./... -count=1`、`go vet ./...`、前端测试 6/6、前端生产构建、发布脚本测试 7/7 与 actionlint 通过
+
 ## 状态枚举
 
 

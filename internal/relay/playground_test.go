@@ -23,12 +23,19 @@ type playgroundEnvelope struct {
 }
 
 func (e *testEnv) playground(t *testing.T, body string) (*httptest.ResponseRecorder, playgroundEnvelope) {
+	return e.playgroundWithHeaders(t, body, nil)
+}
+
+func (e *testEnv) playgroundWithHeaders(t *testing.T, body string, headers map[string]string) (*httptest.ResponseRecorder, playgroundEnvelope) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/admin/api/playground", strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
+	for name, value := range headers {
+		c.Request.Header.Set(name, value)
+	}
 	e.HandlePlayground(c)
 	var env playgroundEnvelope
 	if strings.Contains(rec.Header().Get("Content-Type"), "application/json") {

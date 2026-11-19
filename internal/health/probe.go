@@ -155,7 +155,7 @@ func (p *Prober) doModelsProbe(ctx context.Context, ch *store.Channel, plainKey 
 	defer cancel()
 
 	endpoint := provider.ModelListEndpointFor(ch)
-	url := strings.TrimSuffix(ch.BaseURL, "/") + endpoint.Path
+	url := provider.ModelListURL(ch)
 	req, reqErr := http.NewRequestWithContext(probeCtx, http.MethodGet, url, nil)
 	if reqErr != nil {
 		return probeResponse{Message: reqErr.Error(), Err: reqErr}
@@ -173,7 +173,7 @@ func (p *Prober) doModelsProbe(ctx context.Context, ch *store.Channel, plainKey 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	snippet := summarizeBody(body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		message := fmt.Sprintf("上游 %s 探测失败（HTTP %d）", endpoint.Path, resp.StatusCode)
+		message := fmt.Sprintf("上游模型目录探测失败（HTTP %d）", resp.StatusCode)
 		if snippet != "" {
 			message += ": " + snippet
 		}

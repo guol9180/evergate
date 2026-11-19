@@ -221,6 +221,7 @@ func TestProbeUsesProtocolModelListEndpoint(t *testing.T) {
 		wantAPIKeyHeader  string
 		wantAuth          string
 		wantVersion       string
+		basePath          string
 	}{
 		{
 			name: "anthropic", supportsAnthropic: true,
@@ -234,6 +235,11 @@ func TestProbeUsesProtocolModelListEndpoint(t *testing.T) {
 		{
 			name:     "openai-compatible",
 			wantPath: "/models", wantAuth: "Bearer sk-probe",
+		},
+		{
+			name:     "opencode-go",
+			basePath: "/inference/go/openai/v1",
+			wantPath: "/inference/go/v1/models", wantAuth: "Bearer sk-probe",
 		},
 		{
 			name:              "anthropic-precedes-gemini",
@@ -261,7 +267,7 @@ func TestProbeUsesProtocolModelListEndpoint(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			ch.BaseURL = server.URL
+			ch.BaseURL = server.URL + tc.basePath
 			ch.SupportsAnthropic = tc.supportsAnthropic
 			ch.SupportsGemini = tc.supportsGemini
 			if err := env.db.Save(ch).Error; err != nil {

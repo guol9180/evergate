@@ -162,3 +162,28 @@ func TestListModelsJSONErrorDoesNotLeakKey(t *testing.T) {
 		t.Fatalf("error leaked key: %v", err)
 	}
 }
+
+func TestListModelsUsesOpenCodeGoCatalogEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/inference/go/v1/models" {
+			t.Errorf("path = %q, want OpenCode catalog endpoint", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if auth := r.Header.Get("Authorization"); auth != "Bearer sk-opencode" {
+			t.Errorf("Authorization = %q", auth)
+		}
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"glm-5.3-flash"},{"id":"gpt-6-luna"}]}`))
+	}))
+	defer server.Close()
+
+	result, err := ListModels(context.Background(), server.Client(), &store.Channel{
+		BaseURL: server.URL + "/inference/go/openai/v1",
+	}, "sk-opencode")
+	if err != nil {
+		t.Fatalf("list OpenCode models: %v", err)
+	}
+	if !reflect.DeepEqual(result.Models, []string{"glm-5.3-flash", "gpt-6-luna"}) {
+		t.Fatalf("models = %#v", result.Models)
+	}
+}

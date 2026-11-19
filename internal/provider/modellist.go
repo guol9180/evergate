@@ -66,6 +66,27 @@ func ModelListEndpointFor(ch *store.Channel) ModelListEndpoint {
 	}
 }
 
+// ModelListURL 返回渠道的模型目录地址。OpenCode Go 的 OpenAI 推理基址位于
+// /inference/go/openai/v1，但目录固定在同源 /inference/go/v1/models。
+func ModelListURL(ch *store.Channel) string {
+	base := strings.TrimSuffix(ch.BaseURL, "/")
+	endpoint := ModelListEndpointFor(ch)
+	if endpoint.Protocol != "openai-compatible" {
+		return base + endpoint.Path
+	}
+	u, err := url.Parse(base)
+	if err != nil {
+		return base + endpoint.Path
+	}
+	if suffix := "/openai/v1"; strings.HasSuffix(strings.ToLower(u.Path), suffix) {
+		u.Path = u.Path[:len(u.Path)-len(suffix)] + "/v1/models"
+		u.RawQuery = ""
+		u.Fragment = ""
+		return u.String()
+	}
+	return base + endpoint.Path
+}
+
 // ModelListResult 是一次模型目录拉取的有界结果。
 type ModelListResult struct {
 	Models    []string
@@ -114,7 +135,7 @@ func ListModels(ctx context.Context, client HTTPClient, ch *store.Channel, key s
 			}
 		}
 
-		rawURL := strings.TrimSuffix(ch.BaseURL, "/") + endpoint.Path
+		rawURL := ModelListURL(ch)
 		if len(query) > 0 {
 			rawURL += "?" + query.Encode()
 		}

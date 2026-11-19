@@ -570,6 +570,9 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
+	if session := openCodeSessionForRequest(ch.BaseURL, c.Request.Header); session != "" {
+		req.Header.Set(openCodeSessionHeader, session)
+	}
 
 	client := &http.Client{Transport: r.transport(connect)}
 	start := r.opt.Now()

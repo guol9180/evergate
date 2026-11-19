@@ -33,9 +33,16 @@ export default function Logs() {
         title="请求日志"
         description="按模型、状态、渠道与令牌筛选；点击行查看命中链路与重试轨迹。"
         actions={(
-          <Button size="sm" variant="outline" disabled={logs.isFetching} onClick={() => void logs.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-[78px]"
+            disabled={logs.isFetching}
+            aria-busy={logs.isFetching}
+            onClick={() => void logs.refetch()}
+          >
             <RefreshCw size={14} className={logs.isFetching ? 'animate-spin' : ''} />
-            {logs.isFetching ? '刷新中…' : '刷新'}
+            刷新
           </Button>
         )}
       />

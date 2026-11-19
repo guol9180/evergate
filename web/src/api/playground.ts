@@ -44,12 +44,14 @@ interface StreamHandlers {
   signal?: AbortSignal
 }
 
+const PLAYGROUND_SESSION_ID = createPlaygroundSessionID()
+
 // runPlayground 直接调用管理台 Playground 端点：SSE 实时回调，非流式一次性返回。
 export async function runPlayground(input: PlaygroundInput, { onDelta, signal }: StreamHandlers): Promise<PlaygroundResult> {
   const resp = await fetch('/admin/api/playground', {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-Session-Id': PLAYGROUND_SESSION_ID },
     body: JSON.stringify(input),
     signal,
   })
@@ -122,6 +124,12 @@ async function readSSE(resp: Response, onDelta: (delta: string) => void): Promis
     }
   }
   return { text, meta, streamError }
+}
+
+function createPlaygroundSessionID(): string {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  if (uuid) return `playground-${uuid}`
+  return `playground-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function parseSSEBlock(block: string): { event: string; data: string } {

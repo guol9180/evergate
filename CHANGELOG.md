@@ -2,6 +2,13 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.5.1
+
+- 修复 OpenCode Go 渠道请求缺少 `x-opencode-session` 被上游拒绝的问题：优先转发下游同名会话头，其次复用 `X-Session-Id`，均缺失时生成稳定的单请求会话 ID；Playground 在当前页面内复用同一会话
+- 修复 OpenCode Go 模型目录无法获取：推理基址 `/inference/go/openai/v1` 会自动映射模型列表与健康探测到 `/inference/go/v1/models`
+- 修复请求日志手动刷新按钮点击时发生布局跳动：按钮保持固定宽度和固定文案，刷新期间仅图标旋转并暂时禁用
+- 本版本为只包含上述三个问题修复的 PATCH 发布；继续发布 Windows 安装器与 Linux tar.gz，macOS 安装器仍受签名开关约束
+
 ## v0.5.0
 
 - 修复 JetBrains AI Assistant 生成 Git Commit Message 时，上游在首个角色帧后短暂没有文本增量导致客户端提前断开的问题：流式响应空闲期间改为每 5 秒发送标准 SSE 注释心跳，真实内容帧、usage 与首 token 语义保持不变
