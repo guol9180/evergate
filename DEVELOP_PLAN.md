@@ -1345,11 +1345,14 @@
   4. 测试覆盖 SSE 静默期心跳且不污染数据帧、前端保持当前日志查询参数刷新、OpenCode 预设字段正确；`go test ./... -count=1`、`go vet ./...`、`npm --prefix web test`、`npm --prefix web run build`、`make build` 通过；
   5. 按 0.x「新增功能 → MINOR」规则发布 `v0.5.0` Windows 安装器与 Linux tar.gz，更新 CHANGELOG、npm 五包与 GitHub Release 后回写 Action、资产哈希和 dist-tags 证据。
 - 边界：不伪造模型输出、不把 `reasoning_content` 当正文、不提高上游请求超时、不自动重试已写出首帧的请求；不改 API/DB schema；不写入代理；不要求用户配置 `x-opencode-session`；macOS 安装器继续受签名开关约束
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-19 计划 用户反馈 AI Assistant 生成 commit message 无回显，并提供网关断开日志；同时要求日志页手动刷新和 OpenCode 渠道预设。核实 IDEA BYOK 指向 `http://127.0.0.1:8787/v1`、失败请求 user-agent 为 `ktor-client`；OpenCode 官方 Chat Completions 基址为 `https://opencode.ai/inference/go/openai/v1`
   - 2026-11-19 执行 SSE 注释心跳从 15 秒缩短为 5 秒，并通过可注入间隔的回归测试验证静默期只发送 `: keepalive`、不产生 `data:` 帧；请求日志页 PageHeader 新增保持当前 queryKey/分页的刷新按钮；渠道预设新增 OpenCode Go
   - 2026-11-19 验证 `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试 6/6、前端生产构建、发布脚本测试 7/7、`make build`、`git diff --check` 与 actionlint 全部通过；本机沙箱内的 `spawn EPERM` 已按既有规则在非沙箱环境重跑通过
+  - 2026-11-19 交付 tag `v0.5.0` 指向 `6c77ca8`；Release Action 44449182464 全绿（release/windows-installer/verify-release 成功，macOS 安装器按签名开关跳过），Release 地址 `https://github.com/guol9180/evergate/releases/tag/v0.5.0` 且 GitHub Latest 已指向 v0.5.0
+  - 2026-11-19 验证 GitHub 资产：Windows setup 9,805,979B（SHA256 `ae17faeedb19e07794b96aee597e9378912c36e85fdd99211deb6b6b259ecba9`）、Linux tar.gz 10,822,882B（SHA256 `057b4c4917164ae93fee61168e903de416131855cee35e8153c99c2380e1ebd5`）、checksums 205B；Action 下载并校验一致
+  - 2026-11-19 验证 npm 五包 `@heguoliang/evergate`、win32-x64、linux-amd64、darwin-arm64、evergate-updates 均为 `0.5.0` 且 `latest=0.5.0`；更新包 unpackedSize=20,630,792B、integrity=`sha512-GUEVOTLhhZynyQnNhUaHM73WraD69G+9Eh9Mpvsco6IlVZhwCYeINJTyd97xPL4K2DDL2WqsuV3bQmNtrI2T4A==`，npmmirror 实际 `npm pack` 成功，tarball 20,086,413B
 
 ## 状态枚举
 
