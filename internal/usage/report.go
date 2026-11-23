@@ -18,14 +18,16 @@ type ReportQuery struct {
 }
 
 type ReportTotals struct {
-	Requests         int64   `json:"requests"`
-	Success          int64   `json:"success"`
-	TokensIn         int64   `json:"tokens_in"`
-	TokensOut        int64   `json:"tokens_out"`
-	CostMicros       int64   `json:"cost_micros"`
-	Cost             float64 `json:"cost"`
-	PricedRequests   int64   `json:"priced_requests"`
-	UnpricedRequests int64   `json:"unpriced_requests"`
+	Requests            int64   `json:"requests"`
+	Success             int64   `json:"success"`
+	TokensIn            int64   `json:"tokens_in"`
+	TokensOut           int64   `json:"tokens_out"`
+	CostMicros          int64   `json:"cost_micros"`
+	Cost                float64 `json:"cost"`
+	PricedRequests      int64   `json:"priced_requests"`
+	UnpricedRequests    int64   `json:"unpriced_requests"`
+	NoUsageRequests     int64   `json:"no_usage_requests"`
+	UnknownCostRequests int64   `json:"unknown_cost_requests"`
 }
 
 type DailyPoint struct {
@@ -36,6 +38,10 @@ type DailyPoint struct {
 	TokensOut  int64   `json:"tokens_out"`
 	CostMicros int64   `json:"cost_micros"`
 	Cost       float64 `json:"cost"`
+	Priced     int64   `json:"priced_requests"`
+	Unpriced   int64   `json:"unpriced_requests"`
+	NoUsage    int64   `json:"no_usage_requests"`
+	Unknown    int64   `json:"unknown_cost_requests"`
 }
 
 type DimensionRow struct {
@@ -60,15 +66,19 @@ type Report struct {
 }
 
 type reportAggregate struct {
-	ChannelID  int64  `gorm:"column:channel_id"`
-	Model      string `gorm:"column:model"`
-	TokenID    int64  `gorm:"column:token_id"`
-	Date       string `gorm:"column:day"`
-	Requests   int64  `gorm:"column:requests"`
-	Success    int64  `gorm:"column:success"`
-	TokensIn   int64  `gorm:"column:tokens_in"`
-	TokensOut  int64  `gorm:"column:tokens_out"`
-	CostMicros int64  `gorm:"column:cost_micros"`
+	ChannelID           int64  `gorm:"column:channel_id"`
+	Model               string `gorm:"column:model"`
+	TokenID             int64  `gorm:"column:token_id"`
+	Date                string `gorm:"column:day"`
+	Requests            int64  `gorm:"column:requests"`
+	Success             int64  `gorm:"column:success"`
+	TokensIn            int64  `gorm:"column:tokens_in"`
+	TokensOut           int64  `gorm:"column:tokens_out"`
+	CostMicros          int64  `gorm:"column:cost_micros"`
+	PricedRequests      int64  `gorm:"column:priced_requests"`
+	UnpricedRequests    int64  `gorm:"column:unpriced_requests"`
+	NoUsageRequests     int64  `gorm:"column:no_usage_requests"`
+	UnknownCostRequests int64  `gorm:"column:unknown_cost_requests"`
 }
 
 func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
@@ -104,11 +114,15 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 	var counts struct {
 		Priced   int64 `gorm:"column:priced_requests"`
 		Unpriced int64 `gorm:"column:unpriced_requests"`
+		NoUsage  int64 `gorm:"column:no_usage_requests"`
+		Unknown  int64 `gorm:"column:unknown_cost_requests"`
 	}
 	if err := filter(db.Model(&store.UsageDaily{})).
 		Select(`
 			COALESCE(SUM(priced_requests), 0) AS priced_requests,
-			COALESCE(SUM(unpriced_requests), 0) AS unpriced_requests
+			COALESCE(SUM(unpriced_requests), 0) AS unpriced_requests,
+			COALESCE(SUM(no_usage_requests), 0) AS no_usage_requests,
+			COALESCE(SUM(unknown_cost_requests), 0) AS unknown_cost_requests
 		`).Scan(&counts).Error; err != nil {
 		return report, err
 	}
@@ -117,6 +131,7 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 		TokensIn: totals.TokensIn, TokensOut: totals.TokensOut,
 		CostMicros: totals.CostMicros, Cost: float64(totals.CostMicros) / 1_000_000,
 		PricedRequests: counts.Priced, UnpricedRequests: counts.Unpriced,
+		NoUsageRequests: counts.NoUsage, UnknownCostRequests: counts.Unknown,
 	}
 
 	var daily []reportAggregate
@@ -127,7 +142,11 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 			COALESCE(SUM(success), 0) AS success,
 			COALESCE(SUM(tokens_in), 0) AS tokens_in,
 			COALESCE(SUM(tokens_out), 0) AS tokens_out,
-			COALESCE(SUM(cost_micros), 0) AS cost_micros
+			COALESCE(SUM(cost_micros), 0) AS cost_micros,
+			COALESCE(SUM(priced_requests), 0) AS priced_requests,
+			COALESCE(SUM(unpriced_requests), 0) AS unpriced_requests,
+			COALESCE(SUM(no_usage_requests), 0) AS no_usage_requests,
+			COALESCE(SUM(unknown_cost_requests), 0) AS unknown_cost_requests
 		`).Group("day").Order("day asc").Scan(&daily).Error; err != nil {
 		return report, err
 	}
@@ -137,6 +156,8 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 			Date: row.Date, Requests: row.Requests, Success: row.Success,
 			TokensIn: row.TokensIn, TokensOut: row.TokensOut,
 			CostMicros: row.CostMicros, Cost: float64(row.CostMicros) / 1_000_000,
+			Priced: row.PricedRequests, Unpriced: row.UnpricedRequests,
+			NoUsage: row.NoUsageRequests, Unknown: row.UnknownCostRequests,
 		})
 	}
 

@@ -144,19 +144,21 @@ type RequestLog struct {
 
 // UsageDaily 是按 UTC 天 + 渠道 + 请求模型 + 令牌的幂等聚合。
 type UsageDaily struct {
-	ID               int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	Date             time.Time `gorm:"not null;uniqueIndex:idx_usage_daily_uq" json:"date"` // UTC 零点
-	ChannelID        int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"channel_id"`
-	Model            string    `gorm:"size:100;not null;uniqueIndex:idx_usage_daily_uq" json:"model"`
-	TokenID          int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"token_id"`
-	Requests         int64     `gorm:"not null;default:0" json:"requests"`
-	Success          int64     `gorm:"not null;default:0" json:"success"`
-	TokensIn         int64     `gorm:"not null;default:0" json:"tokens_in"`
-	TokensOut        int64     `gorm:"not null;default:0" json:"tokens_out"`
-	Cost             float64   `gorm:"not null;default:0" json:"cost"`
-	CostMicros       int64     `gorm:"not null;default:0" json:"cost_micros"`
-	PricedRequests   int64     `gorm:"not null;default:0" json:"priced_requests"`
-	UnpricedRequests int64     `gorm:"not null;default:0" json:"unpriced_requests"`
+	ID                  int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	Date                time.Time `gorm:"not null;uniqueIndex:idx_usage_daily_uq" json:"date"` // UTC 零点
+	ChannelID           int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"channel_id"`
+	Model               string    `gorm:"size:100;not null;uniqueIndex:idx_usage_daily_uq" json:"model"`
+	TokenID             int64     `gorm:"not null;default:0;uniqueIndex:idx_usage_daily_uq" json:"token_id"`
+	Requests            int64     `gorm:"not null;default:0" json:"requests"`
+	Success             int64     `gorm:"not null;default:0" json:"success"`
+	TokensIn            int64     `gorm:"not null;default:0" json:"tokens_in"`
+	TokensOut           int64     `gorm:"not null;default:0" json:"tokens_out"`
+	Cost                float64   `gorm:"not null;default:0" json:"cost"`
+	CostMicros          int64     `gorm:"not null;default:0" json:"cost_micros"`
+	PricedRequests      int64     `gorm:"not null;default:0" json:"priced_requests"`
+	UnpricedRequests    int64     `gorm:"not null;default:0" json:"unpriced_requests"`
+	NoUsageRequests     int64     `gorm:"not null;default:0" json:"no_usage_requests"`
+	UnknownCostRequests int64     `gorm:"not null;default:0" json:"unknown_cost_requests"`
 }
 
 // TableName 固定为任务书表名 usage_daily（GORM 默认复数会得到 usage_dailies）。

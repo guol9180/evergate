@@ -2,6 +2,14 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.5.5
+
+- 修复 Chat Completions 兼容上游流式请求未主动返回 usage 的问题：网关自动设置 `stream_options.include_usage=true`，为额度结算与成本计算取得真实输入/输出 token
+- 修复成本已落库却不回显的问题：请求日志列表与详情、Playground 命中摘要即时展示单请求成本；同一下游 token 跨多个供应商时，成本按实际命中的渠道与上游模型逐笔计算后汇总
+- 用量成本页明确区分已计价、未配置价格、无 usage 与历史未记录；未知成本显示为 `—`，不再用 `$0` 冒充已知成本，并提示先配置全局默认价或渠道+模型覆盖价
+- UTC 日聚合新增 `no_usage_requests` 与 `unknown_cost_requests`；价格变更仍不追溯历史请求，现有 `unpriced` 记录不会被后来价格重算
+- 新增 Chat、Responses、Anthropic 与 Gemini 非流式/流式成本 HTTP 边界回归测试；本版本继续发布 Windows 安装器与 Linux tar.gz，macOS 安装器仍受 Developer ID 签名与 notarization 开关约束
+
 ## v0.5.4
 
 - 修复同优先级渠道加权随机排序错误，避免后续候选长期得不到首位机会；补强 SSE 首个语义事件判定，注释、空帧和 Messages `ping` 不再阻断首 token 前故障切换

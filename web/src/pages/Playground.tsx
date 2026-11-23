@@ -4,7 +4,7 @@ import { useChannels } from '../api/hooks'
 import { runPlayground, type PlaygroundMeta } from '../api/playground'
 import RetryTimeline from '../components/RetryTimeline'
 import { Badge, Button, Card, Empty, PageHeader, Select, Spinner, Switch, Textarea } from '../components/ui'
-import { fmtInt, fmtMs, kindText } from '../lib/format'
+import { fmtInt, fmtMs, fmtRequestCost, kindText } from '../lib/format'
 
 const MAX_PROMPT = 16000
 const MAX_SYSTEM = 8000
@@ -233,6 +233,7 @@ export default function Playground() {
                     <UsageChip label="输入" value={fmtInt(meta.usage.prompt_tokens)} />
                     <UsageChip label="输出" value={fmtInt(meta.usage.completion_tokens)} />
                     <UsageChip label="合计" value={fmtInt(meta.usage.total_tokens)} />
+                    <UsageChip label="成本" value={fmtRequestCost(meta.cost_micros, meta.cost_status)} />
                     {meta.usage.cached_tokens > 0 && <UsageChip label="cached" value={fmtInt(meta.usage.cached_tokens)} />}
                     {meta.usage.reasoning_tokens > 0 && <UsageChip label="reasoning" value={fmtInt(meta.usage.reasoning_tokens)} />}
                   </>

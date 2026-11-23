@@ -1564,6 +1564,54 @@
   - 2026-11-23 验证 GitHub 资产：Windows setup 9,814,473B（SHA256 `07029b248752232e78d6ef4dd4637424e0c761ff86bf8b9946e9cc9adeab732c`）、Linux tar.gz 10,843,766B（SHA256 `480cfd2e7fbcb5a5f14deb029868acc2538ed495812cf7d5974e5b47ecec9475`）、checksums 205B；下载 checksums 后内容与 GitHub asset digest 一致
   - 2026-11-23 验证 npm 官方五包 `@heguoliang/evergate`、win32-x64、linux-amd64、darwin-arm64、evergate-updates 均为 `0.5.4` 且 `latest=0.5.4`；npmmirror 五包同步为 `0.5.4`
 
+### T70: Token 用量与成本统计端到端修复（P1，用户缺陷反馈）
+
+- 目标：定位并修复请求 usage 缺失、价格快照未命中、UTC 日聚合延迟/缺失以及管理台不回显成本的问题，使成功请求的输入/输出 token、计价状态和成本可从请求日志与用量页一致核对
+- 验收标准：
+  1. Chat Completions、Responses、Anthropic Messages、Gemini 的非流式与流式成功响应均通过公共 HTTP 边界断言 token 与成本落库；缺 usage、无匹配价格、零价格和已计价必须可区分
+  2. 请求日志 API 返回 `cost_micros` / `cost_status`，日志列表或详情立即可见单请求成本；用量页在聚合完成后显示成本、已计价与未计价请求数，不把未知成本静默显示成普通 `$0`
+  3. 新请求成本严格使用请求时价格快照；价格变更不改写历史；聚合仍从 `request_logs` 按 UTC 日先删后插重建
+  4. 对现有数据库中可由历史 usage 与价格计算的数据给出明确处理策略，不以不符合快照语义的追溯重算冒充修复
+  5. 回归测试先红后绿；Go 全量测试、vet、前端测试/lint/构建与 `make build` 通过
+- 边界：不引入供应商自动联网比价、不伪造 usage、不猜测缺失 token、不改变历史已计价记录；只修复现有成本链路与展示
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 用户反馈 token 统计未成功计算并回显成本；先复现并区分 usage、价格、聚合、展示四段链路，再修复
+  - 2026-11-23 诊断 只读核对当前实例 SQLite：token usage 已正常落库（最近成功请求 `in=9055/out=237`），但 `model_prices` 为 0 行；现有请求成本状态为 `priced=0`、`unpriced=68`、`no_usage=16`、旧记录空状态 33。根因是未配置价格、Chat 流式未主动请求 usage，以及前端请求日志未展示已有成本字段
+  - 2026-11-23 执行 Chat Completions 兼容上游流式请求自动注入 `stream_options.include_usage=true`；Playground 命中摘要新增 `cost_micros/cost/status`；请求日志列表与详情展示单请求成本；用量页区分已计价、未计价、无 usage、历史未记录，未知成本显示 `—` 并提示先配置价格
+  - 2026-11-23 执行 `usage_daily` 新增 `no_usage_requests` / `unknown_cost_requests` 聚合字段，UTC 日重建仍从 `request_logs` 事务内先删后插；价格变更不追溯历史，现有 68 条 `unpriced` 不使用后来价格回填
+  - 2026-11-23 验证 回归测试先红后绿：旧实现流式日志为 `no_usage`，修复后为 `3+2 token → 7 micro-USD`；新增 Chat/Responses/Anthropic/Gemini 四协议非流式与流式成本表驱动 HTTP 边界测试全部通过
+  - 2026-11-23 验证 `go test -p 1 ./... -count=1`、`go vet ./...`、`gofmt -l`、前端 9 个纯函数测试 + 3 个组件测试、ESLint、前端构建与 `make build` 全部通过
+
+### T71: npm 发布包结构审查（P2，用户发布流程反馈）
+
+- 目标：审查主包、三个平台子包与更新资产包是否分别有不可替代的发布职责，核对 npm 官方生态惯例与本项目更新链路约束，给出保留、合并或调整发布流程的可执行结论
+- 验收标准：
+  1. 逐包说明用途、发布顺序、体积/下载冗余、可选依赖安装机制和失败回退成本
+  2. 对照 `AGENTS.md` 的 npm/一键更新红线与主流 npm 原生二进制分发模式，判断当前五包结构是否必要；若调整，必须同时更新发布脚本、门禁、文档和镜像校验
+  3. 不以“多数项目这样做”替代本项目的实际更新与安装语义；结论附仓库证据，不移动 `v0.5.4` tag
+- 边界：只审查与必要修正发布结构；不重发 `v0.5.4`、不删除已发布 npm 版本、不引入原生下载器依赖
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 用户询问一次发布多个 npm 包是否符合标准流程；核对五包职责、可选依赖选择与更新资产包必要性
+  - 2026-11-23 审查 仓库证据：主包 `npm/wrapper` 仅含启动垫片并通过三个 `optionalDependencies` 按 `os/cpu` 选择平台包；三个 `npm/platform` 包各自只含一个约 10.5–11.4MB 二进制，npm 安装时只落匹配平台的一份，不是三份重复安装；`scripts/stage-npm.mjs` 与 Release workflow 按平台子包先于主包发布
+  - 2026-11-23 结论 四个安装包属于 npm 原生二进制的标准 optionalDependencies 分发结构。第 5 个 `@heguoliang/evergate-updates` 不参与安装，只承载 Windows/Linux 完整安装资产供应用内更新从 npmmirror/官方 npm 获取，是 `AGENTS.md` 指定且 GitHub 不可达时的必要回退；当前五包结构保留，不合并、不重发 `v0.5.4`
+
+### T72: 发布 v0.5.5（P1，用户指令，依赖 T70）
+
+- 目标：将 Token usage 获取、按实际渠道+模型的成本计算、请求日志/Playground/用量页成本回显修复按 PATCH 语义发布为 `v0.5.5`，同步 GitHub Release 与 npm 五包
+- 版本判断：`v0.5.4 → v0.5.5`。本批次是既有用量成本能力的缺陷修复和可观测字段补全，没有新增供应商、协议入口或独立业务能力
+- 验收标准：
+  1. `CHANGELOG.md` 含精确非空 `## v0.5.5` 段；tag 提交位于已推送 `main` 历史
+  2. 发布前 Go 全量测试、vet、前端测试/lint/构建、调度覆盖率、三平台构建、发布脚本测试、release-gate 与 actionlint 通过
+  3. push `v0.5.5` 后 workflow 全绿；Release 仅含版本化 Windows setup、Linux tar.gz 与 checksums，macOS 安装器按签名开关处理
+  4. npm 主包、三个平台子包与 `@heguoliang/evergate-updates` 均为 `0.5.5`，`latest=0.5.5`；npmmirror 可拉取
+  5. 下载公开资产并按 checksums 校验，验证 GitHub Latest、npm dist-tags 与 Action 结果；不移动历史 tag
+- 边界：不发布裸二进制或未签名 DMG；不追溯重写历史 `unpriced` 请求；不改变五包发布结构
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 用户指令发版；T70/T71 完成，按 PATCH 发布 `v0.5.5`
+
 ## 状态枚举
 
 

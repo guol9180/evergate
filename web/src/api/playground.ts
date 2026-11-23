@@ -29,6 +29,9 @@ export interface PlaygroundMeta {
   first_token_ms: number
   total_ms: number
   usage: PlaygroundUsage
+  cost_micros: number
+  cost: number
+  cost_status: string
   retry_trace: RetryAttempt[]
   error_type: string
   error_message: string

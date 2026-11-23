@@ -88,16 +88,18 @@ func RecomputeAll(ctx context.Context, db *gorm.DB, logger *slog.Logger) error {
 }
 
 type aggregateRow struct {
-	ChannelID        int64  `gorm:"column:channel_id"`
-	Model            string `gorm:"column:model"`
-	TokenID          int64  `gorm:"column:token_id"`
-	Requests         int64  `gorm:"column:requests"`
-	Success          int64  `gorm:"column:success"`
-	TokensIn         int64  `gorm:"column:tokens_in"`
-	TokensOut        int64  `gorm:"column:tokens_out"`
-	CostMicros       int64  `gorm:"column:cost_micros"`
-	PricedRequests   int64  `gorm:"column:priced_requests"`
-	UnpricedRequests int64  `gorm:"column:unpriced_requests"`
+	ChannelID           int64  `gorm:"column:channel_id"`
+	Model               string `gorm:"column:model"`
+	TokenID             int64  `gorm:"column:token_id"`
+	Requests            int64  `gorm:"column:requests"`
+	Success             int64  `gorm:"column:success"`
+	TokensIn            int64  `gorm:"column:tokens_in"`
+	TokensOut           int64  `gorm:"column:tokens_out"`
+	CostMicros          int64  `gorm:"column:cost_micros"`
+	PricedRequests      int64  `gorm:"column:priced_requests"`
+	UnpricedRequests    int64  `gorm:"column:unpriced_requests"`
+	NoUsageRequests     int64  `gorm:"column:no_usage_requests"`
+	UnknownCostRequests int64  `gorm:"column:unknown_cost_requests"`
 }
 
 // RecomputeDay 从 request_logs 全量重建指定 UTC 日，事务内先删后插，保证幂等。
@@ -115,7 +117,9 @@ func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
 			COALESCE(SUM(completion_tokens), 0) AS tokens_out,
 			COALESCE(SUM(cost_micros), 0) AS cost_micros,
 			COALESCE(SUM(CASE WHEN cost_status = 'priced' THEN 1 ELSE 0 END), 0) AS priced_requests,
-			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 AND cost_status <> 'priced' THEN 1 ELSE 0 END), 0) AS unpriced_requests
+			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 AND cost_status = 'unpriced' THEN 1 ELSE 0 END), 0) AS unpriced_requests,
+			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 AND cost_status = 'no_usage' THEN 1 ELSE 0 END), 0) AS no_usage_requests,
+			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 AND cost_status NOT IN ('priced', 'unpriced', 'no_usage') THEN 1 ELSE 0 END), 0) AS unknown_cost_requests
 		`).
 		Where("created_at >= ? AND created_at < ?", day, next).
 		Group("channel_id, model, token_id").
@@ -137,6 +141,7 @@ func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
 				TokensIn: row.TokensIn, TokensOut: row.TokensOut,
 				CostMicros: row.CostMicros, Cost: float64(row.CostMicros) / 1_000_000,
 				PricedRequests: row.PricedRequests, UnpricedRequests: row.UnpricedRequests,
+				NoUsageRequests: row.NoUsageRequests, UnknownCostRequests: row.UnknownCostRequests,
 			})
 		}
 		return tx.CreateInBatches(&items, 200).Error

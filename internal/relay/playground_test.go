@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"evergate/internal/store"
+	"evergate/internal/usage"
 )
 
 type playgroundEnvelope struct {
@@ -68,6 +70,9 @@ func TestPlaygroundChatNonStream(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"chatcmpl-pg","choices":[{"message":{"role":"assistant","content":"playground ok"}}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`))
 	})
 	env.addChannel(t, "pg", up.server.URL, 0, []string{"gpt-x"}, map[string]string{"gpt-x": "gpt-upstream"}, "sk-pg")
+	if err := env.usage.SetDefault(context.Background(), 1_000_000, 2_000_000); err != nil {
+		t.Fatalf("set default price: %v", err)
+	}
 
 	rec, envelope := env.playground(t, `{"protocol":"chat","model":"gpt-x","system":"be brief","prompt":"hello","stream":false}`)
 	if rec.Code != http.StatusOK || !envelope.OK {
@@ -82,6 +87,9 @@ func TestPlaygroundChatNonStream(t *testing.T) {
 	}
 	if meta.Usage.PromptTokens != 5 || meta.Usage.CompletionTokens != 3 || !meta.Usage.UsageSeen {
 		t.Fatalf("usage = %+v", meta.Usage)
+	}
+	if meta.CostMicros != 11 || meta.CostStatus != usage.CostStatusPriced {
+		t.Fatalf("cost = %d %s", meta.CostMicros, meta.CostStatus)
 	}
 	if len(meta.RetryTrace) != 1 || meta.RetryTrace[0].ErrorType != "" {
 		t.Fatalf("retry trace = %+v", meta.RetryTrace)

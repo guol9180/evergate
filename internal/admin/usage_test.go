@@ -46,6 +46,8 @@ func TestUsagePricingAndReportAPI(t *testing.T) {
 	logs := []store.RequestLog{
 		{CreatedAt: today.Add(time.Hour), ChannelID: ch.ID, ChannelName: ch.Name, Model: "m", TokenID: 1, TokenName: "t", StatusCode: 200, PromptTokens: 3, CompletionTokens: 2, TotalTokens: 5, CostMicros: 17, Cost: 0.000017, CostStatus: usage.CostStatusPriced},
 		{CreatedAt: today.Add(2 * time.Hour), ChannelID: ch.ID, ChannelName: ch.Name, Model: "m", TokenID: 1, TokenName: "t", StatusCode: 200, CostStatus: usage.CostStatusNoUsage},
+		{CreatedAt: today.Add(3 * time.Hour), ChannelID: ch.ID, ChannelName: ch.Name, Model: "m", TokenID: 1, TokenName: "t", StatusCode: 200, CostStatus: usage.CostStatusUnpriced},
+		{CreatedAt: today.Add(4 * time.Hour), ChannelID: ch.ID, ChannelName: ch.Name, Model: "m", TokenID: 1, TokenName: "t", StatusCode: 200},
 	}
 	if err := env.db.Create(&logs).Error; err != nil {
 		t.Fatal(err)
@@ -58,10 +60,14 @@ func TestUsagePricingAndReportAPI(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("report: %d %s", code, body)
 	}
-	for _, want := range []string{`"requests":2`, `"success":2`, `"tokens_in":3`, `"tokens_out":2`, `"cost_micros":17`, `"unpriced_requests":1`, `"name":"usage-ch"`} {
+	for _, want := range []string{`"requests":4`, `"success":4`, `"tokens_in":3`, `"tokens_out":2`, `"cost_micros":17`, `"priced_requests":1`, `"unpriced_requests":1`, `"no_usage_requests":1`, `"unknown_cost_requests":1`, `"name":"usage-ch"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("report missing %s: %s", want, body)
 		}
+	}
+	code, body, _ = env.req(t, "GET", "/admin/api/logs?token_id=1", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"cost_micros":17`) || !strings.Contains(body, `"cost_status":"priced"`) {
+		t.Fatalf("request log cost fields missing: %d %s", code, body)
 	}
 	old := today.AddDate(0, 0, -30).Format("2006-01-02")
 	code, body, _ = env.req(t, "GET", "/admin/api/usage/report?start="+old, cookie, "")

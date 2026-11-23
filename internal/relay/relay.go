@@ -536,6 +536,15 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			return outcomeNextKey
 		}
 	}
+	if !nativeGemini && !nativeMessages && !nativeResponses {
+		var err error
+		upBody, err = ensureChatStreamUsage(upBody, stream)
+		if err != nil {
+			start := r.opt.Now()
+			appendTrace(0, "internal", "重构上游流式 usage 参数失败: "+err.Error(), start)
+			return outcomeNextKey
+		}
+	}
 	if stream && !nativeGemini && !nativeMessages && !nativeResponses {
 		upBody = applyKtorZAIThinkingPolicy(c.Request.UserAgent(), ch.BaseURL, stream, upBody)
 	}
@@ -931,6 +940,35 @@ func replaceModel(body []byte, upstreamModel string) ([]byte, error) {
 		return nil, err
 	}
 	wire["model"] = m
+	return json.Marshal(wire)
+}
+
+// ensureChatStreamUsage 要求 OpenAI 兼容上游在流结束帧返回 usage，
+// 使网关能够按真实输入/输出 token 结算额度与成本。
+func ensureChatStreamUsage(body []byte, stream bool) ([]byte, error) {
+	if !stream {
+		return body, nil
+	}
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(body, &wire); err != nil {
+		return nil, err
+	}
+	options := make(map[string]json.RawMessage)
+	if raw, ok := wire["stream_options"]; ok && !isJSONNull(raw) {
+		if err := json.Unmarshal(raw, &options); err != nil {
+			return nil, fmt.Errorf("stream_options 必须是 JSON 对象")
+		}
+	}
+	includeUsage, err := json.Marshal(true)
+	if err != nil {
+		return nil, err
+	}
+	options["include_usage"] = includeUsage
+	encoded, err := json.Marshal(options)
+	if err != nil {
+		return nil, err
+	}
+	wire["stream_options"] = encoded
 	return json.Marshal(wire)
 }
 

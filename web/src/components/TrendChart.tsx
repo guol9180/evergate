@@ -98,6 +98,8 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
   if (!active || !payload?.length) return null
   const row = payload[0]?.payload as TrendRow | undefined
   if (!row) return null
+  const costIssues = row.unpriced_requests + row.no_usage_requests + row.unknown_cost_requests
+  const costKnown = row.requests === 0 || row.priced_requests > 0 || costIssues === 0
   return (
     <div className="min-w-36 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
       <div className="font-medium text-slate-700">{row.date}</div>
@@ -116,8 +118,14 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
         </div>
         <div className="flex items-center justify-between gap-4">
           <dt className="text-slate-400">成本</dt>
-          <dd className="tabular-nums text-slate-700">{fmtMoney(row.cost_micros)}</dd>
+          <dd className="tabular-nums text-slate-700">{costKnown ? fmtMoney(row.cost_micros) : '—'}</dd>
         </div>
+        {costIssues > 0 && (
+          <div className="flex items-center justify-between gap-4 text-amber-600">
+            <dt>成本状态</dt>
+            <dd>{fmtInt(costIssues)} 条未完整计价</dd>
+          </div>
+        )}
       </dl>
     </div>
   )

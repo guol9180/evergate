@@ -42,6 +42,9 @@ type playgroundMeta struct {
 	FirstTokenMS  int64                `json:"first_token_ms"`
 	TotalMS       int64                `json:"total_ms"`
 	Usage         playgroundUsage      `json:"usage"`
+	CostMicros    int64                `json:"cost_micros"`
+	Cost          float64              `json:"cost"`
+	CostStatus    string               `json:"cost_status"`
 	RetryTrace    []store.RetryAttempt `json:"retry_trace"`
 	ErrorType     string               `json:"error_type"`
 	ErrorMessage  string               `json:"error_message"`
@@ -112,6 +115,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	elapsed := r.opt.Now().Sub(start)
 	r.finishRequest(inner, start, hit, trace, status, errType, errMsg)
 	reqSpan.setResult(trace, status, errType, errMsg)
+	costMicros, costStatus := r.requestCost(status, hit)
 
 	meta := playgroundMeta{
 		Protocol: req.Protocol, Model: req.Model, Status: status,
@@ -124,6 +128,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 			TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens,
 			ReasoningTokens: hit.reasoningTokens, UsageSeen: hit.usageSeen,
 		},
+		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus,
 	}
 	if trace == nil {
 		meta.RetryTrace = []store.RetryAttempt{}

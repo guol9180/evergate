@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { BarChart3, CircleDollarSign, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { AlertTriangle, BarChart3, CircleDollarSign, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   useChannels,
   useDeletePriceOverride,
@@ -26,12 +26,20 @@ export default function Usage() {
   const channels = useChannels()
   const tokens = useTokens()
   const report = useUsageReport({ start, end, channel_id: channelID, model, token_id: tokenID })
+  const prices = useUsagePrices()
 
   const chs = channels.data?.items ?? []
   const tks = tokens.data?.items ?? []
   const data = report.data
   const daily = useMemo(() => fillDailyGaps(data?.daily ?? [], data?.start, data?.end), [data])
   const successRate = data?.totals.requests ? (data.totals.success / data.totals.requests) * 100 : null
+  const costIssues = data ? [
+    data.totals.unpriced_requests > 0 ? `${fmtInt(data.totals.unpriced_requests)} 条未计价` : '',
+    data.totals.no_usage_requests > 0 ? `${fmtInt(data.totals.no_usage_requests)} 条无 usage` : '',
+    data.totals.unknown_cost_requests > 0 ? `${fmtInt(data.totals.unknown_cost_requests)} 条历史未记录` : '',
+  ].filter(Boolean) : []
+  const costKnown = data != null && data.totals.requests > 0 &&
+    (data.totals.priced_requests > 0 || data.totals.unpriced_requests + data.totals.no_usage_requests + data.totals.unknown_cost_requests === 0)
 
   return (
     <div className="eg-page-stack">
@@ -66,6 +74,21 @@ export default function Usage() {
         <ErrorText>{report.isError ? (report.error as Error).message : null}</ErrorText>
       </Card>
 
+      {prices.data && !prices.data.default && prices.data.overrides.length === 0 && (
+        <Card className="border-amber-200 bg-amber-50/70">
+          <div className="flex items-start gap-3 text-sm text-amber-900">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+            <div>
+              <div className="font-semibold">尚未配置任何模型价格</div>
+              <p className="mt-1 text-xs leading-5 text-amber-800">
+                usage 与 token 已正常记录，但成本会标记为“未计价”，不会用 <code>$0</code> 冒充已知成本。
+                在下方“模型价格”保存全局默认价或渠道+模型覆盖价后，新请求会按请求时价格快照计价；历史未计价请求不会追溯重算。
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {report.isPending ? (
         <div className="flex justify-center py-16"><Spinner className="h-6 w-6" /></div>
       ) : !data ? null : (
@@ -76,9 +99,9 @@ export default function Usage() {
             <Metric label="Token" value={fmtInt(data.totals.tokens_in + data.totals.tokens_out)} hint={`输入 ${fmtInt(data.totals.tokens_in)} · 输出 ${fmtInt(data.totals.tokens_out)}`} />
             <Metric
               label="成本"
-              value={fmtMoney(data.totals.cost_micros)}
-              hint={data.totals.unpriced_requests > 0 ? `${fmtInt(data.totals.unpriced_requests)} 条未计价` : '全部已计价'}
-              warning={data.totals.unpriced_requests > 0}
+              value={costKnown ? fmtMoney(data.totals.cost_micros) : '—'}
+              hint={costIssues.length > 0 ? costIssues.join(' · ') : '全部已计价'}
+              warning={costIssues.length > 0}
             />
           </div>
 
@@ -143,6 +166,7 @@ function fillDailyGaps(points: UsageDailyPoint[], start?: string, end?: string):
     const date = new Date(startMs + i * 86_400_000).toISOString().slice(0, 10)
     return byDate.get(date) ?? {
       date, requests: 0, success: 0, tokens_in: 0, tokens_out: 0, cost_micros: 0, cost: 0,
+      priced_requests: 0, unpriced_requests: 0, no_usage_requests: 0, unknown_cost_requests: 0,
     }
   })
 }

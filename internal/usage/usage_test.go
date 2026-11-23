@@ -39,6 +39,12 @@ func TestPriceManagerDefaultAndOverride(t *testing.T) {
 	if _, ok := mgr.Calculate(1, "m", 1, 1); ok {
 		t.Fatal("empty pricing should be unpriced")
 	}
+	if err := mgr.SetDefault(context.Background(), 0, 0); err != nil {
+		t.Fatalf("set zero default: %v", err)
+	}
+	if micros, ok := mgr.Calculate(1, "m", 3, 2); !ok || micros != 0 {
+		t.Fatalf("explicit zero price = %d %v, want 0 true", micros, ok)
+	}
 	if err := mgr.SetDefault(context.Background(), 1_000_000, 2_000_000); err != nil {
 		t.Fatalf("set default: %v", err)
 	}
@@ -82,6 +88,8 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 	logs := []store.RequestLog{
 		{CreatedAt: day.Add(1 * time.Hour), ChannelID: ch1.ID, Model: "m", TokenID: tok1.ID, StatusCode: 200, PromptTokens: 3, CompletionTokens: 2, TotalTokens: 5, CostMicros: 7, CostStatus: CostStatusPriced},
 		{CreatedAt: day.Add(2 * time.Hour), ChannelID: ch1.ID, Model: "m", TokenID: tok1.ID, StatusCode: 200, CostStatus: CostStatusNoUsage},
+		{CreatedAt: day.Add(30 * time.Minute), ChannelID: ch1.ID, Model: "m", TokenID: tok1.ID, StatusCode: 200, PromptTokens: 2, CostStatus: CostStatusUnpriced},
+		{CreatedAt: day.Add(45 * time.Minute), ChannelID: ch1.ID, Model: "m", TokenID: tok1.ID, StatusCode: 200, PromptTokens: 1},
 		{CreatedAt: day.Add(3 * time.Hour), ChannelID: ch2.ID, Model: "m2", TokenID: tok2.ID, StatusCode: 200, PromptTokens: 1, CompletionTokens: 1, TotalTokens: 2, CostMicros: 3, CostStatus: CostStatusPriced},
 	}
 	if err := db.Create(&logs).Error; err != nil {
@@ -99,7 +107,9 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 	if len(daily) != 2 {
 		t.Fatalf("daily rows = %d, want 2", len(daily))
 	}
-	if daily[0].Requests != 2 || daily[0].Success != 2 || daily[0].TokensIn != 3 || daily[0].CostMicros != 7 || daily[0].PricedRequests != 1 || daily[0].UnpricedRequests != 1 {
+	if daily[0].Requests != 4 || daily[0].Success != 4 || daily[0].TokensIn != 6 || daily[0].CostMicros != 7 ||
+		daily[0].PricedRequests != 1 || daily[0].UnpricedRequests != 1 ||
+		daily[0].NoUsageRequests != 1 || daily[0].UnknownCostRequests != 1 {
 		t.Fatalf("channel-a aggregate = %#v", daily[0])
 	}
 
@@ -107,9 +117,10 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build report: %v", err)
 	}
-	if report.Totals.Requests != 3 || report.Totals.Success != 3 || report.Totals.TokensIn != 4 ||
+	if report.Totals.Requests != 5 || report.Totals.Success != 5 || report.Totals.TokensIn != 7 ||
 		report.Totals.TokensOut != 3 || report.Totals.CostMicros != 10 ||
-		report.Totals.PricedRequests != 2 || report.Totals.UnpricedRequests != 1 {
+		report.Totals.PricedRequests != 2 || report.Totals.UnpricedRequests != 1 ||
+		report.Totals.NoUsageRequests != 1 || report.Totals.UnknownCostRequests != 1 {
 		t.Fatalf("report totals = %#v", report.Totals)
 	}
 	if len(report.Daily) != 1 || report.Daily[0].Date != "2026-11-10" {
@@ -126,7 +137,7 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("filtered report: %v", err)
 	}
-	if filtered.Totals.Requests != 2 || filtered.Totals.CostMicros != 7 {
+	if filtered.Totals.Requests != 4 || filtered.Totals.CostMicros != 7 {
 		t.Fatalf("filtered totals = %#v", filtered.Totals)
 	}
 }

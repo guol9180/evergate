@@ -4,7 +4,7 @@ import { useLogs } from '../api/hooks'
 import { Badge, Button, Card, Drawer, Empty, Input, PageHeader, Spinner, Td, Th } from '../components/ui'
 import RetryTimeline from '../components/RetryTimeline'
 import type { RequestLog } from '../api/types'
-import { fmtInt, fmtMs, fmtTime, kindText, statusTone } from '../lib/format'
+import { fmtInt, fmtMs, fmtRequestCost, fmtTime, kindText, statusTone } from '../lib/format'
 
 export default function Logs() {
   const [model, setModel] = useState('')
@@ -65,11 +65,11 @@ export default function Logs() {
           <Empty icon={<ScrollText size={36} />} title="暂无日志" hint="有请求经过网关后，这里会显示每次调用的完整轨迹" />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] lg:min-w-0">
+            <table className="w-full min-w-[820px]">
               <thead className="border-b border-slate-100 bg-slate-50/50">
                 <tr>
                   <Th>时间</Th><Th>模型</Th><Th className="hidden min-[1120px]:table-cell">渠道</Th><Th>状态</Th>
-                  <Th>首 token</Th><Th>总耗时</Th><Th>tokens</Th>
+                  <Th>首 token</Th><Th>总耗时</Th><Th>tokens</Th><Th>成本</Th>
                   <Th className="hidden min-[1180px]:table-cell">令牌</Th><Th className="hidden min-[1240px]:table-cell">重试</Th>
                 </tr>
               </thead>
@@ -89,6 +89,7 @@ export default function Logs() {
                     <Td>{fmtMs(l.first_token_ms || undefined)}</Td>
                     <Td>{fmtMs(l.total_ms || undefined)}</Td>
                     <Td className="text-xs text-slate-500">{l.prompt_tokens}/{l.completion_tokens}</Td>
+                    <Td className="whitespace-nowrap text-xs">{fmtRequestCost(l.cost_micros, l.cost_status)}</Td>
                     <Td className="hidden text-xs text-slate-500 min-[1180px]:table-cell">{l.token_name || '—'}</Td>
                     <Td className="hidden min-[1240px]:table-cell">{(l.retry_trace?.length ?? 0) > 1 ? <Badge tone="bg-amber-100 text-amber-700">{l.retry_trace!.length} 次</Badge> : '—'}</Td>
                   </tr>
@@ -134,6 +135,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
               ['total tokens', fmtInt(log.total_tokens || 0)],
               ['cached tokens', fmtInt(log.cached_tokens || 0)],
               ['reasoning tokens', fmtInt(log.reasoning_tokens || 0)],
+              ['成本', fmtRequestCost(log.cost_micros, log.cost_status)],
               ['令牌', log.token_name || '—'],
               ['来源', log.source === 'playground' ? 'Playground' : 'API'],
               ['客户端 IP', log.ip || '—'],

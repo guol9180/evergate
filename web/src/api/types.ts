@@ -241,6 +241,8 @@ export interface RequestLog {
   total_tokens?: number
   cached_tokens?: number
   reasoning_tokens?: number
+  cost_micros: number
+  cost_status: string
   cost: number
   ip: string
   user_agent: string
@@ -262,6 +264,8 @@ export interface UsageTotals {
   cost: number
   priced_requests: number
   unpriced_requests: number
+  no_usage_requests: number
+  unknown_cost_requests: number
 }
 
 export interface UsageDailyPoint {
@@ -272,6 +276,10 @@ export interface UsageDailyPoint {
   tokens_out: number
   cost_micros: number
   cost: number
+  priced_requests: number
+  unpriced_requests: number
+  no_usage_requests: number
+  unknown_cost_requests: number
 }
 
 export interface UsageDimensionRow {

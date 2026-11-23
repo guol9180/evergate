@@ -23,6 +23,19 @@ export function fmtMoney(micros: number | null | undefined): string {
   return `$${((micros ?? 0) / 1_000_000).toFixed(6).replace(/\.?0+$/, '')}`
 }
 
+export function fmtRequestCost(micros: number | null | undefined, status: string | null | undefined): string {
+  switch (status) {
+    case 'priced':
+      return fmtMoney(micros)
+    case 'unpriced':
+      return '未计价'
+    case 'no_usage':
+      return '无 usage'
+    default:
+      return '未记录'
+  }
+}
+
 export function cooldownRemaining(until: string | null | undefined): string | null {
   if (!until) return null
   const ms = new Date(until).getTime() - Date.now()
