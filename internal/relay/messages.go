@@ -47,11 +47,12 @@ func (r *Relay) handleMessages(c *gin.Context, countTokens bool) {
 		c.Set(messagesCountTokensKey, true)
 	}
 
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := readRelayRequestBody(c)
 	if err != nil {
-		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "读取请求体失败")
-		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "读取请求体失败")
+		status, errType, message := requestBodyReadError(err)
+		r.recordRequestMetrics(c, status, errType)
+		writeOpenAIError(c, status, errType, errType, message)
+		req.setResult(nil, status, errType, message)
 		return
 	}
 	if _, _, ok := parseChatRequest(body); !ok {
@@ -550,7 +551,7 @@ func filterAnthropicNative(candidates []router.Candidate) []router.Candidate {
 }
 
 // writeMessagesUpstreamError 把 Anthropic 错误体转换为 EverGate 统一的 OpenAI 错误格式。
-func writeMessagesUpstreamError(c *gin.Context, status int, body []byte) {
+func writeMessagesUpstreamError(c *gin.Context, status int, body []byte, secret string) {
 	var wire struct {
 		Error struct {
 			Type    string `json:"type"`
@@ -558,11 +559,11 @@ func writeMessagesUpstreamError(c *gin.Context, status int, body []byte) {
 		} `json:"error"`
 	}
 	_ = json.Unmarshal(body, &wire)
-	message := strings.TrimSpace(wire.Error.Message)
+	message := strings.TrimSpace(redactCredentials(wire.Error.Message, secret))
 	if message == "" {
-		message = upstreamErrorMessage(status, body)
+		message = upstreamErrorMessage(status, body, secret)
 	}
-	code := wire.Error.Type
+	code := redactCredentials(wire.Error.Type, secret)
 	if code == "" {
 		code = "upstream_error"
 	}

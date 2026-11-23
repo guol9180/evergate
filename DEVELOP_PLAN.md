@@ -1386,13 +1386,14 @@
   4. `go test -p 1 ./... -count=1`、`go vet ./...`、`make build`、`git diff --check` 通过；
   5. 真实 IDEA 验收时重新生成 commit message，正文应正常回显，请求日志不再出现同一次 10 秒 `client_disconnected_no_usage_charge` 终态。
 - 边界：只调整 Chat Completions SSE 空闲保活，不改 Responses/Messages/Gemini 事件协议；不读取、输出或记录上游 key/下游 token；不引入依赖；不改 DB schema；不通过降低超时、自动重试已输出流或伪造正文规避问题
-- 状态：in-progress
+- 状态：canceled
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-19 计划 用户反馈 v0.5.1 仍未解决。核对当前安装实例请求日志与 IDEA 日志后确认，JetBrains `ktor-client` 在首事件后约 10 秒取消，且 Ktor 未因注释型 keepalive 重置等待；转入协议内空增量数据帧修复
   - 2026-11-19 执行 Chat Completions 空闲保活从 `: keepalive` 注释改为协议内合法空增量 `data:` 帧；帧内仅含 `chat.completion.chunk`、请求模型和 `delta:{}`，不含正文、角色、工具调用、finish_reason 或 usage。Responses/Messages/Gemini 仍保留原注释保活
   - 2026-11-19 验证 新增 Ktor 边界测试先红后绿：旧实现忽略注释帧后 80ms 超时，修复后跨过 140ms 正文静默期，收到 `late` 正文与 `[DONE]`，并按真实 usage 扣减 10 tokens；空增量帧结构与禁用字段另有单测覆盖
   - 2026-11-19 验证 `go test -p 1 ./... -count=1`、`go vet ./...`、`make build`、`git diff --check` 通过；完整构建首次在沙箱内因既有 `spawn EPERM` 失败，按项目规则在非沙箱环境重跑成功，产物 `bin/evergate.exe` 版本 `v0.5.1-1-ge889253-dirty`
   - 2026-11-19 验收 `v0.5.2` 用户实测仍未解决；结构化日志显示入口仍是 `/v1/chat/completions`，ZAI 在可见正文前持续发送 `reasoning_content`，空增量 data 帧无法满足 JetBrains 的可见正文等待，问题转入 T61
+  - 2026-11-23 状态 canceled：本卡方案未能解决真实 IDEA 场景，已由 T61 取代；保留任务历史，不再重复实现
 
 ### T60: 发布 v0.5.2（P2，用户指令，依赖 T59 实现）
 
@@ -1427,12 +1428,13 @@
   5. `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试/构建、`make build`、`git diff --check` 通过；
   6. 真实 IDEA 重新生成 commit message 后正文回显，请求日志不再出现同次约 10 秒 `client_disconnected_no_usage_charge`。
 - 边界：不改 DB/schema 或管理台；不要求用户修改 IDEA 协议设置；不读取、输出或记录 key；不写入代理；只针对已实证的 ZAI coding + GLM + Ktor 组合做最小兼容
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-19 计划 `v0.5.2` 用户实测仍失败。核对结构化日志确认入口是 Chat Completions；抓取脱敏上游事件时间线后定位为 ZAI reasoning-only 流触发 JetBrains 可见正文超时，`thinking.type=disabled` 可将正文首事件从约 8.8 秒提前到约 0.94 秒
   - 2026-11-19 执行 新增 Ktor + ZAI coding + GLM Chat 兼容策略：客户端未显式声明 `thinking` / `reasoning` / `reasoning_effort` 时注入 `thinking.type=disabled`；显式参数、非 Ktor、非 ZAI 路径、非 GLM 与非流式请求保持不变
   - 2026-11-19 验证 HTTP 边界测试先红后绿：旧实现只收到 reasoning 与空增量心跳后 80ms 超时；修复后上游立即返回 `visible` 正文与 `[DONE]`，并按真实 usage 扣减 10 tokens；7 个策略边界表驱动场景通过
   - 2026-11-19 验证 `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试 6/6、`make build`、`git diff --check` 通过；按用户指令以发布成功作为本次交付终点，不再阻塞等待 IDEA 实机复测
+  - 2026-11-23 状态 done：按 T62 发布边界与用户指令，真实 IDEA 复测不再作为阻塞项；自动化 HTTP 边界测试与 `v0.5.3` 发布已作为本卡验收终点
 
 ### T62: 发布 v0.5.3（P2，用户指令，依赖 T61 实现）
 
@@ -1451,6 +1453,112 @@
   - 2026-11-19 交付 Action 44472222777 全绿：release、windows-installer、verify-release 成功，macOS installer 按签名开关跳过；Release `https://github.com/guol9180/evergate/releases/tag/v0.5.3` 已发布且 GitHub Latest 指向 v0.5.3
   - 2026-11-19 验证 Release 资产：Windows setup 9,808,796B、Linux tar.gz 10,826,012B、checksums 205B；官方 npm 五包均为 `0.5.3` 且 `latest=0.5.3`
   - 2026-11-19 验证 npmmirror 四个安装包已同步到 `0.5.3`；更新资产包同步任务已触发，镜像元数据传播不阻塞本次发布结论
+
+### T63: 调度公平性、SSE 首次事件与 OpenCode 会话稳定性（P1，质量审查）
+
+- 目标：修复同优先级渠道加权随机排序错误；避免 SSE 注释、空行或预首事件被误判为已提交首 token；保证自动生成的 OpenCode 会话在同一请求内稳定复用
+- 验收标准：
+  1. 三渠道 `100:1:1` 加权随机在 30,000 次表驱动/分布断言中，两个轻权重候选均获得符合权重比例的排序机会，不再出现单候选被饿死
+  2. Chat、Responses、Messages 流在首条语义 data 前收到 SSE 注释、空行或允许的 `ping` 时，仍可在上游失败后切换到下一候选；成功后派发内容只出现一次，预首帧顺序不乱
+  3. OpenCode 未收到下游会话头时，同一请求的所有重试使用同一个 `evergate-<opaque>`；下游显式会话头优先级不变
+  4. 新增 HTTP 边界回归测试，`go test -p 1 ./... -count=1`、`go vet ./...`、前端测试/构建通过
+- 边界：不改变 priority 主备层级、不伪造首 token、不在已写真实 data 后重试、不放宽 SSE 协议；会话值不写日志/DB
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 用户确认修复质量审查全部问题；本卡先处理调度与流式正确性，作为后续覆盖率门禁的前置
+  - 2026-11-23 执行 修复加权随机键与元素未同步排序；Chat/Responses/Messages 首语义事件前跳过注释/空帧并保留 Messages ping；OpenCode 自动会话改为请求上下文缓存
+  - 2026-11-23 验证 新增 30,000 次 `100:1:1` 分布测试、Chat/Responses/Messages 注释首帧故障转移测试、OpenCode 同请求稳定测试；`go test -p 1 ./... -count=1` 全部通过
+
+### T64: `server.base_path` 管理台端到端支持（P1，质量审查）
+
+- 目标：让 `base_path: /eg` 时管理台 HTML、静态资源、React Router、管理 API、图标和浏览器启动 URL 全部在同一子路径工作
+- 验收标准：
+  1. 后端对 base path 剥离后再查静态文件，`/eg/`、`/eg/channels`、`/eg/assets/*` 均正确返回；根路径可重定向到 base path
+  2. Vite 产物使用相对资源 URL，运行时从服务端注入的 `<base>` 推导 React Router basename 与 API/图标前缀
+  3. 未知 `/eg/v1/*`、`/eg/admin/*` 仍返回 JSON 404，不回退 index.html
+  4. 根路径空 base path 行为不变；服务端与纯前端 helper 都有回归测试
+- 边界：不改变默认 base path、不引入反向代理依赖、不改变 API 路径契约（挂载后仍是 `{base}/admin/api`）
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 审查确认现有 base path 仅后端路由生效，前端资源/API/路由链路未适配
+  - 2026-11-23 执行 Vite 改相对资源、服务端注入 `<base>`、SPA 剥离 base path、React Router basename 与 API/静态资源统一前缀
+  - 2026-11-23 验证 `/eg/`、`/eg/channels`、`/eg/assets/*`、根路径重定向和 `/eg/admin` JSON 404 的服务端测试通过；前端 runtime helper 8/8 单元测试、Vitest 组件测试 3/3 通过
+
+### T65: 请求体边界与上游错误脱敏（P1，质量审查）
+
+- 目标：为所有下游协议请求设置统一大小上限；上游错误体在返回客户端、Playground 元数据、请求日志和 key 统计中不得回显本次上游 key 或常见 Bearer/API key 凭证
+- 验收标准：
+  1. Chat、Responses、Messages、Gemini 超大请求统一返回 413 `request_too_large`，上游调用次数为 0
+  2. 上游 4xx/5xx 错误体即使包含当前 key、`Bearer ...`、`sk-...` 等凭证片段，对外错误和入库日志均已脱敏
+  3. 正常错误消息、状态码和错误分类保持可诊断；重试分类与冷却行为不变
+  4. 表驱动脱敏测试与 HTTP 边界测试覆盖通过
+- 边界：不记录完整请求体、不改变上游错误码、不把未知文本一律删除；超限响应必须早于调度
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 审查确认 relay 请求无全局上限，上游错误正文只截断未脱敏
+  - 2026-11-23 执行 四协议统一 16MiB `MaxBytesReader`；上游 key、Bearer、`sk-/eg-/AIza` 凭证在响应、重试轨迹、请求日志和 key 统计前脱敏
+  - 2026-11-23 验证 四协议超限 413/上游零调用边界测试通过；错误体含 key/Bearer/AIza 片段时响应与 `RequestLog` 均无明文
+
+### T66: 调度覆盖率、前端组件测试与发布门禁（P1，质量审查）
+
+- 目标：恢复调度内核 ≥90% 标准 Go 语句覆盖率；增加管理台关键页面/组件测试；Release workflow 在发布前强制执行 Go 测试、vet、前端测试和覆盖率门禁
+- 验收标准：
+  1. `pool + retry + router` 合计 Go 语句覆盖率 ≥90%，router 关键目录/权重/映射分支有断言；报告明确标注语句覆盖率
+  2. 前端至少覆盖登录提交、首次改密校验、路由守卫和 runtime base path helper，并与现有 6 个纯函数测试一起进入 `npm test`
+  3. `.github/workflows/release.yml` 在任何 npm/GitHub 发布前运行 `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试与覆盖率脚本
+  4. 全量测试、前端构建、`make build` 通过
+- 边界：新增前端测试依赖仅限开发依赖并记录理由；不引入 E2E 浏览器框架；不降低现有测试门槛
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 审查实测调度合计 89.8%，Release workflow 未运行 Go/前端测试
+  - 2026-11-23 执行 新增 Vitest/jsdom/Testing Library 组件测试（理由：覆盖真实 React 交互，开发依赖不进生产 bundle）和 ESLint Hook/推荐规则门禁；新增调度覆盖率脚本和 release `quality` job
+  - 2026-11-23 验证 scheduler 语句覆盖率 93.5%（pool 90.9%、retry 98.6%、router 96.1%）；前端 8 个 helper 测试 + 3 个页面守卫测试、lint 通过；`go test`、`go vet`、`npm ci`、前端构建、`make build` 与 actionlint 通过
+
+### T67: 配置原子写回、渠道校验与管理登录防护（P2，质量审查）
+
+- 目标：避免配置密钥文件非原子写回和权限泄漏；补齐渠道输入校验与 DB 错误处理；限制管理登录暴力尝试并默认只允许 loopback 管理访问
+- 验收标准：
+  1. 配置写回使用同目录临时文件、fsync、安全权限和平台安全替换；失败不破坏旧配置，已有文件权限被收紧
+  2. 渠道名称/URL/模型/映射/权重/超时在创建与更新时共用校验；`getChannel` 查询失败返回 500 而非空成功
+  3. 管理登录连续失败触发有界本地限流并返回 429；进程内限流表有容量上限和过期清理
+  4. 新增 `server.admin_loopback_only`，默认 true；显式 false 才允许非 loopback 管理请求。Cookie 使用 SameSite Strict，TLS 下自动 Secure；默认密码不出现在运行日志
+- 边界：不引入 Redis/外部限流；不改变下游 API 鉴权；默认保留网关服务对其它网络接口的监听
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 审查确认配置直接覆盖写、渠道字段校验不足、登录无节流
+  - 2026-11-23 执行 配置改为临时文件+fsync+平台替换+0600；渠道创建/更新共用 URL、权重、模型、映射、超时校验；getChannel 传播 DB 错误；增加登录 IP 限流、SameSite Strict、TLS Secure、默认 loopback 管理限制
+  - 2026-11-23 验证 配置、渠道校验、登录 429、远程管理 403、覆盖率与跨平台构建测试通过；`go vet ./...` 与 `make build-all` 通过
+
+### T68: 文档状态与代码清理（P3，质量审查）
+
+- 目标：清理审查发现的死占位和文档状态矛盾，回写本修复批次的验证证据
+- 验收标准：
+  1. 移除 `var _ = json.Marshal` 与无效 `defer`；gofmt/vet 通过
+  2. T59 标记为被 T61 取代，T61 按用户已确认的发布终点流转为 done，并在进度行说明真实 IDEA 复测由用户豁免
+  3. README/evergate.yml.example 仅在新增配置或使用方式变化时同步；DEVELOP_PLAN 记录各卡验证结果
+  4. 工作树只包含本批次任务改动，`git diff --check` 通过
+- 边界：不改历史进度行、不删除任务卡、不为清理顺手重构无关代码
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 审查确认文档状态与代码异味需在功能修复后统一收尾
+  - 2026-11-23 执行 移除 admin 的 `json.Marshal` 占位和 main 无效 `defer`；T59 标记 canceled（由 T61 取代），T61 标记 done（用户确认发布终点）；README、运维文档和配置模板同步新增配置
+  - 2026-11-23 验证 `gofmt -l` 无输出、`go vet ./...` 通过、`git diff --check` 通过；工作树仅含本批任务改动和前端 dist 派生文件
+
+### T69: 发布 v0.5.4（P3，用户指令，依赖 T63–T68）
+
+- 目标：将 T63–T68 的调度、base path、安全边界、测试与发布门禁修复按 PATCH 语义发布为 `v0.5.4`，更新 GitHub Release、npm 主包/平台包/更新资产包并完成发布后校验
+- 版本判断：`v0.5.3 → v0.5.4`。本批次没有新增公开 API 或业务能力，主要是修复、安全加固和测试/发布门禁；`admin_loopback_only` 属于管理面访问控制修复，不单独提升 MINOR
+- 验收标准：
+  1. `CHANGELOG.md` 含精确非空 `## v0.5.4` 段；tag 提交位于已推送的 `main` 历史
+  2. 发布前 `go test -p 1 ./... -count=1`、`go vet ./...`、前端测试/lint/构建、`make coverage-scheduler`、`make build`、`make build-all`、release-gate 与 actionlint 全部通过
+  3. push `v0.5.4` 后 workflow 全绿，Release 含版本化 Windows setup、Linux tar.gz 与 checksums，macOS 安装器按签名开关跳过或成功发布
+  4. npm 主包、三个平台子包与 `@heguoliang/evergate-updates` 均为 `0.5.4`，正式版 `latest` 指向 `0.5.4`
+  5. 下载公开资产并按 checksums 校验，验证更新包包含 Windows setup、Linux tar.gz 与 checksums，npmmirror 可实际拉取
+  6. 回写 Action URL、资产大小/哈希、npm dist-tags、更新包与镜像证据；不移动历史 tag
+- 边界：不夹带新功能；不发布裸二进制或未签名 DMG；不写入或要求本地代理；不改 DB/schema；不跳过质量门禁
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-23 计划 用户要求更新版本号并发布；T63–T68 已完成，按 PATCH 发布 `v0.5.4`
 
 ## 状态枚举
 
@@ -1480,7 +1588,7 @@
 | P1（已完成） | T10 Codex 接入；T11 启动打开管理台；T12 管理 UI 与更新检查；T18 Responses 原生上游透传与渠道协议能力；T19 系统设置；T20 健康探测；T21 令牌治理强制；T22 用量成本报表；T23 会话亲和；T24 请求级配置覆盖；T25 Playground；T26 Prometheus + OTel；T29 npm 平台包发布流水线；T30 一键自动更新；T32 全页面排版审计；T33 用量图表组件化 | T10–T12、T18–T26、T29–T30、T32–T33 全部按任务卡验收通过；T13 canceled 并已由 T37 吸收 |
 | P1+（已完成增量） | T35a 自更新下载链 npmmirror 优先（done）；T35b 版本检查改用 npm dist-tags 优先（done） | 两张卡均已验收，随 v0.1.27 发布 |
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
-| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布、T58 OpenCode Go 会话头/模型目录/日志刷新稳定性与 v0.5.1 发布、T60 JetBrains 空增量保活修复与 v0.5.2 发布、T62 JetBrains + ZAI reasoning 流兼容修复与 v0.5.3 发布；实现完成待环境验收：T48 macOS 安装体验、T49 Windows 托盘 DPI 截图矩阵、T50 macOS 安装包更新、T52 托盘 Logo 多 DPI 截图矩阵、T59 JetBrains AI Assistant 空增量保活 IDEA 实机验收 | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49/T52 已修复当前环境问题与 Per-Monitor awareness，仍待完整缩放矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、v0.3.0/v0.3.1/v0.4.0/v0.5.0/v0.5.1/v0.5.2/v0.5.3 Release、npm 五包与托盘 Logo 资源均已验证 |
+| P3（当前阶段） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布、T58 OpenCode Go 会话头/模型目录/日志刷新稳定性与 v0.5.1 发布、T60 JetBrains 空增量保活修复与 v0.5.2 发布、T62 JetBrains + ZAI reasoning 流兼容修复与 v0.5.3 发布、T63–T68 质量审查修复批次；实现完成待环境验收：T48 macOS 安装体验、T49 Windows 托盘 DPI 截图矩阵、T50 macOS 安装包更新、T52 托盘 Logo 多 DPI 截图矩阵 | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；T49/T52 已修复当前环境问题与 Per-Monitor awareness，仍待完整缩放矩阵；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、v0.3.0/v0.3.1/v0.4.0/v0.5.0/v0.5.1/v0.5.2/v0.5.3 Release、npm 五包与托盘 Logo 资源均已验证；T59 已由 T61 取代，T61 真实 IDEA 复测按用户豁免 |
 
 ## 验收清单
 

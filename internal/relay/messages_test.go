@@ -131,6 +131,38 @@ func TestMessagesNativeStreamFailoverBeforeFirstEvent(t *testing.T) {
 	}
 }
 
+func TestMessagesPreamblePingSurvivesFailover(t *testing.T) {
+	env := newEnv(t)
+	failing := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		writeSSEEvents(w,
+			": pending\n\n",
+			"event: ping\ndata: {\"type\":\"ping\"}\n\n",
+		)
+	})
+	healthy := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		writeSSEEvents(w,
+			": ready\n\n",
+			"event: ping\ndata: {\"type\":\"ping\"}\n\n",
+			"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_3\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-3-5-sonnet\",\"content\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":1}}}\n\n",
+			"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+		)
+	})
+	env.addAnthropicChannel(t, "primary", failing.server.URL, 0, []string{"claude-3-5-sonnet"}, nil, "sk-a")
+	env.addAnthropicChannel(t, "backup", healthy.server.URL, 1, []string{"claude-3-5-sonnet"}, nil, "sk-b")
+	_, plain := env.addToken(t, "messages-preamble", nil)
+	gateway := env.authGateway(t)
+
+	resp, body := postWithHeaders(t, gateway, "/v1/messages", plain, nil,
+		`{"model":"claude-3-5-sonnet","max_tokens":64,"messages":[{"role":"user","content":"hi"}],"stream":true}`)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"msg_3"`) {
+		t.Fatalf("preamble failover response: %d %s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "pending") || !strings.Contains(body, "ready") ||
+		strings.Count(body, "event: ping") != 1 {
+		t.Fatalf("preamble was lost or duplicated: %s", body)
+	}
+}
+
 func TestMessagesBridgeNonStreamWithTools(t *testing.T) {
 	env := newEnv(t)
 	var gotPath, gotAuthorization, gotBody string

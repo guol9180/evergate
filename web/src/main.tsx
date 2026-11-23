@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
+import { currentBasePath } from './lib/runtime'
 import Layout from './components/Layout'
 import { Spinner } from './components/ui'
 import Login from './pages/Login'
@@ -26,7 +27,7 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={currentBasePath() || undefined}>
         <Suspense fallback={<div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>}>
           <Routes>
             <Route path="/login" element={<Login />} />

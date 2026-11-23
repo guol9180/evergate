@@ -69,7 +69,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 	br := bufio.NewReaderSize(resp.Body, 32*1024)
 	var timeout atomic.Bool
 	timer := time.AfterFunc(firstToken, func() { timeout.Store(true); cancel() })
-	first, err := br.ReadBytes('\n')
+	_, firstDataLine, err := readFirstSSEDataLine(br)
 	timer.Stop()
 	if err != nil {
 		if timeout.Load() {
@@ -80,7 +80,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 		appendTrace(string(cls.Kind), err.Error())
 		return outcomeNextChannel
 	}
-	if cls, isErr := parseSSEErrorEvent(first); isErr {
+	if cls, isErr := parseSSEErrorEvent(firstDataLine); isErr {
 		appendTrace(string(cls.Kind), "upstream stream error event")
 		switch cls.Kind {
 		case retry.KindRateLimited, retry.KindAuth:
@@ -102,7 +102,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 	state.w.header()
 	stopKeepalive := state.w.startKeepalive()
 	defer stopKeepalive()
-	if lineData, ok := sseData(first); ok {
+	if lineData, ok := sseData(firstDataLine); ok {
 		state.consume(lineData)
 	}
 

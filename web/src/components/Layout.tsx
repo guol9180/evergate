@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
 import { Spinner } from './ui'
+import { withBasePath } from '../lib/runtime'
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -44,7 +45,7 @@ export default function Layout() {
       <aside className="eg-sidebar flex shrink-0 flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur">
         <div className="eg-sidebar-brand flex items-center gap-3 px-3 py-5">
           <div className="eg-sidebar-brand-logo flex shrink-0 items-center">
-            <img src="/logo.svg" alt="" width={20} height={20} className="shrink-0" />
+            <img src={withBasePath('/logo.svg')} alt="" width={20} height={20} className="shrink-0" />
           </div>
           <div className="eg-sidebar-meta min-w-0">
             <div className="text-sm font-bold text-slate-900">EverGate</div>

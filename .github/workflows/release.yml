@@ -18,7 +18,48 @@ env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install frontend dependencies
+        run: npm --prefix web ci
+
+      - name: Test frontend
+        run: npm --prefix web test
+
+      - name: Lint frontend
+        run: npm --prefix web run lint
+
+      - name: Test backend
+        run: go test -p 1 ./... -count=1
+
+      - name: Vet backend
+        run: go vet ./...
+
+      - name: Enforce scheduler coverage
+        run: make coverage-scheduler
+
+      - name: Check diff whitespace
+        run: git diff --check
+
   release:
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +79,7 @@ jobs:
           cache: true
 
       - name: Test release gate
-        run: node --test scripts/release-gate.test.mjs scripts/stage-update-npm.test.mjs
+        run: node --test scripts/release-gate.test.mjs scripts/stage-update-npm.test.mjs scripts/check-scheduler-coverage.test.mjs
 
       - name: Validate release tag and changelog
         id: gate

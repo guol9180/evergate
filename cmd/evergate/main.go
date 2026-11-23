@@ -135,7 +135,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer func() { _ = db }() // 连接随进程退出关闭；T2 起模型迁移在此前完成
 	if err := store.Migrate(db); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
@@ -146,7 +145,6 @@ func run() error {
 	if created {
 		logger.Warn("default admin created, must change password on first login",
 			slog.String("username", store.DefaultAdminUsername),
-			slog.String("password", store.DefaultAdminPassword),
 		)
 	}
 
@@ -242,6 +240,8 @@ func run() error {
 		DB:           db,
 		MasterKey:    cfg.Security.MasterKey,
 		Pool:         poolMgr,
+		AllowRemote:  !cfg.Server.ShouldRestrictAdminToLoopback(),
+		Now:          nowFn,
 		Session:      admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
 		Update:       updateChecker,
 		Settings:     settingsMgr,

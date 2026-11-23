@@ -44,7 +44,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 	// === 可重试窗口：读取首个 chunk ===
 	var ftFired atomic.Bool
 	timer := time.AfterFunc(firstToken, func() { ftFired.Store(true); cancel() })
-	first, err := br.ReadBytes('\n')
+	first, firstDataLine, err := readFirstSSEDataLine(br)
 	timer.Stop()
 	if err != nil {
 		if ftFired.Load() {
@@ -58,7 +58,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 
 	// 首 chunk 若是 SSE 错误事件（骑在 200 上的失败，bifrost stream_error 经验），
 	// 此时尚未写给客户端，仍在可重试窗口内，按推断状态正常分类换候选。
-	if cls, isErr := parseSSEErrorEvent(first); isErr {
+	if cls, isErr := parseSSEErrorEvent(firstDataLine); isErr {
 		appendTrace(string(cls.Kind), "upstream stream error event")
 		switch cls.Kind {
 		case retry.KindRateLimited, retry.KindAuth:
@@ -115,6 +115,23 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 			})
 			w.writeFlush(append(append([]byte("data: "), errPayload...), '\n', '\n'))
 			return outcomeDone
+		}
+	}
+}
+
+// readFirstSSEDataLine buffers comments, empty lines, and event preamble until
+// the first data line. Only data commits the retry window.
+func readFirstSSEDataLine(br *bufio.Reader) (raw, dataLine []byte, err error) {
+	for {
+		line, readErr := br.ReadBytes('\n')
+		raw = append(raw, line...)
+		if len(line) > 0 {
+			if _, ok := sseData(line); ok {
+				return raw, line, nil
+			}
+		}
+		if readErr != nil {
+			return raw, nil, readErr
 		}
 	}
 }

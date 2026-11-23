@@ -7,11 +7,12 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 
+	"evergate/internal/config"
 	"evergate/internal/health"
 	"evergate/internal/pool"
 	"evergate/internal/provider"
@@ -37,6 +39,9 @@ type Options struct {
 	DB        *gorm.DB
 	MasterKey string        // 解密上游 key 用于连通测试
 	Pool      *pool.Manager // 渠道健康推导 / key 重置
+	// AllowRemote 为 true 时才允许非 loopback 客户端访问管理 API。
+	AllowRemote bool
+	Now         func() time.Time
 	// ModelListClient 拉取上游模型目录；nil 时使用 http.DefaultClient。
 	ModelListClient provider.HTTPClient
 	Session         *SessionManager
@@ -54,7 +59,9 @@ type Options struct {
 
 // API 管理台接口集合。
 type API struct {
-	opt Options
+	opt          Options
+	now          func() time.Time
+	loginLimiter *loginLimiter
 }
 
 // New 创建管理 API。
@@ -62,48 +69,51 @@ func New(opt Options) *API {
 	if opt.ModelListClient == nil {
 		opt.ModelListClient = http.DefaultClient
 	}
-	return &API{opt: opt}
+	if opt.Now == nil {
+		opt.Now = func() time.Time { return time.Now().UTC() }
+	}
+	return &API{opt: opt, now: opt.Now, loginLimiter: newLoginLimiter()}
 }
 
 // RegisterRoutes 注册 /admin/api 全部路由（由 server.SetupRoutes 挂载）。
 func (a *API) RegisterRoutes(r gin.IRoutes) {
-	r.POST("/admin/api/auth/login", a.login)
-	r.POST("/admin/api/auth/logout", a.logout)
+	r.POST("/admin/api/auth/login", a.accessMiddleware(), a.login)
+	r.POST("/admin/api/auth/logout", a.accessMiddleware(), a.logout)
 	// 会话保护区（sessionMiddleware 放行 me/password 以强制首登改密）
-	r.GET("/admin/api/auth/me", a.sessionMiddleware(), a.me)
-	r.PUT("/admin/api/auth/password", a.sessionMiddleware(), a.changePassword)
-	r.GET("/admin/api/system/update", a.sessionMiddleware(), a.systemUpdate)
-	r.POST("/admin/api/system/update/apply", a.sessionMiddleware(), a.applySystemUpdate)
-	r.GET("/admin/api/system/update/progress", a.sessionMiddleware(), a.systemUpdateProgress)
-	r.POST("/admin/api/system/update/cancel", a.sessionMiddleware(), a.cancelSystemUpdate)
-	r.GET("/admin/api/system/settings", a.sessionMiddleware(), a.getSystemSettings)
-	r.PUT("/admin/api/system/settings", a.sessionMiddleware(), a.updateSystemSettings)
-	r.GET("/admin/api/model-fallbacks", a.sessionMiddleware(), a.listModelFallbacks)
-	r.PUT("/admin/api/model-fallbacks", a.sessionMiddleware(), a.replaceModelFallbacks)
-	r.GET("/admin/api/usage/report", a.sessionMiddleware(), a.getUsageReport)
-	r.GET("/admin/api/usage/prices", a.sessionMiddleware(), a.listUsagePrices)
-	r.PUT("/admin/api/usage/prices/default", a.sessionMiddleware(), a.setDefaultUsagePrice)
-	r.POST("/admin/api/usage/prices/overrides", a.sessionMiddleware(), a.upsertUsagePriceOverride)
-	r.DELETE("/admin/api/usage/prices/overrides/:id", a.sessionMiddleware(), a.deleteUsagePriceOverride)
-	r.GET("/admin/api/channels", a.sessionMiddleware(), a.listChannels)
-	r.GET("/admin/api/model-catalog", a.sessionMiddleware(), a.modelCatalog)
-	r.POST("/admin/api/channels", a.sessionMiddleware(), a.createChannel)
-	r.GET("/admin/api/channels/:id", a.sessionMiddleware(), a.getChannel)
-	r.PUT("/admin/api/channels/:id", a.sessionMiddleware(), a.updateChannel)
-	r.DELETE("/admin/api/channels/:id", a.sessionMiddleware(), a.deleteChannel)
-	r.POST("/admin/api/channels/:id/toggle", a.sessionMiddleware(), a.toggleChannel)
-	r.POST("/admin/api/channels/:id/test", a.sessionMiddleware(), a.testChannel)
-	r.POST("/admin/api/channels/:id/models/preview", a.sessionMiddleware(), a.previewChannelModels)
-	r.POST("/admin/api/channels/:id/keys", a.sessionMiddleware(), a.batchAddKeys)
-	r.PUT("/admin/api/keys/:id", a.sessionMiddleware(), a.updateKey)
-	r.DELETE("/admin/api/keys/:id", a.sessionMiddleware(), a.deleteKey)
-	r.GET("/admin/api/tokens", a.sessionMiddleware(), a.listTokens)
-	r.POST("/admin/api/tokens", a.sessionMiddleware(), a.createToken)
-	r.PUT("/admin/api/tokens/:id", a.sessionMiddleware(), a.updateToken)
-	r.DELETE("/admin/api/tokens/:id", a.sessionMiddleware(), a.deleteToken)
-	r.GET("/admin/api/logs", a.sessionMiddleware(), a.listLogs)
-	r.GET("/admin/api/logs/:id", a.sessionMiddleware(), a.getLog)
-	r.POST("/admin/api/playground", a.sessionMiddleware(), a.playground)
+	r.GET("/admin/api/auth/me", a.accessMiddleware(), a.sessionMiddleware(), a.me)
+	r.PUT("/admin/api/auth/password", a.accessMiddleware(), a.sessionMiddleware(), a.changePassword)
+	r.GET("/admin/api/system/update", a.accessMiddleware(), a.sessionMiddleware(), a.systemUpdate)
+	r.POST("/admin/api/system/update/apply", a.accessMiddleware(), a.sessionMiddleware(), a.applySystemUpdate)
+	r.GET("/admin/api/system/update/progress", a.accessMiddleware(), a.sessionMiddleware(), a.systemUpdateProgress)
+	r.POST("/admin/api/system/update/cancel", a.accessMiddleware(), a.sessionMiddleware(), a.cancelSystemUpdate)
+	r.GET("/admin/api/system/settings", a.accessMiddleware(), a.sessionMiddleware(), a.getSystemSettings)
+	r.PUT("/admin/api/system/settings", a.accessMiddleware(), a.sessionMiddleware(), a.updateSystemSettings)
+	r.GET("/admin/api/model-fallbacks", a.accessMiddleware(), a.sessionMiddleware(), a.listModelFallbacks)
+	r.PUT("/admin/api/model-fallbacks", a.accessMiddleware(), a.sessionMiddleware(), a.replaceModelFallbacks)
+	r.GET("/admin/api/usage/report", a.accessMiddleware(), a.sessionMiddleware(), a.getUsageReport)
+	r.GET("/admin/api/usage/prices", a.accessMiddleware(), a.sessionMiddleware(), a.listUsagePrices)
+	r.PUT("/admin/api/usage/prices/default", a.accessMiddleware(), a.sessionMiddleware(), a.setDefaultUsagePrice)
+	r.POST("/admin/api/usage/prices/overrides", a.accessMiddleware(), a.sessionMiddleware(), a.upsertUsagePriceOverride)
+	r.DELETE("/admin/api/usage/prices/overrides/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteUsagePriceOverride)
+	r.GET("/admin/api/channels", a.accessMiddleware(), a.sessionMiddleware(), a.listChannels)
+	r.GET("/admin/api/model-catalog", a.accessMiddleware(), a.sessionMiddleware(), a.modelCatalog)
+	r.POST("/admin/api/channels", a.accessMiddleware(), a.sessionMiddleware(), a.createChannel)
+	r.GET("/admin/api/channels/:id", a.accessMiddleware(), a.sessionMiddleware(), a.getChannel)
+	r.PUT("/admin/api/channels/:id", a.accessMiddleware(), a.sessionMiddleware(), a.updateChannel)
+	r.DELETE("/admin/api/channels/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteChannel)
+	r.POST("/admin/api/channels/:id/toggle", a.accessMiddleware(), a.sessionMiddleware(), a.toggleChannel)
+	r.POST("/admin/api/channels/:id/test", a.accessMiddleware(), a.sessionMiddleware(), a.testChannel)
+	r.POST("/admin/api/channels/:id/models/preview", a.accessMiddleware(), a.sessionMiddleware(), a.previewChannelModels)
+	r.POST("/admin/api/channels/:id/keys", a.accessMiddleware(), a.sessionMiddleware(), a.batchAddKeys)
+	r.PUT("/admin/api/keys/:id", a.accessMiddleware(), a.sessionMiddleware(), a.updateKey)
+	r.DELETE("/admin/api/keys/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteKey)
+	r.GET("/admin/api/tokens", a.accessMiddleware(), a.sessionMiddleware(), a.listTokens)
+	r.POST("/admin/api/tokens", a.accessMiddleware(), a.sessionMiddleware(), a.createToken)
+	r.PUT("/admin/api/tokens/:id", a.accessMiddleware(), a.sessionMiddleware(), a.updateToken)
+	r.DELETE("/admin/api/tokens/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteToken)
+	r.GET("/admin/api/logs", a.accessMiddleware(), a.sessionMiddleware(), a.listLogs)
+	r.GET("/admin/api/logs/:id", a.accessMiddleware(), a.sessionMiddleware(), a.getLog)
+	r.POST("/admin/api/playground", a.accessMiddleware(), a.sessionMiddleware(), a.playground)
 }
 
 // playground 仅负责会话保护；具体调度与流式输出由 relay 提供。
@@ -117,7 +127,25 @@ func (a *API) playground(c *gin.Context) {
 
 // ---------- 会话 ----------
 
+func (a *API) accessMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if a.opt.AllowRemote || isLoopback(c.ClientIP()) {
+			c.Next()
+			return
+		}
+		fail(c, http.StatusForbidden, "管理 API 仅允许本机访问；远程管理请显式关闭 admin_loopback_only")
+		c.Abort()
+	}
+}
+
 func (a *API) login(c *gin.Context) {
+	clientIP := c.ClientIP()
+	if wait := a.loginLimiter.blockedFor(clientIP, a.now()); wait > 0 {
+		seconds := (wait + time.Second - 1) / time.Second
+		c.Header("Retry-After", strconv.FormatInt(int64(seconds), 10))
+		fail(c, http.StatusTooManyRequests, "登录尝试过多，请稍后重试")
+		return
+	}
 	var req struct {
 		Username string `json:"username" binding:"required"`
 		Password string `json:"password" binding:"required"`
@@ -128,15 +156,19 @@ func (a *API) login(c *gin.Context) {
 	}
 	admin, err := store.GetAdminByUsername(a.opt.DB, req.Username)
 	if err != nil || !store.CheckAdminPassword(admin, req.Password) {
+		a.loginLimiter.recordFailure(clientIP, a.now())
 		fail(c, http.StatusUnauthorized, "用户名或密码错误")
 		return
 	}
-	now := time.Now()
-	c.SetCookie(CookieName, a.opt.Session.Issue(req.Username, now), int(a.opt.Session.ttl.Seconds()), "/", "", false, true)
+	a.loginLimiter.recordSuccess(clientIP)
+	now := a.now()
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(CookieName, a.opt.Session.Issue(req.Username, now), int(a.opt.Session.ttl.Seconds()), "/", "", c.Request.TLS != nil, true)
 	ok(c, gin.H{"username": admin.Username, "must_change_password": admin.MustChangePassword})
 }
 
 func (a *API) logout(c *gin.Context) {
+	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(CookieName, "", -1, "/", "", false, true)
 	ok(c, gin.H{"logout": true})
 }
@@ -413,14 +445,130 @@ type channelReq struct {
 	Timeouts          store.ChannelTimeouts `json:"timeout_config"`
 }
 
+func (r *channelReq) normalize() error {
+	r.Name = strings.TrimSpace(r.Name)
+	r.Type = strings.TrimSpace(r.Type)
+	r.BaseURL = strings.TrimSpace(strings.TrimSuffix(r.BaseURL, "/"))
+	if r.Name == "" || r.Type == "" {
+		return errors.New("name 和 type 不能为空")
+	}
+	parsed, err := url.Parse(r.BaseURL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New("base_url 必须是 http(s) 地址")
+	}
+	if priority := derefInt(r.Priority, 0); priority < -1000 || priority > 1000 {
+		return errors.New("priority 必须在 -1000-1000")
+	}
+	if weight := derefInt(r.Weight, 1); weight < 1 || weight > 10000 {
+		return errors.New("weight 必须在 1-10000")
+	}
+	if len(r.Models) > 500 {
+		return errors.New("models 最多 500 个")
+	}
+	models := make([]string, 0, len(r.Models))
+	modelSet := make(map[string]bool, len(r.Models))
+	for i, model := range r.Models {
+		model = strings.TrimSpace(model)
+		if model == "" || len(model) > 200 {
+			return fmt.Errorf("models[%d] 必须非空且不超过 200 字符", i)
+		}
+		if modelSet[model] {
+			continue
+		}
+		modelSet[model] = true
+		models = append(models, model)
+	}
+	if len(models) == 0 {
+		return errors.New("models 至少需要一个模型")
+	}
+	if len(r.ModelMapping) > 500 {
+		return errors.New("model_mapping 最多 500 项")
+	}
+	mapping := make(map[string]string, len(r.ModelMapping))
+	for publicModel, upstreamModel := range r.ModelMapping {
+		publicModel = strings.TrimSpace(publicModel)
+		upstreamModel = strings.TrimSpace(upstreamModel)
+		if publicModel == "" || upstreamModel == "" || len(publicModel) > 200 || len(upstreamModel) > 200 {
+			return errors.New("model_mapping 的键和值必须非空且不超过 200 字符")
+		}
+		if !modelSet[publicModel] {
+			return fmt.Errorf("model_mapping 的公开模型 %q 不在 models 中", publicModel)
+		}
+		mapping[publicModel] = upstreamModel
+	}
+	if err := validateChannelTimeouts(r.Timeouts); err != nil {
+		return err
+	}
+	r.Models = models
+	r.ModelMapping = mapping
+	return nil
+}
+
+func validateChannelTimeouts(t store.ChannelTimeouts) error {
+	connect, first, overall := 0, 0, 0
+	if t.ConnectSec != nil {
+		connect = *t.ConnectSec
+		if connect < 1 || connect > 300 {
+			return errors.New("timeout_config.connect_sec 必须在 1-300")
+		}
+	}
+	if t.FirstTokenSec != nil {
+		first = *t.FirstTokenSec
+		if first < 1 || first > 3600 {
+			return errors.New("timeout_config.first_token_sec 必须在 1-3600")
+		}
+	}
+	if t.OverallSec != nil {
+		overall = *t.OverallSec
+		if overall < 1 || overall > 86400 {
+			return errors.New("timeout_config.overall_sec 必须在 1-86400")
+		}
+		if (connect > 0 && overall < connect) || (first > 0 && overall < first) {
+			return errors.New("timeout_config.overall_sec 不能小于 connect_sec/first_token_sec")
+		}
+	}
+	return nil
+}
+
+func (a *API) validateEffectiveChannelTimeouts(t store.ChannelTimeouts) error {
+	defaults := config.Default().Defaults
+	if a.opt.Settings != nil {
+		defaults = a.opt.Settings.Snapshot().ConfigDefaults()
+	}
+	connect := defaults.ConnectTimeout.Duration
+	first := defaults.FirstTokenTimeout.Duration
+	overall := defaults.OverallTimeout.Duration
+	if t.ConnectSec != nil {
+		connect = time.Duration(*t.ConnectSec) * time.Second
+	}
+	if t.FirstTokenSec != nil {
+		first = time.Duration(*t.FirstTokenSec) * time.Second
+	}
+	if t.OverallSec != nil {
+		overall = time.Duration(*t.OverallSec) * time.Second
+	}
+	if overall < connect || overall < first {
+		return errors.New("timeout_config.overall_sec 不能小于有效 connect/first_token 超时")
+	}
+	return nil
+}
+
 func (a *API) createChannel(c *gin.Context) {
 	var req channelReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
 		return
 	}
+	if err := req.normalize(); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := a.validateEffectiveChannelTimeouts(req.Timeouts); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	ch := &store.Channel{
-		Name: req.Name, Type: req.Type, BaseURL: strings.TrimSuffix(req.BaseURL, "/"),
+		Name: req.Name, Type: req.Type, BaseURL: req.BaseURL,
 		Priority: derefInt(req.Priority, 0), Weight: derefInt(req.Weight, 1),
 		Models: req.Models, ModelMapping: req.ModelMapping,
 		Enabled: true, Status: store.ChannelStatusActive, SupportsResponses: derefBool(req.SupportsResponses, false),
@@ -441,7 +589,10 @@ func (a *API) getChannel(c *gin.Context) {
 		return
 	}
 	var keys []*store.ChannelKey
-	a.opt.DB.Where("channel_id = ?", ch.ID).Order("id asc").Find(&keys)
+	if err := a.opt.DB.Where("channel_id = ?", ch.ID).Order("id asc").Find(&keys).Error; err != nil {
+		fail(c, http.StatusInternalServerError, "查询 key 失败")
+		return
+	}
 	keyItems := make([]gin.H, 0, len(keys))
 	for _, k := range keys {
 		keyItems = append(keyItems, gin.H{
@@ -468,7 +619,15 @@ func (a *API) updateChannel(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
 		return
 	}
-	ch.Name, ch.Type, ch.BaseURL = req.Name, req.Type, strings.TrimSuffix(req.BaseURL, "/")
+	if err := req.normalize(); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := a.validateEffectiveChannelTimeouts(req.Timeouts); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	ch.Name, ch.Type, ch.BaseURL = req.Name, req.Type, req.BaseURL
 	ch.Priority, ch.Weight = derefInt(req.Priority, ch.Priority), derefInt(req.Weight, ch.Weight)
 	ch.Models, ch.ModelMapping, ch.Timeouts = req.Models, req.ModelMapping, req.Timeouts
 	ch.SupportsResponses = derefBool(req.SupportsResponses, ch.SupportsResponses)
@@ -1137,5 +1296,3 @@ func queryInt64(c *gin.Context, key string) int64 {
 	v, _ := strconv.ParseInt(c.Query(key), 10, 64)
 	return v
 }
-
-var _ = json.Marshal // 保持 import 稳定

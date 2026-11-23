@@ -59,7 +59,8 @@ Windows 安装版启动后常驻系统托盘，菜单提供打开管理台、打
 ## 安全模型
 
 - 上游 key 加密存储（主密钥仅在 `evergate.yml`，已 gitignore），管理台接口不回显明文；下游令牌仅存哈希
-- 管理台与 API 同端口，面向本地 / 内网可信环境；公网暴露前请自行加 TLS 与访问控制
+- 管理台 API 默认仅允许 loopback 访问；确需远程管理时显式设置 `server.admin_loopback_only: false`，并自行增加 TLS 与访问控制
+- 设置 `server.base_path: /eg` 后，管理台、静态资源与 API 统一挂载到 `http://localhost:8787/eg/`
 - 初始 `admin/admin123` 仅用于首次登录并会强制改密
 
 ## 架构概览

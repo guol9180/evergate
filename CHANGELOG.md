@@ -2,6 +2,15 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.5.4
+
+- 修复同优先级渠道加权随机排序错误，避免后续候选长期得不到首位机会；补强 SSE 首个语义事件判定，注释、空帧和 Messages `ping` 不再阻断首 token 前故障切换
+- 修复 `server.base_path` 管理台链路：静态资源、React Router、管理 API、图标与根路径重定向统一适配子路径
+- 所有下游协议增加 16MiB 请求体上限；上游错误中的当前 key、Bearer、`sk-/eg-/AIza` 凭证在响应、重试轨迹、请求日志和 Playground 元数据前脱敏
+- OpenCode 自动生成的会话在同一请求重试中保持稳定；配置写回改为原子 fsync + 平台安全替换，管理登录增加限流，管理 API 默认仅允许 loopback 访问
+- 渠道 URL、权重、模型映射和超时配置补齐创建/更新校验；修复首次改密、登录提交和路由守卫的前端测试门禁
+- 发布流水线新增 Go 测试、vet、前端测试、lint 和调度语句覆盖率门禁；本版本继续发布 Windows 安装器与 Linux tar.gz，macOS 安装器仍受 Developer ID 签名与 notarization 开关约束
+
 ## v0.5.3
 
 - 修复 JetBrains AI Assistant 调用 ZAI coding + GLM Chat 流时，在可见正文出现前长期只接收 `reasoning_content` 并在约 10 秒后取消的问题

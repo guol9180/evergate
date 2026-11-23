@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,6 +32,14 @@ import (
 	"evergate/internal/store"
 	"evergate/internal/telemetry"
 	"evergate/internal/usage"
+)
+
+const maxRelayRequestBody = 16 << 20
+
+var (
+	bearerCredentialPattern = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{8,}`)
+	prefixedKeyPattern      = regexp.MustCompile(`\b(?:sk|eg)-[A-Za-z0-9._-]{8,}`)
+	googleKeyPattern        = regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{20,}`)
 )
 
 // Options 是 relay 装配依赖。
@@ -172,10 +181,11 @@ func (rs *requestSpan) end() {
 
 // dispatch 执行完整编排，返回（重试轨迹, 最终状态码, 错误类型, 错误消息）。
 func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, int, string, string) {
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := readRelayRequestBody(c)
 	if err != nil {
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "读取请求体失败")
-		return nil, http.StatusBadRequest, "invalid_request_error", "读取请求体失败"
+		status, errType, message := requestBodyReadError(err)
+		writeOpenAIError(c, status, errType, errType, message)
+		return nil, status, errType, message
 	}
 	model, stream, ok := parseChatRequest(body)
 	if !ok {
@@ -573,7 +583,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	if stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
-	if session := openCodeSessionForRequest(ch.BaseURL, c.Request.Header); session != "" {
+	if session := openCodeSessionForAttempt(c, ch.BaseURL); session != "" {
 		req.Header.Set(openCodeSessionHeader, session)
 	}
 
@@ -674,13 +684,13 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 	})
 	switch cls.Kind {
 	case retry.KindRateLimited, retry.KindAuth:
-		msg := upstreamErrorMessage(resp.StatusCode, errBody)
+		msg := upstreamErrorMessage(resp.StatusCode, errBody, plainKey)
 		r.reportKeyFailure(key.ID, cls, msg)
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		return outcomeNextKey
 	case retry.KindTransient, retry.KindModelUnavailable:
 		// 服务器故障：计失败但本请求内换渠道；渠道缺模型：不惩罚 key，换渠道
-		msg := upstreamErrorMessage(resp.StatusCode, errBody)
+		msg := upstreamErrorMessage(resp.StatusCode, errBody, plainKey)
 		if cls.Kind == retry.KindTransient {
 			r.reportKeyFailure(key.ID, cls, msg)
 		} else {
@@ -690,28 +700,58 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		return outcomeNextChannel
 	default:
 		// 不可重试 / 内容策略：直接透传给客户端
-		msg := upstreamErrorMessage(resp.StatusCode, errBody)
+		msg := upstreamErrorMessage(resp.StatusCode, errBody, plainKey)
 		r.recordKeyFailure(key.ID, msg)
 		appendTrace(resp.StatusCode, string(cls.Kind), msg, start)
 		if isGeminiRequest(c) {
-			writeGeminiUpstreamError(c, resp.StatusCode, errBody)
+			writeGeminiUpstreamError(c, resp.StatusCode, errBody, plainKey)
 			return outcomeDone
 		}
 		if isMessagesRequest(c) {
-			writeMessagesUpstreamError(c, resp.StatusCode, errBody)
+			writeMessagesUpstreamError(c, resp.StatusCode, errBody, plainKey)
 			return outcomeDone
 		}
 		ct := resp.Header.Get("Content-Type")
 		if ct == "" {
 			ct = "application/json"
 		}
-		c.Data(resp.StatusCode, ct, errBody)
+		c.Data(resp.StatusCode, ct, sanitizeUpstreamBody(errBody, plainKey))
 		return outcomeDone
 	}
 }
 
-func upstreamErrorMessage(status int, body []byte) string {
-	msg := strings.TrimSpace(string(body))
+func readRelayRequestBody(c *gin.Context) ([]byte, error) {
+	if c.Request.ContentLength > maxRelayRequestBody {
+		return nil, &http.MaxBytesError{Limit: maxRelayRequestBody}
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRelayRequestBody)
+	return io.ReadAll(c.Request.Body)
+}
+
+func requestBodyReadError(err error) (int, string, string) {
+	var maxErr *http.MaxBytesError
+	if errors.As(err, &maxErr) {
+		return http.StatusRequestEntityTooLarge, "request_too_large",
+			fmt.Sprintf("请求体超过 %d 字节上限", maxRelayRequestBody)
+	}
+	return http.StatusBadRequest, "invalid_request_error", "读取请求体失败"
+}
+
+func redactCredentials(text, secret string) string {
+	if secret != "" {
+		text = strings.ReplaceAll(text, secret, "***")
+	}
+	text = bearerCredentialPattern.ReplaceAllString(text, "Bearer ***")
+	text = prefixedKeyPattern.ReplaceAllString(text, "***")
+	return googleKeyPattern.ReplaceAllString(text, "***")
+}
+
+func sanitizeUpstreamBody(body []byte, secret string) []byte {
+	return []byte(redactCredentials(string(body), secret))
+}
+
+func upstreamErrorMessage(status int, body []byte, secret string) string {
+	msg := strings.TrimSpace(redactCredentials(string(body), secret))
 	if msg == "" {
 		msg = fmt.Sprintf("http %d (empty error body)", status)
 	}

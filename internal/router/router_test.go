@@ -56,6 +56,29 @@ func TestRouteWeightedShufflePrefersHeavy(t *testing.T) {
 	}
 }
 
+func TestRouteWeightedShuffleDoesNotStarveLaterChannels(t *testing.T) {
+	r := New(11)
+	channels := []*store.Channel{
+		ch(1, 0, 100, "m"),
+		ch(2, 0, 1, "m"),
+		ch(3, 0, 1, "m"),
+	}
+	const rounds = 30000
+	first := map[int64]int{}
+	for i := 0; i < rounds; i++ {
+		got := r.Route("m", channels)
+		first[got[0].Channel.ID]++
+	}
+	if first[1] < rounds*4/5 {
+		t.Fatalf("heavy candidate was not preferred: %#v", first)
+	}
+	for _, id := range []int64{2, 3} {
+		if first[id] < rounds/200 {
+			t.Fatalf("weighted shuffle starved candidate %d: %#v", id, first)
+		}
+	}
+}
+
 func TestRouteModelMapping(t *testing.T) {
 	r := New(1)
 	withMapping := ch(1, 0, 1, "gpt")
@@ -84,4 +107,23 @@ func TestRouteModelMapping(t *testing.T) {
 			t.Fatalf("空映射值应透传, got %s", got[0].UpstreamModel)
 		}
 	})
+}
+
+func TestPublicModelCatalog(t *testing.T) {
+	channels := []*store.Channel{
+		ch(1, 0, 1, "z", "a", "z"),
+		ch(2, 0, 1, "b", "a"),
+		{ID: 3, Name: "disabled", Enabled: false, Models: []string{"hidden"}},
+		nil,
+	}
+	got := PublicModelCatalog(channels)
+	want := []string{"a", "b", "z"}
+	if len(got) != len(want) {
+		t.Fatalf("catalog = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("catalog = %#v, want %#v", got, want)
+		}
+	}
 }

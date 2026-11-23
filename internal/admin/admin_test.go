@@ -155,6 +155,25 @@ func TestAuthFlowAndForcedPasswordChange(t *testing.T) {
 	}
 }
 
+func TestLoginRateLimitsRepeatedFailures(t *testing.T) {
+	env := newEnv(t)
+	for i := 0; i < loginFailureLimit; i++ {
+		code, _, _ := env.req(t, "POST", "/admin/api/auth/login", "",
+			`{"username":"admin","password":"wrong-password"}`)
+		if code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d status = %d, want 401", i+1, code)
+		}
+	}
+	code, body, resp := env.req(t, "POST", "/admin/api/auth/login", "",
+		`{"username":"admin","password":"admin123"}`)
+	if code != http.StatusTooManyRequests || !strings.Contains(body, "登录尝试过多") {
+		t.Fatalf("blocked login = %d %s", code, body)
+	}
+	if resp.Header.Get("Retry-After") == "" {
+		t.Fatal("blocked login must include Retry-After")
+	}
+}
+
 func TestSystemUpdateStatusRequiresAuth(t *testing.T) {
 	env := newEnv(t)
 	code, _, _ := env.req(t, "GET", "/admin/api/system/update", "", "")
@@ -308,6 +327,41 @@ func TestChannelAndKeyManagement(t *testing.T) {
 	}
 }
 
+func TestChannelValidationRejectsInvalidConfiguration(t *testing.T) {
+	env := newEnv(t)
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie, _ = login(t, env, "admin", "newpass123")
+
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"unsupported scheme", `{"name":"bad","type":"openai","base_url":"file:///tmp/api","models":["m"]}`, "http(s)"},
+		{"zero weight", `{"name":"bad","type":"openai","base_url":"https://api.example/v1","models":["m"],"weight":0}`, "weight"},
+		{"blank model", `{"name":"bad","type":"openai","base_url":"https://api.example/v1","models":["  "]}`, "models[0]"},
+		{"mapping alias missing", `{"name":"bad","type":"openai","base_url":"https://api.example/v1","models":["public"],"model_mapping":{"alias":"upstream"}}`, "不在 models"},
+		{"invalid timeout", `{"name":"bad","type":"openai","base_url":"https://api.example/v1","models":["m"],"timeout_config":{"first_token_sec":30,"overall_sec":10}}`, "overall_sec"},
+		{"overall below default first token", `{"name":"bad","type":"openai","base_url":"https://api.example/v1","models":["m"],"timeout_config":{"overall_sec":10}}`, "有效 connect/first_token"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie, tc.body)
+			if code != http.StatusBadRequest || !strings.Contains(body, tc.want) {
+				t.Fatalf("status = %d body = %s, want 400 + %q", code, body, tc.want)
+			}
+		})
+	}
+	var count int64
+	if err := env.db.Model(&store.Channel{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("invalid channels persisted: %d", count)
+	}
+}
+
 func TestChannelManualProbePersistsHealthView(t *testing.T) {
 	env := newEnv(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -453,7 +507,7 @@ func TestChannelModelPreviewUsesPaginationAndMappingAliases(t *testing.T) {
 	cookie, _ = login(t, env, "admin", "newpass123")
 
 	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
-		fmt.Sprintf(`{"name":"preview","type":"anthropic","base_url":%q,"models":["upstream-a","upstream-b"],"model_mapping":{"alias-a":"upstream-a","alias-b":"upstream-a"},"supports_anthropic":true}`, server.URL))
+		fmt.Sprintf(`{"name":"preview","type":"anthropic","base_url":%q,"models":["alias-a","alias-b","upstream-b"],"model_mapping":{"alias-a":"upstream-a","alias-b":"upstream-a"},"supports_anthropic":true}`, server.URL))
 	if code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", code, body)
 	}

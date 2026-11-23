@@ -59,15 +59,25 @@ func (r *Router) Route(model string, channels []*store.Channel) []Candidate {
 func (r *Router) shuffleWeighted(group []*store.Channel) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	keys := make([]float64, len(group))
+	type weightedChannel struct {
+		channel *store.Channel
+		key     float64
+	}
+	weighted := make([]weightedChannel, len(group))
 	for i, ch := range group {
 		w := float64(ch.Weight)
 		if w <= 0 {
 			w = 1
 		}
-		keys[i] = math.Pow(r.rand.Float64(), 1/w)
+		weighted[i] = weightedChannel{
+			channel: ch,
+			key:     math.Pow(r.rand.Float64(), 1/w),
+		}
 	}
-	sort.SliceStable(group, func(i, j int) bool { return keys[i] > keys[j] })
+	sort.SliceStable(weighted, func(i, j int) bool { return weighted[i].key > weighted[j].key })
+	for i := range weighted {
+		group[i] = weighted[i].channel
+	}
 }
 
 // SupportsModel 判断渠道声明的模型列表是否包含 model。

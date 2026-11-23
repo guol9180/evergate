@@ -147,11 +147,12 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 	req := r.beginRequest(c, "responses")
 	defer req.end()
 	c.Set("evergate.protocol", responsesProtocol)
-	body, err := io.ReadAll(c.Request.Body)
+	body, err := readRelayRequestBody(c)
 	if err != nil {
-		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "读取请求体失败")
-		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "读取请求体失败")
+		status, errType, message := requestBodyReadError(err)
+		r.recordRequestMetrics(c, status, errType)
+		writeOpenAIError(c, status, errType, errType, message)
+		req.setResult(nil, status, errType, message)
 		return
 	}
 	if _, _, ok := parseChatRequest(body); !ok {

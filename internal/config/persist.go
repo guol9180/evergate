@@ -29,7 +29,7 @@ func (c Config) Persist(path string) error {
 		if mErr != nil {
 			return fmt.Errorf("marshal config: %w", mErr)
 		}
-		return os.WriteFile(path, out, 0o600)
+		return writeFileAtomic(path, out)
 	}
 	text := string(data)
 	replaced := 0
@@ -51,7 +51,7 @@ func (c Config) Persist(path string) error {
 		if mErr != nil {
 			return fmt.Errorf("marshal config: %w", mErr)
 		}
-		return os.WriteFile(path, out, 0o600)
+		return writeFileAtomic(path, out)
 	}
-	return os.WriteFile(path, []byte(text), 0o600)
+	return writeFileAtomic(path, []byte(text))
 }

@@ -35,8 +35,14 @@ func (r *Relay) streamNativeMessagesResponse(c *gin.Context, resp *http.Response
 	var first sseEvent
 	var err error
 	for {
-		first, err = readSSEEvent(br)
-		if err != nil || !isMessagesPingEvent(first) {
+		event, readErr := readSSEEvent(br)
+		first.raw = append(first.raw, event.raw...)
+		if readErr != nil {
+			err = readErr
+			break
+		}
+		if strings.TrimSpace(string(event.data)) != "" && !isMessagesPingEvent(event) {
+			first.name, first.data = event.name, event.data
 			break
 		}
 	}

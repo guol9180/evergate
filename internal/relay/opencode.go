@@ -9,10 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"evergate/internal/affinity"
 )
 
 const openCodeSessionHeader = "x-opencode-session"
+const ctxOpenCodeSession = "evergate.opencode_session"
 
 // openCodeSessionForRequest returns the routing session required by OpenCode Go.
 // It preserves an existing conversation identifier and creates an opaque fallback
@@ -27,6 +30,21 @@ func openCodeSessionForRequest(baseURL string, incoming http.Header) string {
 		}
 	}
 	return randomOpenCodeSession()
+}
+
+// openCodeSessionForAttempt keeps the generated fallback stable across
+// key/channel retries within one downstream request.
+func openCodeSessionForAttempt(c *gin.Context, baseURL string) string {
+	if !isOpenCodeGoBaseURL(baseURL) {
+		return ""
+	}
+	if value, ok := c.Get(ctxOpenCodeSession); ok {
+		session, _ := value.(string)
+		return session
+	}
+	session := openCodeSessionForRequest(baseURL, c.Request.Header)
+	c.Set(ctxOpenCodeSession, session)
+	return session
 }
 
 func isOpenCodeGoBaseURL(raw string) bool {

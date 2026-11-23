@@ -1,9 +1,13 @@
 package relay
 
 import (
+	"context"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
 func TestOpenCodeSessionForRequest(t *testing.T) {
@@ -54,6 +58,20 @@ func TestOpenCodeSessionForRequest(t *testing.T) {
 				t.Fatalf("session = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOpenCodeGeneratedSessionIsStableWithinRequest(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request = c.Request.WithContext(context.Background())
+	const baseURL = "https://opencode.ai/inference/go/openai/v1"
+
+	first := openCodeSessionForAttempt(c, baseURL)
+	second := openCodeSessionForAttempt(c, baseURL)
+	if first == "" || first != second {
+		t.Fatalf("request-scoped sessions differ: first=%q second=%q", first, second)
 	}
 }
 

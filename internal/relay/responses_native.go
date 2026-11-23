@@ -36,7 +36,20 @@ func (r *Relay) streamNativeResponsesResponse(c *gin.Context, resp *http.Respons
 	br := bufio.NewReaderSize(resp.Body, 32*1024)
 	var timeout atomic.Bool
 	timer := time.AfterFunc(firstToken, func() { timeout.Store(true); cancel() })
-	first, err := readSSEEvent(br)
+	var first sseEvent
+	var err error
+	for {
+		event, readErr := readSSEEvent(br)
+		first.raw = append(first.raw, event.raw...)
+		if readErr != nil {
+			err = readErr
+			break
+		}
+		if strings.TrimSpace(string(event.data)) != "" {
+			first.name, first.data = event.name, event.data
+			break
+		}
+	}
 	timer.Stop()
 	if err != nil {
 		if timeout.Load() {

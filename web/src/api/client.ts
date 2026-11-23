@@ -1,4 +1,6 @@
 // 统一 API 客户端：处理 {ok, data, message} 信封与错误
+import { withBasePath } from '../lib/runtime'
+
 export class ApiError extends Error {
   status: number
   code?: string
@@ -10,7 +12,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(path, {
+  const resp = await fetch(withBasePath(path), {
     credentials: 'same-origin',
     ...init,
     headers: {

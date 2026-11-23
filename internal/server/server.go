@@ -59,7 +59,7 @@ func New(opts Options) *gin.Engine {
 		opts.SetupRoutes(root)
 	}
 	if opts.WebFS != nil {
-		r.NoRoute(spaHandler(opts.WebFS))
+		r.NoRoute(spaHandler(opts.WebFS, opts.BasePath))
 	}
 	return r
 }

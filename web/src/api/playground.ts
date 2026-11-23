@@ -1,5 +1,6 @@
 import type { RetryAttempt } from './types'
 import { extractPlaygroundDelta, extractPlaygroundText } from '../lib/playgroundProtocol'
+import { withBasePath } from '../lib/runtime'
 
 export interface PlaygroundInput {
   protocol: 'chat' | 'responses' | 'anthropic' | 'gemini'
@@ -48,7 +49,7 @@ const PLAYGROUND_SESSION_ID = createPlaygroundSessionID()
 
 // runPlayground 直接调用管理台 Playground 端点：SSE 实时回调，非流式一次性返回。
 export async function runPlayground(input: PlaygroundInput, { onDelta, signal }: StreamHandlers): Promise<PlaygroundResult> {
-  const resp = await fetch('/admin/api/playground', {
+  const resp = await fetch(withBasePath('/admin/api/playground'), {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', 'X-Session-Id': PLAYGROUND_SESSION_ID },

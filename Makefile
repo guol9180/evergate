@@ -1,4 +1,4 @@
-.PHONY: build build-web build-all icon run test fmt vet clean
+.PHONY: build build-web build-all icon run test coverage-scheduler fmt vet clean
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -51,6 +51,12 @@ run:
 
 test:
 	go test ./...
+
+coverage-scheduler:
+	node -e "require('node:fs').mkdirSync('.gocache',{recursive:true})"
+	go test ./internal/pool ./internal/retry ./internal/router -coverprofile=.gocache/scheduler-cover.out
+	go tool cover -func=.gocache/scheduler-cover.out > .gocache/scheduler-cover.txt
+	node scripts/check-scheduler-coverage.mjs .gocache/scheduler-cover.txt
 
 fmt:
 	gofmt -l -w .

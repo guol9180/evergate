@@ -26,6 +26,35 @@ func TestServerShouldOpenBrowser(t *testing.T) {
 	}
 }
 
+func TestAdminLoopbackOnlyDefaultsToTrue(t *testing.T) {
+	cfg := Default()
+	if !cfg.Server.ShouldRestrictAdminToLoopback() {
+		t.Fatal("admin API should be loopback-only by default")
+	}
+	restrict := true
+	cfg.Server.AdminLoopbackOnly = &restrict
+	if !cfg.Server.ShouldRestrictAdminToLoopback() {
+		t.Fatal("explicit true should restrict admin API")
+	}
+	allowRemote := false
+	cfg.Server.AdminLoopbackOnly = &allowRemote
+	if cfg.Server.ShouldRestrictAdminToLoopback() {
+		t.Fatal("explicit false should allow remote admin access")
+	}
+}
+
+func TestBasePathRejectsUnsafeCharacters(t *testing.T) {
+	cfg := Default()
+	cfg.Server.BasePath = `/bad"path`
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("unsafe base path should be rejected")
+	}
+	cfg.Server.BasePath = "/eg-gateway_1"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("safe base path rejected: %v", err)
+	}
+}
+
 func TestLoadOpenBrowserOverride(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "evergate.yml")
 	if err := writeTestFile(path, "server:\n  port: 18787\n  open_browser: false\n"); err != nil {

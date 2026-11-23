@@ -1205,6 +1205,30 @@ func TestResponsesStreamFailsOverBeforeFirstEvent(t *testing.T) {
 	}
 }
 
+func TestResponsesNativeStreamCommentBeforeFirstEventStillFailsOver(t *testing.T) {
+	env := newEnv(t)
+	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		writeSSEEvents(w, ": pending\n\n")
+	})
+	secondary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		writeSSEEvents(w,
+			": ready\n\n",
+			"event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_ready\",\"status\":\"in_progress\"}}\n\n",
+			"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_ready\",\"status\":\"completed\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n",
+		)
+	})
+	env.addResponsesChannel(t, "primary", primary.server.URL, 0, []string{"gateway-model"}, nil, "sk-p")
+	env.addResponsesChannel(t, "secondary", secondary.server.URL, 1, []string{"gateway-model"}, nil, "sk-s")
+
+	resp, body := env.responses(t, `{"model":"gateway-model","input":"hello","stream":true}`)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "response.completed") {
+		t.Fatalf("native Responses comment failover: %d %s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "pending") || !strings.Contains(body, "ready") {
+		t.Fatalf("native Responses preamble handling is incorrect: %s", body)
+	}
+}
+
 func TestAcceptance2NonStreamFailover(t *testing.T) {
 	env := newEnv(t)
 	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
@@ -1277,6 +1301,33 @@ func TestAcceptance3StreamFailoverBeforeFirstToken(t *testing.T) {
 	}
 	if ph, _, _ := primary.snapshot(); ph != 1 {
 		t.Fatalf("主渠道应被尝试 1 次, got %d", ph)
+	}
+}
+
+func TestChatStreamCommentBeforeFirstDataStillFailsOver(t *testing.T) {
+	env := newEnv(t)
+	primary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		writeSSEEvents(w, ": upstream keepalive\n\n")
+	})
+	secondary := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		writeSSEEvents(w,
+			": secondary preamble\n\n",
+			"data: {\"choices\":[{\"delta\":{\"content\":\"recovered\"}}]}\n\n",
+			"data: [DONE]\n\n",
+		)
+	})
+	env.addChannel(t, "primary", primary.server.URL, 0, []string{"gpt-x"}, nil, "sk-p")
+	env.addChannel(t, "secondary", secondary.server.URL, 1, []string{"gpt-x"}, nil, "sk-s")
+
+	resp, body := env.chat(t, `{"model":"gpt-x","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "recovered") {
+		t.Fatalf("comment-only primary should fail over: %d %s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "upstream keepalive") || strings.Count(body, "secondary preamble") != 1 {
+		t.Fatalf("stream preamble handling is incorrect: %s", body)
+	}
+	if primary.hits.Load() != 1 || secondary.hits.Load() != 1 {
+		t.Fatalf("hits = %d/%d, want 1/1", primary.hits.Load(), secondary.hits.Load())
 	}
 }
 
@@ -1591,6 +1642,70 @@ func TestNonRetryablePassThrough(t *testing.T) {
 	}
 	if key.FailCount != 1 || key.State != store.KeyStateActive || key.LastError == "" {
 		t.Fatalf("不可重试失败应只记录统计不惩罚 key: %#v", key)
+	}
+}
+
+func TestOversizedRelayRequestsAreRejectedBeforeDispatch(t *testing.T) {
+	env := newEnv(t)
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		t.Error("oversized request must not reach upstream")
+	})
+	env.addChannel(t, "unused", up.server.URL, 0, []string{"m"}, nil, "sk-unused")
+	_, plain := env.addToken(t, "oversized", nil)
+	gateway := env.authGateway(t)
+	body := strings.Repeat("x", maxRelayRequestBody+1)
+	cases := []string{
+		"/v1/chat/completions",
+		"/v1/responses",
+		"/v1/messages",
+		"/v1beta/models/m:generateContent",
+	}
+	for _, path := range cases {
+		t.Run(path, func(t *testing.T) {
+			resp, responseBody := authPost(t, gateway, path, plain, body)
+			if resp.StatusCode != http.StatusRequestEntityTooLarge ||
+				!strings.Contains(responseBody, `"code":"request_too_large"`) {
+				t.Fatalf("status = %d, body = %s", resp.StatusCode, responseBody)
+			}
+		})
+	}
+	if hits := up.hits.Load(); hits != 0 {
+		t.Fatalf("oversized requests reached upstream %d times", hits)
+	}
+}
+
+func TestUpstreamErrorCredentialsAreRedactedFromResponseAndLogs(t *testing.T) {
+	env := newEnv(t)
+	const secret = "sk-super-secret-key"
+	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"bad key ` + secret + ` Bearer abcdefghijklmnop AIza1234567890123456789012345"}}`))
+	})
+	env.addChannel(t, "leaky", up.server.URL, 0, []string{"m"}, nil, secret)
+
+	resp, responseBody := env.chat(t, `{"model":"m","messages":[]}`)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, responseBody)
+	}
+	for _, leaked := range []string{secret, "abcdefghijklmnop", "AIza1234567890123456789012345"} {
+		if strings.Contains(responseBody, leaked) {
+			t.Fatalf("response leaked %q: %s", leaked, responseBody)
+		}
+	}
+	env.logWriter.Close()
+	var logs []store.RequestLog
+	if err := env.db.Order("id desc").Limit(1).Find(&logs).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(logs) != 1 {
+		t.Fatalf("request logs = %#v", logs)
+	}
+	encoded, _ := json.Marshal(logs[0])
+	for _, leaked := range []string{secret, "abcdefghijklmnop", "AIza1234567890123456789012345"} {
+		if strings.Contains(string(encoded), leaked) {
+			t.Fatalf("request log leaked %q: %s", leaked, encoded)
+		}
 	}
 }
 

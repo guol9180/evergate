@@ -5,6 +5,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"github.com/gin-gonic/gin"
 
 	"evergate/internal/metrics"
 )
@@ -43,5 +46,50 @@ func TestMetricsRouteUnderBasePath(t *testing.T) {
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
+	}
+}
+
+func TestSPAHandlerSupportsBasePath(t *testing.T) {
+	webFS := fstest.MapFS{
+		"index.html":    &fstest.MapFile{Data: []byte(`<html><head><base href="./" /><script src="./assets/app.js"></script></head></html>`)},
+		"assets/app.js": &fstest.MapFile{Data: []byte("console.log('ok')")},
+	}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.NoRoute(spaHandler(webFS, "/eg"))
+
+	check := func(path string, wantStatus int, wantBody, wantLocation string) *httptest.ResponseRecorder {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		r.ServeHTTP(rec, req)
+		if rec.Code != wantStatus {
+			t.Fatalf("%s status = %d, want %d, body=%s", path, rec.Code, wantStatus, rec.Body.String())
+		}
+		if wantBody != "" && !strings.Contains(rec.Body.String(), wantBody) {
+			t.Fatalf("%s body = %s, want %q", path, rec.Body.String(), wantBody)
+		}
+		if wantLocation != "" && rec.Header().Get("Location") != wantLocation {
+			t.Fatalf("%s location = %q, want %q", path, rec.Header().Get("Location"), wantLocation)
+		}
+		return rec
+	}
+
+	check("/", http.StatusTemporaryRedirect, "", "/eg/")
+	check("/eg/", http.StatusOK, `<base href="/eg/" />`, "")
+	check("/eg/channels", http.StatusOK, `<base href="/eg/" />`, "")
+	asset := check("/eg/assets/app.js", http.StatusOK, "console.log", "")
+	if asset.Header().Get("Cache-Control") != "public, max-age=31536000, immutable" {
+		t.Fatalf("asset cache = %q", asset.Header().Get("Cache-Control"))
+	}
+	check("/eg/assets/missing.js", http.StatusNotFound, "", "")
+	check("/eg/admin/missing", http.StatusNotFound, `"code":"not_found"`, "")
+
+	root := gin.New()
+	root.NoRoute(spaHandler(webFS, ""))
+	rec := httptest.NewRecorder()
+	root.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/channels", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `<base href="/" />`) {
+		t.Fatalf("root base path fallback = %d %s", rec.Code, rec.Body.String())
 	}
 }
