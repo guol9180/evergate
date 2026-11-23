@@ -1608,9 +1608,13 @@
   4. npm 主包、三个平台子包与 `@heguoliang/evergate-updates` 均为 `0.5.5`，`latest=0.5.5`；npmmirror 可拉取
   5. 下载公开资产并按 checksums 校验，验证 GitHub Latest、npm dist-tags 与 Action 结果；不移动历史 tag
 - 边界：不发布裸二进制或未签名 DMG；不追溯重写历史 `unpriced` 请求；不改变五包发布结构
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-23 计划 用户指令发版；T70/T71 完成，按 PATCH 发布 `v0.5.5`
+  - 2026-11-23 执行 提交 `5773e2b` 并推送 main，annotated tag `v0.5.5` 指向同一提交；CHANGELOG、Go/前端测试、vet、调度覆盖率、发布脚本、release-gate、actionlint、本机与三平台构建全部通过
+  - 2026-11-23 交付 Action [45129934531](https://github.com/guol9180/evergate/actions/runs/45129934531) 全绿：quality、release、windows-installer、verify-release 成功，macos-installer 按 `ENABLE_MACOS_INSTALLER` 未启用跳过；Release `https://github.com/guol9180/evergate/releases/tag/v0.5.5` 为 GitHub Latest
+  - 2026-11-23 验证 GitHub 资产：Windows setup 9,811,979B（SHA256 `29bb7f468d3efc8193d20fc16576c2c8600f0b407ea55a11713f98c9418f107c`）、Linux tar.gz 10,844,215B（SHA256 `87fa6b8db3ddb9a2148a496b31d9a2ddb28cc0ecac6f05dbcf4896717ed0d6df`）、checksums 205B；下载后按 checksums 重算 SHA256 一致
+  - 2026-11-23 验证 npm 官方五包均为 `0.5.5` 且 `latest=0.5.5`；npmmirror 五包以全新临时缓存复核同样为 `0.5.5`。更新资产包 20.1MB（解包 20.7MB），包含 Windows setup、Linux tar.gz 与 checksums，包内 SHA256 逐项校验通过
 
 ## 状态枚举
 
