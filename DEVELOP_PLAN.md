@@ -1556,9 +1556,13 @@
   5. 下载公开资产并按 checksums 校验，验证更新包包含 Windows setup、Linux tar.gz 与 checksums，npmmirror 可实际拉取
   6. 回写 Action URL、资产大小/哈希、npm dist-tags、更新包与镜像证据；不移动历史 tag
 - 边界：不夹带新功能；不发布裸二进制或未签名 DMG；不写入或要求本地代理；不改 DB/schema；不跳过质量门禁
-- 状态：in-progress
+- 状态：done
 - 进度（只追加新行，不修改旧行）：
   - 2026-11-23 计划 用户要求更新版本号并发布；T63–T68 已完成，按 PATCH 发布 `v0.5.4`
+  - 2026-11-23 执行 提交 `113b53c` 并推送 main，annotated tag `v0.5.4` 指向该提交；CHANGELOG 门禁、Go/前端/发布脚本/actionlint 预检通过
+  - 2026-11-23 交付 Action [45121492190](https://github.com/guol9180/evergate/actions/runs/45121492190) 全绿：quality、release、Windows installer、verify-release 成功，macOS-installer 按 `ENABLE_MACOS_INSTALLER` 未启用跳过；Release `https://github.com/guol9180/evergate/releases/tag/v0.5.4` 为 GitHub Latest
+  - 2026-11-23 验证 GitHub 资产：Windows setup 9,814,473B（SHA256 `07029b248752232e78d6ef4dd4637424e0c761ff86bf8b9946e9cc9adeab732c`）、Linux tar.gz 10,843,766B（SHA256 `480cfd2e7fbcb5a5f14deb029868acc2538ed495812cf7d5974e5b47ecec9475`）、checksums 205B；下载 checksums 后内容与 GitHub asset digest 一致
+  - 2026-11-23 验证 npm 官方五包 `@heguoliang/evergate`、win32-x64、linux-amd64、darwin-arm64、evergate-updates 均为 `0.5.4` 且 `latest=0.5.4`；npmmirror 五包同步为 `0.5.4`
 
 ## 状态枚举
 
