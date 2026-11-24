@@ -101,27 +101,27 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
   const costIssues = row.unpriced_requests + row.no_usage_requests + row.unknown_cost_requests
   const costKnown = row.requests === 0 || row.priced_requests > 0 || costIssues === 0
   return (
-    <div className="min-w-36 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
-      <div className="font-medium text-slate-700">{row.date}</div>
+    <div className="min-w-36 rounded-lg border border-line bg-surface/95 px-3 py-2 text-xs shadow-lg backdrop-blur">
+      <div className="font-medium text-foreground-soft">{row.date}</div>
       <dl className="mt-1.5 space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-slate-400">请求</dt>
-          <dd className="tabular-nums text-slate-700">{fmtInt(row.requests)}</dd>
+          <dt className="text-subtle">请求</dt>
+          <dd className="tabular-nums text-foreground-soft">{fmtInt(row.requests)}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-slate-400">成功</dt>
-          <dd className="tabular-nums text-slate-700">{fmtInt(row.success)}</dd>
+          <dt className="text-subtle">成功</dt>
+          <dd className="tabular-nums text-foreground-soft">{fmtInt(row.success)}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-slate-400">成功率</dt>
-          <dd className="tabular-nums text-emerald-600">{row.successRate == null ? '—' : `${row.successRate.toFixed(1)}%`}</dd>
+          <dt className="text-subtle">成功率</dt>
+          <dd className="tabular-nums text-success-text">{row.successRate == null ? '—' : `${row.successRate.toFixed(1)}%`}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-slate-400">成本</dt>
-          <dd className="tabular-nums text-slate-700">{costKnown ? fmtMoney(row.cost_micros) : '—'}</dd>
+          <dt className="text-subtle">成本</dt>
+          <dd className="tabular-nums text-foreground-soft">{costKnown ? fmtMoney(row.cost_micros) : '—'}</dd>
         </div>
         {costIssues > 0 && (
-          <div className="flex items-center justify-between gap-4 text-amber-600">
+          <div className="flex items-center justify-between gap-4 text-warning-text">
             <dt>成本状态</dt>
             <dd>{fmtInt(costIssues)} 条未完整计价</dd>
           </div>

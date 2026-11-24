@@ -1,19 +1,28 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical } from 'lucide-react'
+import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical, UserRound, Sun, Moon, Monitor, Languages } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
-import { Spinner } from './ui'
+import { PageSkeleton } from './ui'
 import { withBasePath } from '../lib/runtime'
+import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
+import { getLocale, setLocale, t, useLocale, type MessageKey } from '../lib/i18n'
 
-const nav = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/channels', label: '渠道管理', icon: Waypoints },
-  { to: '/tokens', label: '令牌管理', icon: KeyRound },
-  { to: '/logs', label: '请求日志', icon: ScrollText },
-  { to: '/playground', label: 'Playground', icon: FlaskConical },
-  { to: '/usage', label: '用量成本', icon: BarChart3 },
-  { to: '/settings', label: '系统设置', icon: Settings },
+const nav: { to: string; label: MessageKey; end?: boolean; icon: typeof LayoutDashboard }[] = [
+  { to: '/', label: 'nav.dashboard', icon: LayoutDashboard, end: true },
+  { to: '/channels', label: 'nav.channels', icon: Waypoints },
+  { to: '/tokens', label: 'nav.tokens', icon: KeyRound },
+  { to: '/logs', label: 'nav.logs', icon: ScrollText },
+  { to: '/playground', label: 'nav.playground', icon: FlaskConical },
+  { to: '/usage', label: 'nav.usage', icon: BarChart3 },
+  { to: '/settings', label: 'nav.settings', icon: Settings },
 ]
+
+const themeIcon = (theme: Theme, dark: boolean) => {
+  if (theme === 'system') return Monitor
+  return dark ? Moon : Sun
+}
+const themeLabelKey: Record<Theme, MessageKey> = { light: 'theme.light', dark: 'theme.dark', system: 'theme.system' }
+const nextTheme: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
 
 export default function Layout() {
   const me = useMe()
@@ -21,6 +30,13 @@ export default function Layout() {
   const logout = useLogout()
   const navigate = useNavigate()
   const location = useLocation()
+  const [theme, setThemeState] = useState<Theme>(() => getTheme())
+  // 订阅语言：setLocale 后本组件与所有调用 useLocale 的页面一起重渲染
+  useLocale()
+
+  useEffect(() => {
+    initTheme()
+  }, [])
 
   useEffect(() => {
     if (me.isError) navigate('/login', { replace: true })
@@ -34,43 +50,49 @@ export default function Layout() {
 
   if (me.isPending) {
     return (
-      <div className="flex h-full items-center justify-center gap-2 text-slate-500">
-        <Spinner /> 加载中…
+      <div className="eg-page" role="status" aria-label={t('common.loading')}>
+        <PageSkeleton />
       </div>
     )
   }
 
+  const dark = resolvedTheme(theme) === 'dark'
+  const ThemeIcon = themeIcon(theme, dark)
+
   return (
     <div className="flex h-full min-w-0">
-      <aside className="eg-sidebar flex shrink-0 flex-col border-r border-slate-200/80 bg-white/95 backdrop-blur">
+      <aside className="eg-sidebar flex shrink-0 flex-col border-r border-line bg-surface/95 backdrop-blur">
         <div className="eg-sidebar-brand flex items-center gap-3 px-3 py-5">
           <div className="eg-sidebar-brand-logo flex shrink-0 items-center">
             <img src={withBasePath('/logo.svg')} alt="" width={20} height={20} className="shrink-0" />
           </div>
           <div className="eg-sidebar-meta min-w-0">
-            <div className="text-sm font-bold text-slate-900">EverGate</div>
-            <div className="text-[10px] text-slate-400">AI 网关管理台</div>
+            <div className="text-sm font-bold text-foreground">{t('app.name')}</div>
+            <div className="text-[10px] text-subtle">{t('app.tagline')}</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 px-3">
+        <nav className="flex-1 space-y-1 px-3" aria-label={t('nav.main')}>
           {nav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.end}
-              title={item.label}
+              title={t(item.label)}
               className={({ isActive }) =>
-                `eg-nav-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${isActive ? 'bg-indigo-50 font-medium text-indigo-700' : 'text-slate-600 hover:bg-slate-50'}`
+                `eg-nav-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${isActive ? 'bg-brand-subtle font-medium text-brand-text' : 'text-muted hover:bg-surface-soft'}`
               }
             >
-              <item.icon size={16} />
-              <span className="eg-sidebar-label">{item.label}</span>
+              <item.icon size={16} aria-hidden="true" />
+              <span className="eg-sidebar-label">{t(item.label)}</span>
             </NavLink>
           ))}
         </nav>
-        <div className="space-y-3 border-t border-slate-100 p-3">
-          <div className="eg-sidebar-meta px-2 text-xs text-slate-500">👤 {me.data?.username}</div>
-          <div className="eg-sidebar-meta px-2 text-[11px] leading-4 text-slate-400">
+        <div className="space-y-3 border-t border-line-soft p-3">
+          <div className="eg-sidebar-meta flex items-center gap-2 px-2 text-xs text-muted">
+            <UserRound size={14} aria-hidden="true" className="shrink-0" />
+            <span className="truncate">{me.data?.username}</span>
+          </div>
+          <div className="eg-sidebar-meta px-2 text-[11px] leading-4 text-subtle">
             {update.isPending
               ? '正在检查更新…'
               : update.isError
@@ -79,21 +101,41 @@ export default function Layout() {
                   ? '开发版本，更新检查已跳过'
                   : `当前 ${update.data?.current_version ?? '未知'}`}
             {update.data?.update_available && (
-              <a href={update.data.release_url} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-1 font-medium text-indigo-600 hover:underline">
-                获取 {update.data.latest_version} <ExternalLink size={11} />
+              <a href={update.data.release_url} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-1 font-medium text-brand-text hover:underline">
+                获取 {update.data.latest_version} <ExternalLink size={11} aria-hidden="true" />
               </a>
             )}
           </div>
-          <button
-            onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
-            title="退出登录"
-            className="eg-nav-link flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            <LogOut size={16} /> <span className="eg-sidebar-label">退出登录</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setLocale(getLocale() === 'en' ? 'zh-CN' : 'en')}
+              aria-label={t('locale.switch')}
+              title={t('locale.switch')}
+              className="eg-nav-link flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <Languages size={15} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setThemeState(cycleTheme(theme))}
+              aria-label={`${t('theme.toggle')}：${t('theme.current')}${t(themeLabelKey[theme])}，${t('theme.next')}${t(themeLabelKey[nextTheme[theme]])}`}
+              title={`${t('nav.theme')}：${t(themeLabelKey[theme])}`}
+              className="eg-nav-link flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <ThemeIcon size={15} aria-hidden="true" />
+            </button>
+            <button
+              onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
+              title={t('nav.logout')}
+              className="eg-nav-link flex flex-1 items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              <LogOut size={16} aria-hidden="true" /> <span className="eg-sidebar-label">{t('nav.logout')}</span>
+            </button>
+          </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 overflow-auto">
+      <main className="min-w-0 flex-1 overflow-auto" id="main-content">
         <div className="eg-page">
           <Outlet />
         </div>

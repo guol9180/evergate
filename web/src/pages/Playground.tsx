@@ -3,13 +3,16 @@ import { FlaskConical, Play, Square } from 'lucide-react'
 import { useChannels } from '../api/hooks'
 import { runPlayground, type PlaygroundMeta } from '../api/playground'
 import RetryTimeline from '../components/RetryTimeline'
-import { Badge, Button, Card, Empty, PageHeader, Select, Spinner, Switch, Textarea } from '../components/ui'
-import { fmtInt, fmtMs, fmtRequestCost, kindText } from '../lib/format'
+import { Badge, Button, Card, Empty, PageHeader, Select, SettingRow, Spinner, Textarea } from '../components/ui'
+import { fmtInt, fmtMs, fmtRequestCost, httpStatusTone, kindText } from '../lib/format'
+import { usePageTitle } from '../lib/usePageTitle'
+import { t } from '../lib/i18n'
 
 const MAX_PROMPT = 16000
 const MAX_SYSTEM = 8000
 
 export default function Playground() {
+  usePageTitle(t('page.playground.title'))
   const channels = useChannels()
   const [protocol, setProtocol] = useState<'chat' | 'responses' | 'anthropic' | 'gemini'>('chat')
   const [model, setModel] = useState('')
@@ -65,7 +68,7 @@ export default function Playground() {
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      setError(message === 'The user aborted a request.' ? '已中断本次请求，已输出的内容会保留。' : message)
+        setError(message === 'The user aborted a request.' ? t('playground.aborted') : message)
     } finally {
       abortRef.current = null
       setRunning(false)
@@ -79,9 +82,9 @@ export default function Playground() {
   return (
     <div className="eg-page-stack">
       <PageHeader
-        title={<span className="flex items-center gap-2"><FlaskConical size={18} /> Playground</span>}
-        description="用管理台会话直接验证渠道与协议兼容性。请求复用网关调度与健康规则，并写入请求日志的 Playground 来源。"
-        actions={<Badge tone="bg-indigo-50 text-indigo-700 ring-1 ring-inset ring-indigo-100">管理台专用 · 不暴露密钥</Badge>}
+        title={<span className="flex items-center gap-2"><FlaskConical size={18} /> {t('page.playground.title')}</span>}
+        description={t('page.playground.desc')}
+        actions={<Badge tone="brand">管理台专用 · 不暴露密钥</Badge>}
       />
 
       <div className="eg-grid lg:grid-cols-[clamp(280px,24vw,420px)_minmax(0,1fr)]">
@@ -89,8 +92,8 @@ export default function Playground() {
           <div className="space-y-[var(--eg-control-gap)]">
             <div>
               <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium text-slate-700">协议</span>
-                <span className="text-[11px] text-slate-400">Chat / Responses / Messages / Gemini</span>
+                <span className="text-sm font-medium text-foreground-soft">协议</span>
+                <span className="text-[11px] text-subtle">Chat / Responses / Messages / Gemini</span>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
                 {([
@@ -104,10 +107,10 @@ export default function Playground() {
                     type="button"
                     onClick={() => setProtocol(value)}
                     disabled={running}
-                    className={`h-9 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:opacity-60 ${
+                    className={`h-9 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-60 ${
                       protocol === value
-                        ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
-                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+                        ? 'border-brand-border bg-brand-subtle text-brand-text'
+                        : 'border-line-strong bg-surface text-muted hover:bg-surface-soft'
                     }`}
                   >
                     {label}
@@ -117,7 +120,7 @@ export default function Playground() {
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-sm font-medium text-slate-700">模型</span>
+              <span className="text-sm font-medium text-foreground-soft">模型</span>
               <Select
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
@@ -128,14 +131,14 @@ export default function Playground() {
                 {models.map((item) => <option key={item} value={item}>{item}</option>)}
               </Select>
               {models.length === 0 && (
-                <p className="text-xs text-amber-600">请先在「渠道管理」添加启用渠道与模型。</p>
+                <p className="text-xs text-warning-text">请先在「渠道管理」添加启用渠道与模型。</p>
               )}
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between">
-                <span className="text-sm font-medium text-slate-700">System 消息 <span className="font-normal text-slate-400">可选</span></span>
-                <span className="text-[11px] tabular-nums text-slate-400">{system.length}/{MAX_SYSTEM}</span>
+                <span className="text-sm font-medium text-foreground-soft">System 消息 <span className="font-normal text-subtle">可选</span></span>
+                <span className="text-[11px] tabular-nums text-subtle">{system.length}/{MAX_SYSTEM}</span>
               </div>
               <Textarea
                 rows={3}
@@ -149,8 +152,8 @@ export default function Playground() {
 
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between">
-                <span className="text-sm font-medium text-slate-700">User 消息</span>
-                <span className="text-[11px] tabular-nums text-slate-400">{prompt.length}/{MAX_PROMPT}</span>
+                <span className="text-sm font-medium text-foreground-soft">User 消息</span>
+                <span className="text-[11px] tabular-nums text-subtle">{prompt.length}/{MAX_PROMPT}</span>
               </div>
               <Textarea
                 rows={7}
@@ -162,64 +165,63 @@ export default function Playground() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2.5">
-              <div className="min-w-0">
-                <div className="text-sm text-slate-700">流式输出</div>
-                <div className="text-[11px] text-slate-400">逐段渲染增量内容</div>
-              </div>
-              <Switch checked={stream} onChange={setStream} disabled={running} label="流式输出" />
-            </div>
+            <SettingRow
+              title={t('playground.stream')}
+              description={t('playground.streamHint')}
+              checked={stream}
+              onChange={setStream}
+              disabled={running}
+              label={t('playground.stream')}
+            />
 
             <div className="flex gap-2 pt-0.5">
               <Button onClick={send} disabled={running || !model || !prompt.trim()} className="flex-1">
                 {running ? <Spinner className="h-3.5 w-3.5 border-white/40 border-t-white" /> : <Play size={14} />}
-                {running ? '请求中…' : '发送'}
+                {running ? t('common.sending') : t('common.send')}
               </Button>
               <Button variant="outline" onClick={stop} disabled={!running} aria-label="停止请求">
-                <Square size={13} /> 停止
+                <Square size={13} /> {t('common.stop')}
               </Button>
             </div>
           </div>
         </Card>
 
         <Card flush className="flex min-w-0 flex-col overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 border-b border-slate-100" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
-            <h2 className="text-sm font-semibold text-slate-800">响应</h2>
-            <Badge tone="bg-slate-100 text-slate-600">{protocolLabel(protocol)}</Badge>
+          <div className="flex flex-wrap items-center gap-2 border-b border-line-soft" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
+            <h2 className="text-sm font-semibold text-foreground-soft">响应</h2>
+            <Badge tone="neutral">{protocolLabel(protocol)}</Badge>
             {meta && (
               <div className="ml-auto flex items-center gap-2">
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusPill(meta.status)}`}>
-                  HTTP {meta.status}
-                </span>
-                <span className="text-[11px] text-slate-400">{meta.retry_trace.length} 次尝试</span>
+                <Badge tone={httpStatusTone(meta.status)} className="font-semibold">HTTP {meta.status}</Badge>
+                <span className="text-[11px] text-subtle">{meta.retry_trace.length} 次尝试</span>
               </div>
             )}
           </div>
 
           <div ref={outputRef} aria-live="polite" className="max-h-[58vh] min-h-[300px] flex-1 overflow-auto" style={{ padding: 'var(--eg-card-pad)' }}>
             {output ? (
-              <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-slate-700">
+              <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-foreground-soft">
                 {output}
-                {running && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-indigo-500 align-middle" />}
+                {running && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-brand align-middle" />}
               </pre>
             ) : running ? (
-              <div className="flex items-center gap-2 py-12 text-sm text-slate-500"><Spinner /> 等待首个 token…</div>
+              <div className="flex items-center gap-2 py-12 text-sm text-muted"><Spinner /> {t('playground.waiting')}</div>
             ) : (
-              <Empty icon={<FlaskConical size={34} />} title="还没有响应" hint="选择协议与模型，输入消息后发送；流式响应会逐段显示。" />
+              <Empty icon={<FlaskConical size={34} />} title={t('empty.playground.title')} hint={t('empty.playground.hint')} />
             )}
           </div>
 
           {error && (
-            <div className="border-t border-red-100 bg-red-50 text-xs leading-5 text-red-600" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
+            <div className="border-t border-danger-border bg-danger-subtle text-xs leading-5 text-danger-text" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
               <span className="break-all">{error}</span>
             </div>
           )}
 
           {meta && (
-            <div className="border-t border-slate-100 bg-slate-50/60" style={{ padding: 'var(--eg-card-pad)' }}>
+            <div className="border-t border-line-soft bg-surface-soft" style={{ padding: 'var(--eg-card-pad)' }}>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">命中链路</h3>
-                <span className="text-[11px] text-slate-400">已写入请求日志 · source=playground</span>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">命中链路</h3>
+                <span className="text-[11px] text-subtle">已写入请求日志 · source=playground</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
                 <MetaItem label="渠道" value={meta.channel_name || '—'} hint={meta.channel_id ? `#${meta.channel_id}` : ''} />
@@ -227,7 +229,7 @@ export default function Playground() {
                 <MetaItem label="首 token" value={fmtMs(meta.first_token_ms || undefined)} />
                 <MetaItem label="总耗时" value={fmtMs(meta.total_ms || undefined)} />
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-slate-600">
+              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
                 {meta.usage.usage_seen ? (
                   <>
                     <UsageChip label="输入" value={fmtInt(meta.usage.prompt_tokens)} />
@@ -238,17 +240,17 @@ export default function Playground() {
                     {meta.usage.reasoning_tokens > 0 && <UsageChip label="reasoning" value={fmtInt(meta.usage.reasoning_tokens)} />}
                   </>
                 ) : (
-                  <span className="text-slate-400">上游未返回 usage</span>
+                  <span className="text-subtle">上游未返回 usage</span>
                 )}
               </div>
               {meta.error_message && (
-                <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-600">
+                <div className="mt-3 rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-xs text-danger-text">
                   {meta.error_type && <span className="mr-2 font-semibold">{kindText(meta.error_type)}</span>}
                   <span className="break-all">{meta.error_message}</span>
                 </div>
               )}
-              <div className="mt-4 border-t border-slate-200/70 pt-3">
-                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">重试轨迹</h4>
+              <div className="mt-4 border-t border-line pt-3">
+                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">重试轨迹</h4>
                 <RetryTimeline attempts={meta.retry_trace} />
               </div>
             </div>
@@ -268,17 +270,11 @@ function protocolLabel(protocol: 'chat' | 'responses' | 'anthropic' | 'gemini'):
   }
 }
 
-function statusPill(code: number): string {
-  if (code >= 200 && code < 300) return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-  if (code >= 400 && code < 500) return 'bg-amber-50 text-amber-700 ring-amber-200'
-  return 'bg-red-50 text-red-700 ring-red-200'
-}
-
 function UsageChip({ label, value }: { label: string; value: string }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 ring-1 ring-inset ring-slate-200">
-      <span className="text-slate-400">{label}</span>
-      <span className="font-medium tabular-nums text-slate-700">{value}</span>
+    <span className="inline-flex items-center gap-1 rounded-md bg-surface px-2 py-1 ring-1 ring-inset ring-line">
+      <span className="text-subtle">{label}</span>
+      <span className="font-medium tabular-nums text-foreground-soft">{value}</span>
     </span>
   )
 }
@@ -286,10 +282,10 @@ function UsageChip({ label, value }: { label: string; value: string }) {
 function MetaItem({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] text-slate-400">{label}</div>
-      <div className="break-all tabular-nums text-slate-700">
+      <div className="text-[11px] text-subtle">{label}</div>
+      <div className="break-all tabular-nums text-foreground-soft">
         {value}
-        {hint && <span className="ml-1 text-xs text-slate-400">{hint}</span>}
+        {hint && <span className="ml-1 text-xs text-subtle">{hint}</span>}
       </div>
     </div>
   )

@@ -1,0 +1,105 @@
+# 持续集成：main 推送与 PR 运行完整质量门禁（T74）。
+# 发布流水线 release.yml 在 tag 上重复同一套 Go 侧步骤，避免"只在发布时才发现问题"。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality (go -race / web / coverage)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install frontend dependencies
+        run: npm --prefix web ci
+
+      - name: Test frontend
+        run: npm --prefix web test
+
+      - name: Lint frontend
+        run: npm --prefix web run lint
+
+      - name: Build frontend (also refreshes embedded dist check)
+        run: npm --prefix web run build
+
+      - name: Vet backend
+        run: go vet ./...
+
+      # -race 需要 cgo；ubuntu runner 自带 gcc。SQLite 文件锁要求 -p 1。
+      - name: Test backend with race detector
+        run: go test -race -p 1 ./... -count=1
+
+      - name: Enforce scheduler coverage
+        run: make coverage-scheduler
+
+      - name: Enforce relay coverage
+        run: make coverage-relay
+
+      - name: Build backend
+        run: go build ./...
+
+      - name: Check diff whitespace
+        run: git diff --check
+
+  security:
+    name: Security (gitleaks / actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 个人仓库无需 GITLEAKS_LICENSE；组织账户需在 Secrets 配置。
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_SUMMARY: true
+
+      - name: Lint workflows
+        uses: rhysd/actionlint@v1.7.7
+        with:
+          shellcheck: ""
+
+  macos-build:
+    name: macOS cgo build (no release)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # desktop_darwin.go 只在 darwin && cgo 下编译；本 job 证明该变体始终可编译，不产出发布物。
+      - name: Build darwin cgo variant
+        env:
+          CGO_ENABLED: "1"
+          GOOS: darwin
+          GOARCH: arm64
+        run: |
+          go build ./internal/desktop/ ./cmd/evergate/
+          go vet ./internal/desktop/
+          go test ./internal/desktop/ -count=1

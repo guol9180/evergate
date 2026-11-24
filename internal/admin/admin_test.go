@@ -42,7 +42,7 @@ func newEnv(t *testing.T) *testEnv {
 	if err := store.Migrate(db); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := store.EnsureAdmin(db, store.DefaultAdminUsername, store.DefaultAdminPassword); err != nil {
+	if _, err := store.EnsureAdmin(db, store.DefaultAdminUsername, "admin123"); err != nil {
 		t.Fatalf("ensure admin: %v", err)
 	}
 	master, _ := store.GenerateRandomKey()

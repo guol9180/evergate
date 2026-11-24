@@ -24,6 +24,7 @@ const chrome = args.get('--chrome') || 'C:\\Program Files\\Google\\Chrome\\Appli
 const screenshotDir = args.get('--screenshots')
 const seed = args.has('--seed')
 const username = process.env.EG_AUDIT_USER || 'admin'
+// 初始密码自 T75 起为随机生成：审计前请以 EVERGATE_INITIAL_ADMIN_PASSWORD 启动被测服务，或在此处指定 EG_AUDIT_PASSWORD。
 let password = process.env.EG_AUDIT_PASSWORD || 'admin123'
 const nextPassword = process.env.EG_AUDIT_NEW_PASSWORD
 const widths = [360, 390, 768, 1024, 1280, 1440, 1600, 1920, 2560]

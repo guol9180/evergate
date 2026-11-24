@@ -209,7 +209,7 @@ type RuntimeSetting struct {
 	UpdatedAt              time.Time `json:"updated_at"`
 }
 
-// Admin 是管理台账号（首次启动空表时创建默认 admin/admin123，首登强制改密）。
+// Admin 是管理台账号（首次启动空表时创建 admin，密码为随机生成或 EVERGATE_INITIAL_ADMIN_PASSWORD，首登强制改密）。
 type Admin struct {
 	ID                 int64     `gorm:"primaryKey;autoIncrement" json:"id"`
 	Username           string    `gorm:"size:50;not null;uniqueIndex" json:"username"`
@@ -217,4 +217,21 @@ type Admin struct {
 	MustChangePassword bool      `gorm:"not null;default:true" json:"must_change_password"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// AuditLog 记录管理台写操作（渠道/密钥/令牌/设置/降级链/价格/配置导入导出/改密），供管理台查询与追溯。
+type AuditLog struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	CreatedAt time.Time `gorm:"index" json:"created_at"`
+	Username  string    `gorm:"size:50;not null;default:''" json:"username"`
+	Action    string    `gorm:"size:64;not null;index" json:"action"` // channel.create / token.delete / settings.update ...
+	Target    string    `gorm:"size:200;not null;default:''" json:"target"`
+	Summary   string    `gorm:"type:text" json:"summary"` // ≤512 字符，不含任何密钥
+	IP        string    `gorm:"size:45;not null;default:''" json:"ip"`
+}
+
+// SchemaMeta 是迁移元数据单表（key/value）；app_version 记录最近一次完成 AutoMigrate 的应用版本，用于升级前备份判断。
+type SchemaMeta struct {
+	Key   string `gorm:"primaryKey;size:64" json:"key"`
+	Value string `gorm:"type:text" json:"value"`
 }

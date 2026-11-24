@@ -1,4 +1,4 @@
-.PHONY: build build-web build-all icon run test coverage-scheduler fmt vet clean
+.PHONY: build build-web build-all icon run test coverage-scheduler coverage-relay fmt vet clean
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -57,6 +57,13 @@ coverage-scheduler:
 	go test ./internal/pool ./internal/retry ./internal/router -coverprofile=.gocache/scheduler-cover.out
 	go tool cover -func=.gocache/scheduler-cover.out > .gocache/scheduler-cover.txt
 	node scripts/check-scheduler-coverage.mjs .gocache/scheduler-cover.txt
+
+# relay 语句覆盖率门禁（T74）：基线 81.0%（2026-11-24 实测），阈值 81 不得高于基线
+coverage-relay:
+	node -e "require('node:fs').mkdirSync('.gocache',{recursive:true})"
+	go test ./internal/relay -coverprofile=.gocache/relay-cover.out
+	go tool cover -func=.gocache/relay-cover.out > .gocache/relay-cover.txt
+	node scripts/check-relay-coverage.mjs .gocache/relay-cover.txt
 
 fmt:
 	gofmt -l -w .

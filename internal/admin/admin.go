@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -55,6 +56,8 @@ type Options struct {
 	ConfigSource    string
 	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
 	Playground gin.HandlerFunc
+	// Logger 用于审计写入失败等非业务告警；nil 时静默。
+	Logger *slog.Logger
 }
 
 // API 管理台接口集合。
@@ -103,6 +106,7 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.DELETE("/admin/api/channels/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteChannel)
 	r.POST("/admin/api/channels/:id/toggle", a.accessMiddleware(), a.sessionMiddleware(), a.toggleChannel)
 	r.POST("/admin/api/channels/:id/test", a.accessMiddleware(), a.sessionMiddleware(), a.testChannel)
+	r.POST("/admin/api/channels/test-all", a.accessMiddleware(), a.sessionMiddleware(), a.testAllChannels)
 	r.POST("/admin/api/channels/:id/models/preview", a.accessMiddleware(), a.sessionMiddleware(), a.previewChannelModels)
 	r.POST("/admin/api/channels/:id/keys", a.accessMiddleware(), a.sessionMiddleware(), a.batchAddKeys)
 	r.PUT("/admin/api/keys/:id", a.accessMiddleware(), a.sessionMiddleware(), a.updateKey)
@@ -112,7 +116,12 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.PUT("/admin/api/tokens/:id", a.accessMiddleware(), a.sessionMiddleware(), a.updateToken)
 	r.DELETE("/admin/api/tokens/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteToken)
 	r.GET("/admin/api/logs", a.accessMiddleware(), a.sessionMiddleware(), a.listLogs)
+	r.GET("/admin/api/logs/stats", a.accessMiddleware(), a.sessionMiddleware(), a.logStatsHandler)
+	r.GET("/admin/api/logs/export", a.accessMiddleware(), a.sessionMiddleware(), a.exportLogs)
 	r.GET("/admin/api/logs/:id", a.accessMiddleware(), a.sessionMiddleware(), a.getLog)
+	r.GET("/admin/api/config/export", a.accessMiddleware(), a.sessionMiddleware(), a.exportConfig)
+	r.POST("/admin/api/config/import", a.accessMiddleware(), a.sessionMiddleware(), a.importConfig)
+	r.GET("/admin/api/audit-logs", a.accessMiddleware(), a.sessionMiddleware(), a.listAuditLogs)
 	r.POST("/admin/api/playground", a.accessMiddleware(), a.sessionMiddleware(), a.playground)
 }
 
@@ -321,35 +330,44 @@ func (a *API) updateSystemSettings(c *gin.Context) {
 }
 
 // sessionMiddleware 校验会话 Cookie；首登未改密前仅放行 me/password（强制改密）。
+// 请求结束后对白名单内的写操作落审计（T75）。
 func (a *API) sessionMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token, err := c.Cookie(CookieName)
-		if err != nil || token == "" {
-			fail(c, http.StatusUnauthorized, "未登录")
-			c.Abort()
-			return
-		}
-		username, verr := a.opt.Session.Verify(token, time.Now())
-		if verr != nil {
-			fail(c, http.StatusUnauthorized, "会话无效或已过期")
-			c.Abort()
-			return
-		}
-		c.Set("admin", username)
-		// 强制首登改密：me/password 放行，其余一律 403
-		path := c.FullPath()
-		if strings.HasSuffix(path, "/auth/me") || strings.HasSuffix(path, "/auth/password") {
-			c.Next()
-			return
-		}
-		admin, aerr := store.GetAdminByUsername(a.opt.DB, username)
-		if aerr == nil && admin.MustChangePassword {
-			c.JSON(http.StatusForbidden, gin.H{"code": "must_change_password", "message": "首次登录必须修改密码"})
-			c.Abort()
+		if !a.authenticateSession(c) {
 			return
 		}
 		c.Next()
+		a.auditWrite(c)
 	}
+}
+
+// authenticateSession 校验会话并在需要时中止请求；返回 false 表示已中止。
+func (a *API) authenticateSession(c *gin.Context) bool {
+	token, err := c.Cookie(CookieName)
+	if err != nil || token == "" {
+		fail(c, http.StatusUnauthorized, "未登录")
+		c.Abort()
+		return false
+	}
+	username, verr := a.opt.Session.Verify(token, time.Now())
+	if verr != nil {
+		fail(c, http.StatusUnauthorized, "会话无效或已过期")
+		c.Abort()
+		return false
+	}
+	c.Set("admin", username)
+	// 强制首登改密：me/password 放行，其余一律 403
+	path := c.FullPath()
+	if strings.HasSuffix(path, "/auth/me") || strings.HasSuffix(path, "/auth/password") {
+		return true
+	}
+	admin, aerr := store.GetAdminByUsername(a.opt.DB, username)
+	if aerr == nil && admin.MustChangePassword {
+		c.JSON(http.StatusForbidden, gin.H{"code": "must_change_password", "message": "首次登录必须修改密码"})
+		c.Abort()
+		return false
+	}
+	return true
 }
 
 // ---------- 渠道 ----------
@@ -1203,29 +1221,7 @@ func (a *API) listLogs(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	q := a.opt.DB.Model(&store.RequestLog{})
-	if v := c.Query("channel_id"); v != "" {
-		q = q.Where("channel_id = ?", queryInt64(c, "channel_id"))
-	}
-	if v := c.Query("token_id"); v != "" {
-		q = q.Where("token_id = ?", queryInt64(c, "token_id"))
-	}
-	if v := c.Query("model"); v != "" {
-		q = q.Where("model = ?", v)
-	}
-	if v := c.Query("status"); v != "" {
-		q = q.Where("status_code = ?", queryInt(c, "status", 0))
-	}
-	if v := c.Query("start"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			q = q.Where("created_at >= ?", t.UTC())
-		}
-	}
-	if v := c.Query("end"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			q = q.Where("created_at <= ?", t.UTC())
-		}
-	}
+	q := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "查询失败")
@@ -1256,6 +1252,7 @@ func (a *API) getLog(c *gin.Context) {
 // ---------- 工具 ----------
 
 func ok(c *gin.Context, data any) {
+	stashAuditSummary(c, data)
 	c.JSON(http.StatusOK, gin.H{"ok": true, "data": data})
 }
 

@@ -2,6 +2,16 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## Unreleased
+
+- 安全：首次启动的管理员密码改为随机生成（打印到控制台与 `logs/evergate.log`，可用 `EVERGATE_INITIAL_ADMIN_PASSWORD` 预设），不再使用固定 `admin123`；新增管理台写操作审计日志（`GET /admin/api/audit-logs`）
+- 可靠性：检测到应用版本变化时在数据库迁移前自动备份 `evergate.db` 到 `data/backups/`（保留 5 份）
+- 管理台：颜色语义 token 与暗色模式（侧栏切换、跟随系统）、中英文切换、Dialog/Drawer 焦点管理与 Esc、骨架屏、页码分页器、危险操作确认对话框替代浏览器原生弹窗、页面标题随路由变化
+- 管理台：新建渠道可内联粘贴上游 key、类型逐项说明、模型映射表格编辑、渠道级超时字段、「测试全部」并按延迟排序；日志筛选改为渠道/令牌下拉 + 日期范围并支持导出 CSV；令牌创建成功直接给出可复制的客户端环境变量片段；Dashboard 成功率/延迟改为后端全量聚合、四段引导与额度不足 20% 预警；系统设置新增配置导出/导入与审计日志
+- 新接口：`GET /admin/api/logs/stats`、`GET /admin/api/logs/export`、`GET /admin/api/config/export`、`POST /admin/api/config/import`、`POST /admin/api/channels/test-all`
+- CI：新增 `ci.yml` 在 main 推送与 PR 运行 `go test -race`、vet、前端 lint/test/build、调度与 relay 覆盖率门禁（relay ≥81%）、gitleaks、actionlint 与 macOS cgo 编译；npm 发布支持可选 OIDC Trusted Publishing（仓库变量 `NPM_TRUSTED_PUBLISHING`）
+- 文档：README 新增七类客户端接入指南与如实描述 macOS 现状；新增 FAQ、HTTPS 与反向代理、回滚与备份、OpenAPI、发版检查清单、风险登记、贡献指南与安全策略；AGENTS.md 瘦身至 48 行，功能专属约束迁入 `docs/design/`，DEVELOP_PLAN done 卡归档至 `docs/history/`
+
 ## v0.5.5
 
 - 修复 Chat Completions 兼容上游流式请求未主动返回 usage 的问题：网关自动设置 `stream_options.include_usage=true`，为额度结算与成本计算取得真实输入/输出 token

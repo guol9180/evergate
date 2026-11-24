@@ -3,120 +3,46 @@
 ## 通用规范（必建五条）
 
 1. **复用优先，不过度设计**：同一逻辑或结构出现第二份副本时，立即抽取为公共函数 / 公共样式 / 公共组件；前端页面表现优先组件化；保证代码质量，不为假想的未来需求预先抽象。
-2. **文档同步**：DEVELOP_PLAN.md 随任务同步（进度只追加、状态如实流转）；AGENTS.md 仅在开发规范变化时更新；README.md 仅在项目定位、结构、用法或环境变化时更新——新增功能默认只记录在 DEVELOP_PLAN.md，不逐条追加进 README，README 不是变更日志。文档与代码不同步视为任务未完成。
-3. **计划执行分离**：动手前先在 DEVELOP_PLAN.md 建任务卡（目标、验收标准、边界）并确认；执行中不得顺手扩范围，需求或范围变化先回任务卡更新，再改代码。
+2. **文档同步**：DEVELOP_PLAN.md 随任务同步（进度只追加、状态如实流转；done 卡归档到 `docs/history/`，主文件 ≤300 行）；AGENTS.md 仅在开发规范变化时更新；README.md 仅在项目定位、结构、用法或环境变化时更新——新增功能默认只记录在 DEVELOP_PLAN.md，README 不是变更日志。文档与代码不同步视为任务未完成。
+3. **计划执行分离**：动手前先在 DEVELOP_PLAN.md 建任务卡（目标、验收标准、边界）并确认；执行中不得顺手扩范围，需求或范围变化先回任务卡更新，再改代码。**并发规则**：一个 AI 会话同一时间只持一张 in-progress 卡；修改 DEVELOP_PLAN.md 前先 `git pull --rebase`；决策落盘先于任何代码改动。
 4. **诚实终态**：声明完成必须附实际产出文件与验证证据（执行了什么、结果如何）；未运行的测试或验证不得声称通过；受阻时如实标注 blocked 并写明原因与可否绕行。
 5. **精准修改**：每一行改动都必须能追溯到当前任务；不顺手改进相邻代码、注释或格式，不重构没坏的东西，匹配现有风格；只清理因本次改动产生的孤儿代码（本次改动使其失效的导入 / 变量 / 函数）；发现既有死代码提及而不删，除非任务明确要求；注释只写代码装不下的信息（业务约束、非显然决策、坑位规避），不写修改叙事、阶段引用、代码复述。
 
-## 目录约定
+## 目录约定（压缩版，完整版见 [docs/design/目录约定.md](./docs/design/目录约定.md)）
 
-```
-cmd/evergate/main.go   # 唯一入口：加载配置 → 迁移 DB → 启动 HTTP
-internal/config/       # YAML 引导配置加载
-internal/applog/       # 运行日志 stdout + 大小滚动文件双写
-internal/server/       # Gin 路由注册、中间件（鉴权/日志/recovery）
-internal/relay/        # 核心代理：上游请求构造、SSE 透传、超时控制
-internal/reqconfig/    # X-EverGate-Config 请求级白名单覆盖解析与脱敏摘要
-internal/router/       # 模型 → 渠道候选列表（优先级+权重）
-internal/pool/         # key 池调度器 + cooldown 状态机
-internal/affinity/     # X-Session-Id 会话亲和：SHA-256 指纹 + TTL + 有界 LRU
-internal/retry/        # 错误分类器 + 重试预算
-internal/provider/     # 跨协议上游公共能力：模型列表端点、鉴权与有界分页
-internal/appdir/       # 跨平台配置发现、注册表读取与数据目录解析
-internal/store/        # GORM 模型与数据访问
-internal/admin/        # 管理台 API handlers
-internal/health/       # 周期模型列表轻量探测、key cooldown 持久化与健康状态合成
-internal/settings/     # SQLite 运行时设置、快照热更新与维护任务
-internal/usage/        # 模型价格快照、请求成本、UTC 日幂等聚合与报表查询
-internal/browser/      # 启动后打开管理台的系统浏览器封装
-internal/desktop/      # Windows/macOS 桌面单实例、托盘/菜单栏、错误提示与日志定位
-internal/winres/       # Windows GUI-only 图标、DPI manifest 与资源加载
-internal/update/       # 版本检查：npm dist-tags 优先、GitHub Release 元数据/兜底
-internal/metrics/      # 进程内 Prometheus 注册表、文本曝光与 loopback 限制
-internal/telemetry/    # 可选 OTLP/HTTP JSON 链路导出（无 SDK 依赖，默认关闭）
-internal/selfupdate/   # 安装包级更新：版本化资产、校验、安装器/Linux 置换与重启编排
-internal/npmregistry/  # npm registry 默认链（npmmirror → 官方）与规范化公共定义
-npm/wrapper/           # npm 主包模板（启动垫片，不含二进制）
-npm/platform/          # npm 平台子包模板（版本/os/cpu 由发布脚本注入）
-npm/updates/           # npm 完整安装资产更新包模板（内置更新器使用）
-scripts/               # 构建与发布辅助脚本（如 stage-npm.mjs）
-installer/             # Windows Inno Setup 与 macOS 自定义安装器
-web/                   # React 管理台源码（构建产物 go:embed 嵌入）
-web/public/logo.svg    # EverGate 品牌图标唯一视觉源；favicon.ico 与 Windows .syso 均由它派生
-docs/                  # 设计文档与需求（开发任务书等）
-evergate.yml           # 引导配置（端口/DB路径/主密钥；运行时业务设置首次种子）
-Makefile               # 构建入口（前端构建 / 本机构建 / 三平台交叉编译）
-```
+- `cmd/evergate/main.go` 唯一入口；`internal/` 每包一个职责（relay 转发、router/pool/retry/affinity 调度、store/admin/health/settings/usage 数据与管理、desktop/winres/browser 桌面、update/selfupdate/npmregistry 更新发布、metrics/telemetry 可观测、config/appdir/applog/server 基础设施）
+- `web/` React 管理台（`web/dist` 随仓库提交，改前端后必须 `make build-web` 并提交）；`web/public/logo.svg` 品牌图标唯一视觉源
+- `scripts/` 构建发布脚本；`installer/` 桌面安装器；`npm/` 发布模板；`docs/design/` 实现约束；`docs/history/` 归档任务卡
+- 业务数据一律存 DB，不进 YAML；配置与数据路径统一由 `internal/appdir` 解析；Go 文件小写、测试同包白盒；React 组件 PascalCase
 
-- 业务数据（渠道/密钥/令牌）一律存 DB，不进 YAML；YAML 仅做引导。
-- 配置与数据路径统一由 `internal/appdir` 解析；配置发现的显式参数/环境变量/注册表/平台默认/旧便携顺序不得在 main、安装器或页面各自重写。配置内相对 SQLite 路径相对配置文件目录，不相对 cwd。
-- `web/dist` 随仓库提交（约 400KB），保证后端开发者无 Node 环境也能 `go build`；改前端后必须 `make build-web` 并提交更新后的 dist。
-- 品牌图标以 `web/public/logo.svg` 为唯一视觉源；更换图标后需重生成 `web/public/favicon.ico` 并执行 `make icon`，再提交派生产物。
-- Go 文件与包名小写；测试文件与被测文件同包（白盒）或 `_test` 包（黑盒）。
-- React 组件文件 PascalCase，放 `web/src/` 下按页面/组件分目录。
+## 代码风格（跨模块不变量；功能专属约束见 [协议与转发](./docs/design/约束-协议与转发.md)、[管理台与运维](./docs/design/约束-管理台与运维.md)）
 
-## 代码风格
-
-- Go：提交前 `gofmt` 无 diff、`go vet` 通过；错误必须处理或显式 `//nolint` 注明理由。
-- 客户端接入协议矩阵当前交付范围为 OpenAI Chat Completions `/v1/chat/completions`、OpenAI Responses `/v1/responses`、Anthropic Messages `/v1/messages`（含 `count_tokens`）与 Gemini `/v1beta/models/{model}:generateContent|streamGenerateContent|countTokens`。新增接入能力必须说明既有入口的可用性，不能只验证单一协议。
-- Responses 原生能力是渠道级声明：声明渠道的 `/v1/responses` 必须仅改写鉴权、base_url 与模型映射并原样转发 JSON/SSE；未声明渠道才允许 R→CC 桥接。不可桥接的状态字段必须显式 400，不得静默丢弃。
-- Anthropic 原生能力是渠道级声明：声明渠道的 `/v1/messages` 与 `count_tokens` 必须仅改写鉴权、base_url 与模型映射并原样转发 JSON/SSE；下游鉴权同时接受 Bearer 与 `x-api-key`，上游统一注入 `x-api-key` 并透传 `anthropic-version` / `anthropic-beta`。Messages SSE 以 `message_stop` + EOF 结束、无 `[DONE]`，`ping` 必须原样转发；M→CC 桥接只能承载可等价表达的字段，`thinking` / `cache_control` 等必须显式 400。
-- Gemini 原生能力是渠道级声明：模型位于 URL 路径，声明渠道必须改写路径模型并注入 `x-goog-api-key`，禁止 `?key=` 鉴权；G→G 透传保留 `systemInstruction` / `safetySettings` / `tools` / `generationConfig`，SSE 为 data-only、无 `[DONE]`、以 EOF 终止。G→CC 桥接的 `functionCall.args` 必须对象↔JSON 字符串往返并保持调用 id 配对；`safetySettings` / `thinkingConfig` / `inlineData` / `fileData` / `topK` / `responseSchema` 必须显式 400。Gemini usage 输入含 `toolUsePromptTokenCount`，输出含 `thoughtsTokenCount`，成本口径不得漏计。
-- 所有时间以 UTC 存储，仅展示层转本地时区。
-- 对外错误响应统一 OpenAI 格式 `{error:{message,type,code}}`；全部渠道耗尽返回 503。
-- Responses 下游的 `function` / `custom` 工具转换必须保留客户端声明的工具语义，custom grammar 只能降级为提示不能声称硬约束；新增 Responses 工具或事件前先对照 OpenAI 官方 schema 与允许参考项目，并用公共 HTTP 边界写回归测试。
-- Responses namespace 工具扁平化必须生成确定性且全局唯一的 Chat 函数名；响应输出与历史回传必须恢复原始 `namespace/name`，不得只按局部工具名去重或依赖跨请求内存状态。
-- 管理台 API 返回统一 JSON 结构；任何接口不得回显上游 key 明文。
-- 前端路由守卫依赖的服务端状态（如 `['me']`）被 mutation 改变时，必须在成功回调同步更新 TanStack Query 缓存；仅重新导航不得依赖旧缓存判断。
-- 前端图表统一使用 Recharts 共享组件（参照 `web/src/components/TrendChart.tsx`），不得手写 div/SVG 图表；图表宽度 100%，高度必须由响应式规则或 flex 填充，禁止在卡片内留下大块空白；引入图表库需按路由懒加载，避免进入首屏 bundle。
-- 运行日志（slog JSON 同时写 stdout 与数据目录 `logs/evergate.log`，按大小滚动）与请求日志（入库供管理台查询）分离；GUI 构建无有效 stdout 时不得影响文件日志。
-- 流式请求的 `first_token_ms` 必须从发起上游请求开始计时，到首条 SSE data 为止；Chat Completions 与 Responses 两条流式路径不得各自定义口径。
-- Chat Completions 的空闲保活必须发送协议内合法、无正文/角色/工具调用/usage 的空增量 `data:` 帧；不得只依赖 SSE 注释帧，因为 Ktor 等客户端会忽略注释并可能按 data 事件静默超时取消请求。
-- Ktor/JetBrains 调用 ZAI coding + GLM 的 Chat 流时，若客户端未显式声明 `thinking` / `reasoning` / `reasoning_effort`，上游请求必须关闭 thinking，避免 reasoning-only 阶段触发可见正文超时；禁止把 `reasoning_content` 伪造成正文。
-- 渠道健康探测只能调用模型列表 GET，不得触发推理接口：OpenAI 兼容渠道使用 `GET {base_url}/models` 与 Bearer；Anthropic 原生渠道使用 `GET {base_url}/v1/models`、`x-api-key` 与固定 `anthropic-version: 2023-06-01`；Gemini 原生渠道使用 `GET {base_url}/v1beta/models` 与 `x-goog-api-key`，禁止 `?key=`。协议选择优先级 Anthropic → Gemini → OpenAI 兼容。404/405 必须标记 inconclusive 并释放 half-open 探测名额，不得改变 key 调度状态。
-- 模型目录发现只能读取上游模型列表，不得触发推理或改变 key 调度状态。拉取结果按 Anthropic `after_id` / Gemini `pageToken` 分页，最多 10 页、500 个唯一模型；OpenAI 兼容协议不猜测非标准游标。渠道 `Models` 始终是对外模型名：选择上游模型时必须反查 `model_mapping`，多对一时每个对外别名单独作为候选，禁止把映射目标直接写入 `Models`。
-- OpenCode Go 渠道必须兼容其路由约束：上游推理请求携带 `x-opencode-session`，来源优先级为下游同名头 → `X-Session-Id` → `evergate-<opaque-id>`；模型目录与健康探测统一映射到同源 `/inference/go/v1/models`，禁止在 `/inference/go/openai/v1/models` 猜测目录端点。
-- 会话亲和表只保存 `token + model + session` 的 SHA-256 指纹，禁止保存 `X-Session-Id` 原文或写入请求日志/响应；TTL 与 LRU 容量必须有界，第一版仅进程内存，禁止擅自加 Redis/SQLite 持久化。
-- 会话亲和只能在最高优先级组内提升候选渠道，且粘性 key 必须重新通过 enabled/cooldown/探测名额校验；不得绕过 priority 主备层级、健康状态或重试预算。
-- 请求级 `X-EverGate-Config` 只允许 timeouts / retry / channels / session_affinity 白名单字段，必须在 TokenAuth 与令牌治理之后解析；未知字段与敏感字段（api_key/model/allowed_models 等）一律 400 并带字段路径，禁止静默忽略或放宽。
-- 请求级覆盖不得绕过鉴权、模型白名单、额度、IP 限制或上游 key 加密；渠道 id 必须校验存在、启用且支持当前模型；摘要只允许脱敏生效字段（≤512B）落请求日志，禁止保存原始 header。
-- 管理台 Playground 只能由 admin 会话中间件保护，禁止为其签发或要求下游 token；执行必须复用 relay 公共 dispatch，不得另写一套调度/重试逻辑，请求日志必须标记 `source=playground`。
-- Playground 流式输出必须逐段转发且不得整段缓冲；命中摘要只能包含渠道/模型/耗时/usage/重试轨迹，禁止输出任何上游或下游 key 明文。前端消息长度上限必须与后端校验一致。
-- 管理台页面统一使用 `PageHeader`（独立登录/改密页除外），标题与描述字号一致；数据表必须放在 `overflow-x-auto` 容器内并设置合理 min-width，窄屏只允许卡片内横向滚动，禁止页面级横向溢出。
-- 表格行内操作优先使用图标按钮，并提供 `aria-label` 与 `title`；禁止只放一个中文词当按钮。Drawer 在窄屏必须占满宽度，Dialog 表单栅格在窄屏降为单列。
-- 下游令牌治理（停用/过期/IP/模型/额度）必须在调用上游前由公共中间件与 relay 公共检查点强制；成功扣减额度只能使用实际输入+输出 usage，客户端断开、上游失败或 usage 缺失不得猜测扣减。
-- `/metrics` 只允许 loopback 抓取；指标标签只能使用协议、状态码、错误分类、渠道 id、模型名等低基数维度，禁止 key/令牌/请求体/master key；渠道与模型标签必须经过基数上限折叠。
-- OTLP 链路导出默认关闭且不得引入 OpenTelemetry SDK（单二进制体积红线）；只支持 OTLP/HTTP JSON，导出失败只告警，不得阻塞或影响请求成功。
-- npm 发布：主包 `@heguoliang/evergate` 不得包含平台二进制；主包、三个平台子包与 `@heguoliang/evergate-updates` 更新资产包版本必须等于 git tag（去掉 `v`），平台子包先于主包发布，更新资产包在所有公开资产校验完成后发布；`NPM_TOKEN` 仅存 GitHub Secrets，不得写入仓库或日志；token 须为可绕过 2FA 的 Automation/发布专用 token。
-- 公开 Release 只发布版本化安装资产/归档与 checksums，不得重新发布 Windows/macOS 裸二进制；macOS 资产受下方安装器开关约束。Windows GUI 使用 `windowsgui`、Per-Monitor V2 manifest 与 `internal/winres` 图标资源，console 不得嵌入 GUI 资源。Windows/macOS 必须保持单实例，自启动参数不得自动弹浏览器。
-- 一键更新优先从 npmmirror → 官方 npm registry 获取 `@heguoliang/evergate-updates` 完整资产包，双源失败才回退 GitHub Release。npm tarball 必须校验 sha512 integrity 与包内 SHA256 checksums；HTTP GET 对连接错误、429、5xx 使用有界短重试。Windows/macOS 必须运行完整安装器，禁止替换 App/程序内单文件；macOS 必须校验 Developer ID 与 notarization。Linux 只从 tar.gz 安全提取唯一 `evergate`，同目录原子替换并保留备份；容器与 npm 安装拒绝应用内更新。
-- 模型降级只能发生在 TokenAuth 与令牌治理之后、进入上游之前：预算触发必须使用请求开始时的剩余额度快照；候选模型必须通过令牌模型白名单；渠道耗尽触发必须先穷尽该模型的现有渠道/key 重试预算。降级边界必须写入 retry_trace（reason/from/to）并在请求日志保留 original_model 与实际 model，成本按实际命中渠道+模型价格快照计算；首 chunk 后禁止因降级重试。
-- 成本必须在请求完成时按当时价格快照写入 request_logs，价格变更不得追溯重算；usage 缺失或未匹配价格必须显式标记 no_usage/unpriced。usage_daily 一律从 request_logs 按 UTC 日事务内先删后插重建，禁止增量累加造成重复计数。
+- Go：提交前 `gofmt` 无 diff、`go vet` 通过；错误必须处理或显式 `//nolint` 注明理由
+- 所有时间以 UTC 存储，仅展示层转本地时区；对外错误统一 OpenAI 格式 `{error:{message,type,code}}`，渠道耗尽返回 503；管理台 API 统一 JSON 信封，**任何接口不得回显上游 key 明文**
+- 下游令牌治理（停用/过期/IP/模型/额度）在调用上游前由公共中间件强制；扣减额度只用实际 usage，不得猜测
+- 成本按请求完成时的价格快照写入，不追溯重算；usage 缺失 / 未计价必须显式标记
 
 ## 流程要求（分支 / 提交 / 测试 / 验证）
 
-- **开发顺序**：严格按 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑) 明确给出的当前阶段顺序执行；里程碑未另行指定时按任务卡顺序执行。依赖项必须先完成，每步可运行、可验证后再进入下一步。
-- **提交信息**：`feat:` / `fix:` / `test:` / `docs:` 前缀。
-- **提交前验证**：后端 `go test ./...` 通过且 `make build` 成功；涉及前端时 `npm run build` 成功；涉及调度内核时关键状态/分支场景必须有表驱动断言，标准 Go 语句覆盖率 ≥ 90%，报告不得把语句覆盖率表述为分支覆盖率。
-- **新增依赖**：须有明确理由并在提交说明中记录；先对照下方禁止清单。
-- **依赖下载**：`go mod download` / `npm install` 受网络沙箱限制，失败时走审批，不得绕过。本机 Go 已配置用户级 `GOPROXY=https://goproxy.cn,direct`（sum.golang.org 不可达）；沙箱内执行 go 命令时需设 `GOCACHE` 指向仓库内 `.gocache/`（已 gitignore），避免写 C 盘被拒。
+- **开发顺序**：严格按 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑) 当前阶段顺序执行；依赖项先完成，每步可运行、可验证后再进入下一步
+- **提交信息**：`feat:` / `fix:` / `test:` / `docs:` 前缀
+- **提交前验证**：`go test -p 1 ./...`、`go vet ./...`、`make build` 通过；涉及前端时 `npm run lint`、`npm test`、`npm run build` 通过；CI（`ci.yml`）另跑 `go test -race`、调度覆盖率 ≥90%、relay 覆盖率 ≥81%、gitleaks、actionlint、macOS cgo 编译。覆盖率报告不得把语句覆盖率表述为分支覆盖率
+- **新增依赖**：须有明确理由并在提交说明中记录；先对照禁止清单。本机 Go/Node 环境事实见 [docs/开发环境.md](./docs/开发环境.md)
 
 ## 版本与发布规则
 
-- **单一事实源**：版本号以 git tag `vMAJOR.MINOR.PATCH[-pre.N]` 为准，必须打在 main 上；二进制注入、npm 包版本、CHANGELOG 标题全部由 tag 派生，不得手改。
-- **bump 语义（0.x 阶段）**：修复 → PATCH；新增功能 → MINOR（例如 0.2.0）；破坏性变更 → MINOR（0.x 惯例）。**1.0 之后**破坏性变更 → MAJOR。禁止把功能发布塞进 PATCH。
-- **1.0 触发条件**：`/v1` 协议面、admin API、配置与 DB 兼容策略稳定，并承诺按语义化版本维护兼容性；不按时间点切换。
-- **预发布通道**：tag 使用 `-rc.N` / `-beta.N`；npm 发布使用 `--tag next`，GitHub Release 标记 prerelease；`latest` 只随正式版移动。更新检查默认忽略预发布目标，当前版本自身为预发布时除外。
-- **发布门禁**：tag 必须有精确对应的 `## vX.Y.Z` CHANGELOG 段且 tag 提交在 main 历史上，否则 workflow 失败；发布后校验主包与三个平台子包版本等于 tag 去掉 `v`。
-- **macOS 安装器开关**：只有 `ENABLE_MACOS_INSTALLER=true` 且全部签名/公证 Secrets 存在时才构建和发布 DMG；未启用时发布门禁允许 macOS 安装器缺省，但永远不得发布未签名、未公证 DMG。
-- **开发构建**：`dev`、`-dirty`、`-N-g<sha>` 形态统一视为开发态，不参与更新比较，不得提示用户升级。
+- **单一事实源**：版本号以 git tag `vMAJOR.MINOR.PATCH[-pre.N]` 为准，必须打在 main 上；二进制注入、npm 包版本、CHANGELOG 标题全部由 tag 派生
+- **bump 语义（0.x）**：修复 → PATCH；新增功能或破坏性变更 → MINOR；**1.0 之后**破坏性变更 → MAJOR。禁止把功能发布塞进 PATCH
+- **预发布通道**：tag `-rc.N` / `-beta.N`，npm `--tag next`，GitHub Release 标记 prerelease；`latest` 只随正式版移动；MINOR 发布前先出 `-rc.1` 自用
+- **发布门禁**：tag 必须有精确对应的 `## vX.Y.Z` CHANGELOG 段且在 main 历史上；发版步骤与"真实旧→新升级一次"见 [docs/发版检查清单.md](./docs/发版检查清单.md)；macOS 安装器只在 `ENABLE_MACOS_INSTALLER=true` 且签名/公证 Secrets 齐全时构建，永远不得发布未签名 DMG
+- **开发构建**：`dev`、`-dirty`、`-N-g<sha>` 统一视为开发态，不参与更新比较
 
 ## 禁止事项
 
-- **不引入**：Redis、消息队列、微服务拆分、K8s/Helm、ClickHouse、GraphQL、微前端、OAuth2/OIDC、多租户计费、语义缓存、向量库。
-- **许可证红线**：new-api（AGPL-3.0）任何代码/组件/样式不得复制，只看交互与功能清单；OmniRoute（灰色玩法）严禁参考、严禁引入其依赖。可复制源码范围仅限 gpt-load（MIT，保留版权声明）、bifrost（Apache-2.0，保留 NOTICE）、litellm 核心（MIT，不碰 enterprise/）。
-- **SSE 红线**：首个 chunk 已写给客户端后禁止重试；禁止整段缓冲上游响应（必须 flush 循环透传）。
-- **迁移红线**：数据库迁移只用 GORM AutoMigrate，禁止手写 SQL 迁移脚本（个人项目阶段）。
-- **稳定性红线**：每个 HTTP handler 必须有 recovery；上游 panic 不得拖垮进程。
+- **不引入**：Redis、消息队列、微服务拆分、K8s/Helm、ClickHouse、GraphQL、微前端、OAuth2/OIDC、多租户计费、语义缓存、向量库
+- **许可证红线**：new-api（AGPL-3.0）任何代码/组件/样式不得复制，只看交互与功能清单；OmniRoute（灰色玩法）严禁参考、严禁引入其依赖。可复制源码范围仅限 gpt-load（MIT，保留版权声明）、bifrost（Apache-2.0，保留 NOTICE）、litellm 核心（MIT，不碰 enterprise/）
+- **SSE 红线**：首个 chunk 已写给客户端后禁止重试；禁止整段缓冲上游响应（必须 flush 循环透传）
+- **迁移红线**：数据库迁移只用 GORM AutoMigrate，禁止手写 SQL 迁移脚本；升级前自动备份见 `store.MigrateWithBackup`
+- **稳定性红线**：每个 HTTP handler 必须有 recovery；上游 panic 不得拖垮进程
 
 （项目背景见 [README.md](./README.md)，勿在此重复）

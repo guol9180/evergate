@@ -43,8 +43,8 @@ export default function ModelFallbackCard() {
     <Card>
       <div className="eg-control-row mb-4 flex flex-wrap items-start justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={15} className="text-indigo-500" /> 模型降级</h2>
-          <p className="mt-1 text-xs text-slate-500">令牌余额低于阈值或原模型渠道耗尽时，按顺序尝试低成本候选模型。</p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={15} className="text-brand-text" /> 模型降级</h2>
+          <p className="mt-1 text-xs text-muted">令牌余额低于阈值或原模型渠道耗尽时，按顺序尝试低成本候选模型。</p>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => setRows([...rows, { model: '', budgetThreshold: '0', fallbacks: '' }])}>
           <Plus size={14} /> 新增链
@@ -52,13 +52,13 @@ export default function ModelFallbackCard() {
       </div>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-500">
+        <div className="rounded-lg border border-dashed border-line-strong px-3 py-6 text-center text-xs text-muted">
           暂无降级链；原模型渠道耗尽时保持 503 语义。
         </div>
       ) : (
         <div className="space-y-[var(--eg-control-gap)]">
           {rows.map((row, index) => (
-            <div key={index} className="eg-grid rounded-lg border border-slate-200 p-3 min-[1100px]:grid-cols-[minmax(0,1fr)_150px_minmax(0,1.5fr)_40px] min-[1100px]:items-start">
+            <div key={index} className="eg-grid rounded-lg border border-line p-3 min-[1100px]:grid-cols-[minmax(0,1fr)_150px_minmax(0,1.5fr)_40px] min-[1100px]:items-start">
               <Field label="源模型">
                 <Input value={row.model} onChange={(e) => update(index, { model: e.target.value })} placeholder="gpt-4o" />
               </Field>
@@ -75,7 +75,7 @@ export default function ModelFallbackCard() {
                   variant="ghost"
                   aria-label={`删除降级链 ${row.model || index + 1}`}
                   title="删除降级链"
-                  className="h-7 w-7 justify-center px-0 text-red-500 hover:bg-red-50"
+                  className="h-7 w-7 justify-center px-0 text-danger-text hover:bg-danger-subtle"
                   onClick={() => setRows(rows.filter((_, i) => i !== index))}
                 >
                   <Trash2 size={14} />
@@ -86,8 +86,8 @@ export default function ModelFallbackCard() {
         </div>
       )}
 
-      <div className="mt-4 space-y-[var(--eg-control-gap)] border-t border-slate-100 pt-4">
-        {save.isSuccess && <span className="text-xs text-emerald-600">已保存，新请求立即使用新降级链</span>}
+      <div className="mt-4 space-y-[var(--eg-control-gap)] border-t border-line-soft pt-4">
+        {save.isSuccess && <span className="text-xs text-success-text">已保存，新请求立即使用新降级链</span>}
         <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
         <div className="flex justify-end">
           <Button type="button" onClick={submit} disabled={save.isPending}>

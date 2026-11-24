@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "persist_test.go uses non-production placeholder secrets to verify config write-back."
+paths = ['''internal/config/persist_test\.go''']

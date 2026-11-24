@@ -317,3 +317,42 @@ export interface UsagePrices {
   default: ModelPrice | null
   overrides: ModelPrice[]
 }
+
+/** /admin/api/logs/stats：基于全部匹配行的聚合（T75）。 */
+export interface LogStats {
+  total: number
+  success: number
+  success_rate: number | null
+  p50_ms: number | null
+  p95_ms: number | null
+  avg_total_ms: number | null
+}
+
+/** /admin/api/channels/test-all 单渠道结果。 */
+export interface TestAllItem {
+  channel_id: number
+  name: string
+  ok: boolean
+  result: string
+  latency_ms: number
+  error?: string
+}
+
+/** 管理台写操作审计记录。 */
+export interface AuditLog {
+  id: number
+  created_at: string
+  username: string
+  action: string
+  target: string
+  summary: string
+  ip: string
+}
+
+/** /admin/api/config/import 结果。 */
+export interface ConfigImportResult {
+  created: number
+  updated: number
+  skipped: number
+  errors?: string[]
+}

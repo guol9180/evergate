@@ -1,9 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Save } from 'lucide-react'
 import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
+import { usePageTitle } from '../lib/usePageTitle'
+import { t } from '../lib/i18n'
 import type { SystemSettings, SystemSettingsValues } from '../api/types'
 import { Badge, Button, Card, ErrorText, Field, Input, PageHeader, Spinner } from '../components/ui'
 import ModelFallbackCard from '../components/ModelFallbackCard'
+import ConfigTransferCard from '../components/ConfigTransferCard'
+import AuditLogCard from '../components/AuditLogCard'
 import { fmtTime } from '../lib/format'
 
 type FormState = {
@@ -23,6 +27,7 @@ type FormState = {
 }
 
 export default function Settings() {
+  usePageTitle(t('page.settings.title'))
   const settings = useSystemSettings()
   const save = useUpdateSystemSettings()
   const [form, setForm] = useState<FormState | null>(null)
@@ -40,7 +45,7 @@ export default function Settings() {
     return (
       <Card className="p-6">
         <h1 className="text-lg font-bold">系统设置</h1>
-        <ErrorText>{settings.isError ? (settings.error as Error).message : '设置不存在'}</ErrorText>
+        <ErrorText>{settings.isError ? (settings.error as Error).message : t('common.settingsMissing')}</ErrorText>
       </Card>
     )
   }
@@ -56,11 +61,11 @@ export default function Settings() {
   return (
     <div className="eg-page-stack">
       <PageHeader
-        title="系统设置"
-        description="SQLite 是运行时配置的唯一事实源；首次初始化来自 evergate.yml，保存后无需重启。"
+        title={t('page.settings.title')}
+        description={t('page.settings.desc')}
         actions={
-          <div className="text-left text-xs text-slate-500 sm:text-right">
-            <div>来源 <Badge tone="bg-indigo-100 text-indigo-700">{current?.source === 'database' ? '管理台数据库' : 'evergate.yml'}</Badge></div>
+          <div className="text-left text-xs text-muted sm:text-right">
+            <div>来源 <Badge tone="brand">{current?.source === 'database' ? '管理台数据库' : 'evergate.yml'}</Badge></div>
             <div className="mt-1 break-words">初始化：{fmtTime(current?.initialized_at)} · 更新：{fmtTime(current?.updated_at)}</div>
           </div>
         }
@@ -71,16 +76,16 @@ export default function Settings() {
           <h2 className="mb-3 text-sm font-semibold">本地路径</h2>
           <dl className="eg-grid eg-grid-auto-wide text-xs">
             <div className="min-w-0">
-              <dt className="text-slate-400">配置文件</dt>
-              <dd className="mt-1 break-all font-mono text-slate-600">{settings.data.paths.config_path || '—'}</dd>
+              <dt className="text-subtle">配置文件</dt>
+              <dd className="mt-1 break-all font-mono text-muted">{settings.data.paths.config_path || '—'}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-slate-400">数据目录</dt>
-              <dd className="mt-1 break-all font-mono text-slate-600">{settings.data.paths.data_dir || '—'}</dd>
+              <dt className="text-subtle">数据目录</dt>
+              <dd className="mt-1 break-all font-mono text-muted">{settings.data.paths.data_dir || '—'}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-slate-400">发现来源</dt>
-              <dd className="mt-1"><Badge tone="bg-slate-100 text-slate-600">{settings.data.paths.config_source || '未记录'}</Badge></dd>
+              <dt className="text-subtle">发现来源</dt>
+              <dd className="mt-1"><Badge tone="neutral">{settings.data.paths.config_source || '未记录'}</Badge></dd>
             </div>
           </dl>
         </Card>
@@ -119,7 +124,7 @@ export default function Settings() {
         </Card>
 
         <div className="space-y-[var(--eg-control-gap)]">
-          {save.isSuccess && <span className="text-xs text-emerald-600">已保存，新请求立即使用新配置</span>}
+          {save.isSuccess && <span className="text-xs text-success-text">已保存，新请求立即使用新配置</span>}
           <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
           <div className="flex justify-end">
             <Button type="submit" disabled={save.isPending}>
@@ -130,6 +135,8 @@ export default function Settings() {
       </form>
 
       <ModelFallbackCard />
+      <ConfigTransferCard />
+      <AuditLogCard />
     </div>
   )
 }

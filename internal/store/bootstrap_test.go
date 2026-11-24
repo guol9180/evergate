@@ -35,16 +35,19 @@ func TestMigrateCreatesAllTables(t *testing.T) {
 	}
 }
 
+// 测试专用固定密码；生产初始密码由 InitialAdminPassword 随机生成（T75）。
+const testAdminPassword = "admin123"
+
 func TestEnsureAdminCreatesOnceAndIdempotent(t *testing.T) {
 	db := newTestDB(t)
-	created, err := EnsureAdmin(db, DefaultAdminUsername, DefaultAdminPassword)
+	created, err := EnsureAdmin(db, DefaultAdminUsername, testAdminPassword)
 	if err != nil {
 		t.Fatalf("EnsureAdmin: %v", err)
 	}
 	if !created {
 		t.Fatal("first EnsureAdmin should create")
 	}
-	created, err = EnsureAdmin(db, DefaultAdminUsername, DefaultAdminPassword)
+	created, err = EnsureAdmin(db, DefaultAdminUsername, testAdminPassword)
 	if err != nil {
 		t.Fatalf("second EnsureAdmin: %v", err)
 	}
@@ -60,14 +63,14 @@ func TestEnsureAdminCreatesOnceAndIdempotent(t *testing.T) {
 
 func TestDefaultAdminAuthenticates(t *testing.T) {
 	db := newTestDB(t)
-	if _, err := EnsureAdmin(db, DefaultAdminUsername, DefaultAdminPassword); err != nil {
+	if _, err := EnsureAdmin(db, DefaultAdminUsername, testAdminPassword); err != nil {
 		t.Fatalf("EnsureAdmin: %v", err)
 	}
 	admin, err := GetAdminByUsername(db, DefaultAdminUsername)
 	if err != nil {
 		t.Fatalf("GetAdminByUsername: %v", err)
 	}
-	if !CheckAdminPassword(admin, DefaultAdminPassword) {
+	if !CheckAdminPassword(admin, testAdminPassword) {
 		t.Fatal("default password should verify")
 	}
 	if CheckAdminPassword(admin, "wrong") {

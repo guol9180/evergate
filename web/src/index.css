@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* 暗色模式由 .dark 类驱动（侧栏切换 / localStorage 持久化 / 默认跟随系统，见 lib/theme.ts）。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 语义色值：light 为默认，.dark 覆盖；页面只允许使用 @theme inline 暴露的语义工具类。 */
 :root {
   --eg-page-x: clamp(16px, 2.2vw, 40px);
   --eg-page-y: clamp(16px, 1.6vw, 32px);
@@ -10,15 +14,140 @@
   --eg-cell-x: clamp(8px, 0.7vw, 16px);
   --eg-cell-y: clamp(8px, 0.55vw, 12px);
   --eg-sidebar-width: clamp(72px, calc(72px + (100vw - 1200px) * 0.25), 224px);
+
+  --eg-surface: #ffffff;
+  --eg-surface-soft: #f8fafc;
+  --eg-surface-strong: #f1f5f9;
+  --eg-line-soft: #f1f5f9;
+  --eg-line: #e2e8f0;
+  --eg-line-strong: #cbd5e1;
+  --eg-foreground: #0f172a;
+  --eg-foreground-soft: #334155;
+  --eg-muted: #475569;
+  --eg-subtle: #94a3b8;
+  --eg-page-glow: rgba(79, 70, 229, 0.10);
+  --eg-page-top: #f8fafc;
+  --eg-page-bottom: #f1f5f9;
+
+  --eg-brand: #4f46e5;
+  --eg-brand-strong: #4338ca;
+  --eg-brand-text: #4338ca;
+  --eg-brand-subtle: #eef2ff;
+  --eg-brand-border: #e0e7ff;
+
+  --eg-success-subtle: #ecfdf5;
+  --eg-success-text: #047857;
+  --eg-success-solid: #10b981;
+  --eg-success-border: #a7f3d0;
+  --eg-warning-subtle: #fffbeb;
+  --eg-warning-text: #b45309;
+  --eg-warning-solid: #f59e0b;
+  --eg-warning-border: #fde68a;
+  --eg-danger-subtle: #fef2f2;
+  --eg-danger-text: #b91c1c;
+  --eg-danger-solid: #dc2626;
+  --eg-danger-border: #fecaca;
+  --eg-info-subtle: #eff6ff;
+  --eg-info-text: #1d4ed8;
+  --eg-info-solid: #3b82f6;
+  --eg-info-border: #bfdbfe;
+  --eg-neutral-subtle: #f1f5f9;
+  --eg-neutral-text: #475569;
+  --eg-overlay: rgb(15 23 42 / 0.55);
+}
+
+.dark {
+  --eg-surface: #1e293b;
+  --eg-surface-soft: #1a2333;
+  --eg-surface-strong: #273449;
+  --eg-line-soft: #263244;
+  --eg-line: #334155;
+  --eg-line-strong: #475569;
+  --eg-foreground: #f1f5f9;
+  --eg-foreground-soft: #e2e8f0;
+  --eg-muted: #94a3b8;
+  --eg-subtle: #64748b;
+  --eg-page-glow: rgba(99, 102, 241, 0.16);
+  --eg-page-top: #0b1220;
+  --eg-page-bottom: #0f172a;
+
+  --eg-brand: #6366f1;
+  --eg-brand-strong: #818cf8;
+  --eg-brand-text: #a5b4fc;
+  --eg-brand-subtle: rgba(99, 102, 241, 0.16);
+  --eg-brand-border: rgba(129, 140, 248, 0.35);
+
+  --eg-success-subtle: rgba(16, 185, 129, 0.14);
+  --eg-success-text: #6ee7b7;
+  --eg-success-solid: #34d399;
+  --eg-success-border: rgba(110, 231, 183, 0.35);
+  --eg-warning-subtle: rgba(245, 158, 11, 0.14);
+  --eg-warning-text: #fcd34d;
+  --eg-warning-solid: #fbbf24;
+  --eg-warning-border: rgba(252, 211, 77, 0.35);
+  --eg-danger-subtle: rgba(220, 38, 38, 0.16);
+  --eg-danger-text: #fca5a5;
+  --eg-danger-solid: #f87171;
+  --eg-danger-border: rgba(252, 165, 165, 0.35);
+  --eg-info-subtle: rgba(59, 130, 246, 0.14);
+  --eg-info-text: #93c5fd;
+  --eg-info-solid: #60a5fa;
+  --eg-info-border: rgba(147, 197, 253, 0.35);
+  --eg-neutral-subtle: rgba(148, 163, 184, 0.14);
+  --eg-neutral-text: #cbd5e1;
+  --eg-overlay: rgb(2 6 23 / 0.65);
+}
+
+@theme inline {
+  --color-surface: var(--eg-surface);
+  --color-surface-soft: var(--eg-surface-soft);
+  --color-surface-strong: var(--eg-surface-strong);
+  --color-line-soft: var(--eg-line-soft);
+  --color-line: var(--eg-line);
+  --color-line-strong: var(--eg-line-strong);
+  --color-foreground: var(--eg-foreground);
+  --color-foreground-soft: var(--eg-foreground-soft);
+  --color-muted: var(--eg-muted);
+  --color-subtle: var(--eg-subtle);
+
+  --color-brand: var(--eg-brand);
+  --color-brand-strong: var(--eg-brand-strong);
+  --color-brand-text: var(--eg-brand-text);
+  --color-brand-subtle: var(--eg-brand-subtle);
+  --color-brand-border: var(--eg-brand-border);
+
+  --color-success-subtle: var(--eg-success-subtle);
+  --color-success-text: var(--eg-success-text);
+  --color-success-solid: var(--eg-success-solid);
+  --color-success-border: var(--eg-success-border);
+  --color-warning-subtle: var(--eg-warning-subtle);
+  --color-warning-text: var(--eg-warning-text);
+  --color-warning-solid: var(--eg-warning-solid);
+  --color-warning-border: var(--eg-warning-border);
+  --color-danger-subtle: var(--eg-danger-subtle);
+  --color-danger-text: var(--eg-danger-text);
+  --color-danger-solid: var(--eg-danger-solid);
+  --color-danger-border: var(--eg-danger-border);
+  --color-info-subtle: var(--eg-info-subtle);
+  --color-info-text: var(--eg-info-text);
+  --color-info-solid: var(--eg-info-solid);
+  --color-info-border: var(--eg-info-border);
+  --color-neutral-subtle: var(--eg-neutral-subtle);
+  --color-neutral-text: var(--eg-neutral-text);
+  --color-overlay: var(--eg-overlay);
 }
 
 html, body, #root { height: 100%; }
 body {
-  @apply text-slate-900 antialiased;
+  @apply text-foreground antialiased;
   background:
-    radial-gradient(circle at 88% -10%, rgba(79, 70, 229, 0.10), transparent 34%),
-    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    radial-gradient(circle at 88% -10%, var(--eg-page-glow), transparent 34%),
+    linear-gradient(180deg, var(--eg-page-top) 0%, var(--eg-page-bottom) 100%);
   background-attachment: fixed;
+  color-scheme: light;
+}
+.dark body {
+  color-scheme: dark;
 }
 
 .eg-sidebar {
@@ -56,6 +185,9 @@ body {
 .eg-dialog-footer { padding: var(--eg-control-gap) var(--eg-card-pad); }
 .eg-cell-x { padding-left: var(--eg-cell-x); padding-right: var(--eg-cell-x); }
 .eg-cell-y { padding-top: var(--eg-cell-y); padding-bottom: var(--eg-cell-y); }
+.eg-skeleton {
+  @apply animate-pulse rounded-md bg-surface-strong;
+}
 
 @media (max-width: 1023px) {
   .eg-table-responsive { min-width: var(--eg-table-min, 720px); }

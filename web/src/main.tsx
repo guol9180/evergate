@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
 import { currentBasePath } from './lib/runtime'
+import { initTheme } from './lib/theme'
 import Layout from './components/Layout'
-import { Spinner } from './components/ui'
+import { PageSkeleton } from './components/ui'
 import Login from './pages/Login'
 import ChangePassword from './pages/ChangePassword'
 import Dashboard from './pages/Dashboard'
@@ -18,6 +19,9 @@ import Playground from './pages/Playground'
 // Usage 页面依赖图表库，按路由懒加载，避免给首屏 bundle 增加体积。
 const Usage = lazy(() => import('./pages/Usage'))
 
+// 首帧前应用主题，避免暗色用户看到白闪。
+initTheme()
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, refetchOnWindowFocus: false },
@@ -28,7 +32,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={currentBasePath() || undefined}>
-        <Suspense fallback={<div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>}>
+        <Suspense fallback={<div className="eg-page" role="status" aria-label="加载中"><PageSkeleton /></div>}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route element={<Layout />}>

@@ -135,17 +135,23 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	if err := store.Migrate(db); err != nil {
+	if err := store.MigrateWithBackup(db, sqlitePath, version, logger); err != nil {
 		return fmt.Errorf("migrate database: %w", err)
 	}
-	created, err := store.EnsureAdmin(db, store.DefaultAdminUsername, store.DefaultAdminPassword)
+	initialPassword, fromEnv := store.InitialAdminPassword(os.Getenv(store.InitialAdminEnv))
+	created, err := store.EnsureAdmin(db, store.DefaultAdminUsername, initialPassword)
 	if err != nil {
 		return fmt.Errorf("ensure default admin: %w", err)
 	}
 	if created {
-		logger.Warn("default admin created, must change password on first login",
-			slog.String("username", store.DefaultAdminUsername),
-		)
+		if fromEnv {
+			logger.Warn("initial admin created using password from EVERGATE_INITIAL_ADMIN_PASSWORD",
+				slog.String("username", store.DefaultAdminUsername),
+				slog.String("must_change_password", "true"),
+			)
+		} else {
+			logInitialAdminPassword(logger, store.DefaultAdminUsername, initialPassword)
+		}
 	}
 
 	// 全局 UTC 时钟（AGENTS 红线：所有时间以 UTC 存储）
@@ -252,6 +258,7 @@ func run() error {
 		ConfigSource: paths.Source,
 		Playground:   relayHandler.HandlePlayground,
 		SelfUpdate:   updater,
+		Logger:       logger,
 	})
 
 	engine := server.New(server.Options{
@@ -391,6 +398,19 @@ func run() error {
 
 func shouldOpenBrowser(server config.Server, autostart bool) bool {
 	return !autostart && server.ShouldOpenBrowser()
+}
+
+// logInitialAdminPassword 把随机初始密码以醒目分隔线写入日志（stdout + 文件双写）。
+// GUI 构建无有效 stdout 时用户可在数据目录 logs/evergate.log 中找到；密码只在此处出现一次。
+func logInitialAdminPassword(logger *slog.Logger, username, password string) {
+	logger.Warn("==========================================================")
+	logger.Warn("EverGate initial admin account created",
+		slog.String("username", username),
+		slog.String("password", password),
+	)
+	logger.Warn("This password is shown ONCE at first start and must be changed on first login.")
+	logger.Warn("If lost: set EVERGATE_INITIAL_ADMIN_PASSWORD and recreate, or delete the admins row in evergate.db and restart.")
+	logger.Warn("==========================================================")
 }
 
 func loadBootstrapConfig(paths appdir.Paths) (config.Config, string, bool, error) {

@@ -3,6 +3,7 @@ package store
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +41,25 @@ func Migrate(db *gorm.DB) error {
 	return db.AutoMigrate(AllModels()...)
 }
 
+// MigrateWithBackup 在 AutoMigrate 前按应用版本变化备份 SQLite 主文件，再执行迁移并记录版本（T75）。
+// 备份失败只告警不阻断：迁移本身仍是前进方向，丢失备份好于拒绝启动。
+func MigrateWithBackup(db *gorm.DB, dbPath, version string, logger *slog.Logger) error {
+	if reason, ok := shouldBackupBeforeMigrate(db, dbPath, version); ok {
+		if err := backupDatabase(db, dbPath); err != nil {
+			if logger != nil {
+				logger.Warn("database backup before migration failed",
+					slog.String("reason", reason), slog.Any("error", err))
+			}
+		} else if logger != nil {
+			logger.Info("database backed up before migration", slog.String("reason", reason))
+		}
+	}
+	if err := Migrate(db); err != nil {
+		return err
+	}
+	return SetSchemaMeta(db, SchemaMetaKeyAppVersion, version)
+}
+
 // AllModels 返回全部表模型，供 AutoMigrate 使用。
 func AllModels() []any {
 	return []any{
@@ -52,5 +72,7 @@ func AllModels() []any {
 		&ModelFallback{},
 		&Admin{},
 		&RuntimeSetting{},
+		&AuditLog{},
+		&SchemaMeta{},
 	}
 }

@@ -1,5 +1,7 @@
 // 展示层格式化（存储 UTC，展示转本地时区——AGENTS 红线）
 // 错误类别人话映射参照 gpt-load credential-failure-presenter 模式
+import type { Tone } from './tone'
+
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
@@ -47,15 +49,41 @@ export function cooldownRemaining(until: string | null | undefined): string | nu
   return `${Math.floor(min / 60)}h${min % 60}m`
 }
 
-// 状态 → 徽标色调
-export const stateTone: Record<string, string> = {
-  active: 'bg-emerald-100 text-emerald-700',
-  half_open: 'bg-blue-100 text-blue-700',
-  cooldown: 'bg-amber-100 text-amber-700',
-  disabled: 'bg-red-100 text-red-700',
-  degraded: 'bg-amber-100 text-amber-700',
-  down: 'bg-red-100 text-red-700',
-  inconclusive: 'bg-slate-200 text-slate-700',
+// 状态 → 语义色调（Tone 枚举唯一来源在 components/ui.tsx；此处只做业务状态到色调的映射）
+export function channelStateTone(status: string): Tone {
+  const tones: Record<string, Tone> = {
+    active: 'success',
+    half_open: 'info',
+    cooldown: 'warning',
+    disabled: 'danger',
+    degraded: 'warning',
+    down: 'danger',
+    inconclusive: 'neutral',
+  }
+  return tones[status] ?? 'neutral'
+}
+
+export function tokenStatusTone(status: string): Tone {
+  const tones: Record<string, Tone> = {
+    active: 'success',
+    disabled: 'neutral',
+    expired: 'warning',
+    exhausted: 'danger',
+  }
+  return tones[status] ?? 'neutral'
+}
+
+export function httpStatusTone(code: number): Tone {
+  if (code >= 200 && code < 300) return 'success'
+  if (code >= 400 && code < 500) return 'warning'
+  return 'danger'
+}
+
+export const tokenStatusLabel: Record<string, string> = {
+  active: '可用',
+  disabled: '停用',
+  expired: '过期',
+  exhausted: '额度用尽',
 }
 
 export const stateLabel: Record<string, string> = {
@@ -90,7 +118,7 @@ export function kindText(kind: string): string {
 }
 
 export function statusTone(code: number): string {
-  if (code >= 200 && code < 300) return 'text-emerald-600'
-  if (code >= 400 && code < 500) return 'text-amber-600'
-  return 'text-red-600'
+  if (code >= 200 && code < 300) return 'text-success-text'
+  if (code >= 400 && code < 500) return 'text-warning-text'
+  return 'text-danger-text'
 }

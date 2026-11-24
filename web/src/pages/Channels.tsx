@@ -1,36 +1,75 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useId, useState } from 'react'
 import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey } from '../api/hooks'
-import { Badge, Button, Card, Dialog, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Switch, Td, Textarea, Th } from '../components/ui'
+import { Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, Input, PageHeader, PageSkeleton, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset } from '../lib/channelPresets'
-import { cooldownRemaining, fmtMs, fmtTime, stateLabel, statusRank, stateTone } from '../lib/format'
+import { channelStateTone, cooldownRemaining, fmtMs, fmtTime, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
+import { usePageTitle } from '../lib/usePageTitle'
+import { t } from '../lib/i18n'
+import ModelMappingEditor from '../components/ModelMappingEditor'
+import TestAllPanel from '../components/TestAllPanel'
+
+const CHANNEL_TYPES = ['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic', 'anthropic-compatible', 'gemini', 'gemini-compat']
+
+// 类型语义说明：8 个取值与预设部分重叠，对新手是黑盒，这里说明每个取值实际影响什么。
+const CHANNEL_TYPE_HELP: Record<string, string> = {
+  openai: 'OpenAI 官方端点；Chat 与 Responses 走官方路径',
+  'openai-compatible': '任何 OpenAI 兼容服务（vLLM、中转、第三方）；最通用',
+  deepseek: 'DeepSeek 官方；OpenAI 兼容，base_url 可省略 /v1',
+  vllm: '本地 vLLM / OpenAI 兼容推理服务',
+  anthropic: 'Anthropic 官方；需开启「原生支持 Anthropic Messages」',
+  'anthropic-compatible': 'Anthropic 兼容中转；需开启「原生支持 Anthropic Messages」',
+  gemini: 'Google Gemini 官方；需开启「原生支持 Gemini API」',
+  'gemini-compat': 'Gemini 兼容中转；需开启「原生支持 Gemini API」',
+}
 
 export default function Channels() {
+  usePageTitle(t('page.channels.title'))
   const channels = useChannels()
+  const delChannel = useDeleteChannel()
+  const delKey = useDeleteKey()
   const [editing, setEditing] = useState<Channel | 'new' | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null)
+  const [deleteKeyTarget, setDeleteKeyTarget] = useState<{ id: number; channelId: number; label: string } | null>(null)
+  const [showTestAll, setShowTestAll] = useState(false)
 
-  if (channels.isPending) return <div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>
+  if (channels.isPending) {
+    return (
+      <div className="eg-page-stack">
+        <PageHeader title={t('page.channels.title')} description={t('page.channels.desc')} />
+        <Card><SkeletonRows rows={4} className="eg-card-fluid" /></Card>
+      </div>
+    )
+  }
   const items = [...(channels.data?.items ?? [])].sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.priority - b.priority || a.id - b.id)
 
   return (
     <div className="eg-page-stack">
       <PageHeader
-        title="渠道管理"
-        description="上游渠道、优先级权重与 key 池状态；展开行可管理凭据。"
-        actions={<Button onClick={() => setEditing('new')}><Plus size={15} /> 新建渠道</Button>}
+        title={t('page.channels.title')}
+        description={t('page.channels.desc')}
+        actions={(
+          <>
+            <Button size="sm" variant={showTestAll ? 'default' : 'outline'} onClick={() => setShowTestAll((v) => !v)} aria-pressed={showTestAll}>
+              <Plug size={14} /> {t('common.testAll')}
+            </Button>
+            <Button onClick={() => setEditing('new')}><Plus size={15} /> {t('page.channels.create')}</Button>
+          </>
+        )}
       />
+      {showTestAll && <TestAllPanel />}
 
       <Card>
         {channels.data?.items.length === 0 ? (
-          <Empty icon={<Plug size={36} />} title="还没有渠道" hint="新建一个上游渠道，填入 base_url 与支持的模型" />
+          <Empty icon={<Plug size={36} />} title={t('empty.channels.title')} hint={t('empty.channels.hint')} />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] lg:min-w-0">
-              <thead className="border-b border-slate-100 bg-slate-50/50">
+              <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
                   <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th className="hidden min-[1120px]:table-cell">类型</Th>
                   <Th className="hidden min-[1180px]:table-cell">优先级</Th><Th className="hidden min-[1220px]:table-cell">权重</Th>
@@ -38,7 +77,7 @@ export default function Channels() {
                   <Th>启用</Th><Th>测试</Th><Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-line-soft">
                 {items.map((c) => (
                   <ChannelRow
                     key={c.id}
@@ -46,6 +85,7 @@ export default function Channels() {
                     expanded={expanded === c.id}
                     onToggleExpand={() => setExpanded(expanded === c.id ? null : c.id)}
                     onEdit={() => setEditing(c)}
+                    onDelete={() => setDeleteTarget(c)}
                   />
                 ))}
               </tbody>
@@ -54,40 +94,70 @@ export default function Channels() {
         )}
       </Card>
 
-      {expanded != null && <KeysPanel channelId={expanded} />}
+      {expanded != null && (
+        <KeysPanel channelId={expanded} onDeleteKey={(id, label) => setDeleteKeyTarget({ id, channelId: expanded, label })} />
+      )}
       {editing && <ChannelForm channel={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
+
+      <ConfirmDialog
+        open={deleteTarget != null}
+        title="删除渠道"
+        danger
+        confirmText="删除渠道"
+        loading={delChannel.isPending}
+        message={<>将删除渠道「{deleteTarget?.name}」及其全部 key，正在使用该上游的请求会立即失败。此操作不可撤销。</>}
+        onConfirm={() => deleteTarget && delChannel.mutate(deleteTarget.id, {
+          onSuccess: () => {
+            if (expanded === deleteTarget.id) setExpanded(null)
+            setDeleteTarget(null)
+          },
+        })}
+        onCancel={() => setDeleteTarget(null)}
+      />
+      <ConfirmDialog
+        open={deleteKeyTarget != null}
+        title="删除上游 key"
+        danger
+        confirmText="删除 key"
+        loading={delKey.isPending}
+        message={<>将删除{deleteKeyTarget?.label}；删除后立即退出调度，无法恢复。</>}
+        onConfirm={() => deleteKeyTarget && delKey.mutate(
+          { id: deleteKeyTarget.id, channelId: deleteKeyTarget.channelId },
+          { onSuccess: () => setDeleteKeyTarget(null) },
+        )}
+        onCancel={() => setDeleteKeyTarget(null)}
+      />
     </div>
   )
 }
 
-function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel: Channel; expanded: boolean; onToggleExpand: () => void; onEdit: () => void }) {
+function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: { channel: Channel; expanded: boolean; onToggleExpand: () => void; onEdit: () => void; onDelete: () => void }) {
   const toggle = useToggleChannel()
   const test = useTestChannel()
-  const del = useDeleteChannel()
   const result = test.data && test.variables === c.id ? test.data : null
 
   return (
     <>
-      <tr className="hover:bg-slate-50/50">
+      <tr className="hover:bg-surface-soft">
         <Td>
-          <button onClick={onToggleExpand} aria-label={expanded ? '收起 key 列表' : '展开 key 列表'} className="rounded p-1 text-slate-400 hover:bg-slate-100">
+          <button onClick={onToggleExpand} aria-label={expanded ? '收起 key 列表' : '展开 key 列表'} className="rounded p-1 text-subtle hover:bg-surface-strong">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         </Td>
         <Td className="max-w-[170px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
         <Td>
-          <Badge tone={stateTone[c.status] || ''}>
+          <StatusBadge tone={channelStateTone(c.status)}>
             <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
-          </Badge>
+          </StatusBadge>
         </Td>
         <Td className="hidden min-[1120px]:table-cell">
           <div className="flex flex-col gap-1">
-            <span className="inline-block max-w-[96px] truncate text-slate-500" title={c.type}>{c.type}</span>
+            <span className="inline-block max-w-[96px] truncate text-muted" title={c.type}>{c.type}</span>
             {(c.supports_responses || c.supports_anthropic || c.supports_gemini) && (
               <div className="flex items-center gap-1 whitespace-nowrap">
-                {c.supports_responses && <Badge compact tone="bg-sky-100 text-sky-700">Responses</Badge>}
-                {c.supports_anthropic && <Badge compact tone="bg-violet-100 text-violet-700">Messages</Badge>}
-                {c.supports_gemini && <Badge compact tone="bg-emerald-100 text-emerald-700">Gemini</Badge>}
+                {c.supports_responses && <Badge compact tone="info">Responses</Badge>}
+                {c.supports_anthropic && <Badge compact tone="brand">Messages</Badge>}
+                {c.supports_gemini && <Badge compact tone="success">Gemini</Badge>}
               </div>
             )}
           </div>
@@ -97,14 +167,14 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
         <Td>{(c.models || []).length}</Td>
         <Td>
           <span className="font-medium">{c.available_key_count}</span>
-          <span className="text-slate-400"> / {c.key_count}</span>
+          <span className="text-subtle"> / {c.key_count}</span>
         </Td>
         <Td className="hidden max-w-56 min-[1280px]:table-cell">
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-muted">
             {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : '未探测'}
           </div>
           {c.last_probe_error && (
-            <div className="truncate text-xs text-slate-400" title={c.last_probe_error}>{c.last_probe_error}</div>
+            <div className="truncate text-xs text-subtle" title={c.last_probe_error}>{c.last_probe_error}</div>
           )}
         </Td>
         <Td>
@@ -114,7 +184,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
           {test.isPending && test.variables === c.id ? (
             <Spinner />
           ) : result ? (
-            <Badge tone={result.result === 'success' ? 'bg-emerald-100 text-emerald-700' : result.result === 'inconclusive' ? 'bg-slate-200 text-slate-700' : 'bg-red-100 text-red-700'}>
+            <Badge tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'}>
               {result.result === 'success' ? `✓ ${result.latency_ms}ms` : result.result === 'inconclusive' ? `? ${result.status_code ?? 0}` : `✗ ${result.status_code ?? 'err'}`}
             </Badge>
           ) : (
@@ -126,8 +196,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
         <Td>
           <div className="flex justify-end gap-1 whitespace-nowrap">
             <Button size="sm" variant="ghost" aria-label={`编辑渠道 ${c.name}`} title="编辑" onClick={onEdit}><Pencil size={13} /></Button>
-            <Button size="sm" variant="ghost" aria-label={`删除渠道 ${c.name}`} title="删除" className="text-red-500 hover:bg-red-50"
-              onClick={() => confirm(`删除渠道「${c.name}」及其全部 key？`) && del.mutate(c.id)}>
+            <Button size="sm" variant="ghost" aria-label={`删除渠道 ${c.name}`} title="删除" className="text-danger-text hover:bg-danger-subtle" onClick={onDelete}>
               <Trash2 size={13} />
             </Button>
           </div>
@@ -138,14 +207,13 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit }: { channel:
 }
 
 // 渠道详情：key 管理（gpt-load GroupCredentialsTab 模式：展开行 + 批量导入 + 状态徽标）
-function KeysPanel({ channelId }: { channelId: number }) {
+function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey: (id: number, label: string) => void }) {
   const detail = useChannel(channelId)
   const addKeys = useBatchAddKeys()
   const updateKey = useUpdateKey()
-  const delKey = useDeleteKey()
   const [keysText, setKeysText] = useState('')
 
-  if (detail.isPending) return <Card className="p-6 text-center text-sm text-slate-400"><Spinner className="mr-2" />加载 key…</Card>
+  if (detail.isPending) return <Card className="eg-card-fluid"><SkeletonRows rows={3} /></Card>
   if (detail.isError) return <Card className="p-4"><ErrorText>{(detail.error as Error).message}</ErrorText></Card>
 
   return (
@@ -153,7 +221,7 @@ function KeysPanel({ channelId }: { channelId: number }) {
       <h3 className="mb-3 text-sm font-semibold">上游 key（渠道：{detail.data.channel.name}）</h3>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[700px] lg:min-w-0">
-          <thead className="border-b border-slate-100 bg-slate-50/50">
+          <thead className="border-b border-line-soft bg-surface-soft">
             <tr>
               <Th>#</Th><Th>状态</Th><Th>权重</Th><Th>连续失败</Th>
               <Th className="hidden min-[1180px]:table-cell">退避档位</Th><Th>冷却剩余</Th>
@@ -161,28 +229,28 @@ function KeysPanel({ channelId }: { channelId: number }) {
               <Th>启用</Th><Th className="w-16"><span className="block pr-2.5 text-right">操作</span></Th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-line-soft">
             {detail.data.keys.map((k, i) => {
               const remain = cooldownRemaining(k.cooldown_until)
               return (
                 <tr key={k.id}>
-                  <Td className="text-slate-400">{i + 1}</Td>
+                  <Td className="text-subtle">{i + 1}</Td>
                   <Td>
-                    <Badge tone={stateTone[k.state] || ''}>{stateLabel[k.state] || k.state}</Badge>
+                    <StatusBadge tone={channelStateTone(k.state)}>{stateLabel[k.state] || k.state}</StatusBadge>
                   </Td>
                   <Td>{k.weight}</Td>
-                  <Td className={k.consecutive_fails > 0 ? 'text-amber-600 font-medium' : ''}>{k.consecutive_fails}</Td>
+                  <Td className={k.consecutive_fails > 0 ? 'text-warning-text font-medium' : ''}>{k.consecutive_fails}</Td>
                   <Td className="hidden min-[1180px]:table-cell">L{k.level}</Td>
-                  <Td>{remain ? <span className="text-amber-600">{remain}</span> : '—'}</Td>
-                  <Td className="hidden text-xs text-slate-500 min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
-                  <Td className="hidden max-w-48 truncate text-xs text-slate-400 min-[1280px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
+                  <Td>{remain ? <span className="text-warning-text">{remain}</span> : '—'}</Td>
+                  <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
+                  <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1280px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
                     <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={`启用 key ${i + 1}`} />
                   </Td>
                   <Td>
                     <div className="flex justify-end">
-                      <Button size="sm" variant="ghost" aria-label={`删除 key ${i + 1}`} title="删除" className="text-red-500 hover:bg-red-50"
-                        onClick={() => confirm('删除这把 key？') && delKey.mutate({ id: k.id, channelId })}>
+                      <Button size="sm" variant="ghost" aria-label={`删除 key ${i + 1}`} title="删除" className="text-danger-text hover:bg-danger-subtle"
+                        onClick={() => onDeleteKey(k.id, `第 ${i + 1} 把 key`)}>
                         <Trash2 size={13} />
                       </Button>
                     </div>
@@ -193,8 +261,8 @@ function KeysPanel({ channelId }: { channelId: number }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3">
-        <div className="mb-2 text-xs font-medium text-slate-600">批量导入 key（每行一把，加密存储，不会回显明文）</div>
+      <div className="mt-4 rounded-lg border border-dashed border-line-strong p-3">
+        <div className="mb-2 text-xs font-medium text-muted">批量导入 key（每行一把，加密存储，不会回显明文）</div>
         <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-xxxxxxx\nsk-yyyyyyy'} />
         <div className="mt-2 flex items-center gap-3">
           <Button size="sm" disabled={!keysText.trim() || addKeys.isPending} onClick={() => addKeys.mutate(
@@ -203,7 +271,7 @@ function KeysPanel({ channelId }: { channelId: number }) {
           )}>
             {addKeys.isPending ? '导入中…' : '导入'}
           </Button>
-          {addKeys.data && <span className="text-xs text-emerald-600">已导入 {addKeys.data.added} 把</span>}
+          {addKeys.data && <span className="text-xs text-success-text">已导入 {addKeys.data.added} 把</span>}
         </div>
       </div>
     </Card>
@@ -215,6 +283,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const save = useSaveChannel()
   const preview = usePreviewChannelModels()
   const formID = 'channel-form'
+  const modelsId = useId()
   const [name, setName] = useState(channel?.name ?? '')
   const [nameTouched, setNameTouched] = useState(Boolean(channel))
   const [presetId, setPresetId] = useState(CUSTOM_CHANNEL_PRESET)
@@ -226,9 +295,17 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [supportsAnthropic, setSupportsAnthropic] = useState(channel?.supports_anthropic ?? false)
   const [supportsGemini, setSupportsGemini] = useState(channel?.supports_gemini ?? false)
   const [models, setModels] = useState((channel?.models || []).join('\n'))
-  const [mapping, setMapping] = useState(channel?.model_mapping ? JSON.stringify(channel.model_mapping, null, 2) : '')
+  const [mapping, setMapping] = useState<Record<string, string>>(channel?.model_mapping ?? {})
   const [showModelPicker, setShowModelPicker] = useState(false)
+  const [formError, setFormError] = useState('')
+  // 新建时可内联导入 key：省去"保存 → 回列表 → 展开 → 粘贴 key → 再编辑"的四次往返（T77）。
+  const [keysText, setKeysText] = useState('')
+  const addKeys = useBatchAddKeys()
+  const [connectSec, setConnectSec] = useState(channel?.timeout_config?.connect_sec?.toString() ?? '')
+  const [firstTokenSec, setFirstTokenSec] = useState(channel?.timeout_config?.first_token_sec?.toString() ?? '')
+  const [overallSec, setOverallSec] = useState(channel?.timeout_config?.overall_sec?.toString() ?? '')
   const preset = findChannelPreset(presetId)
+  const typeOptions = presetId === CUSTOM_CHANNEL_PRESET ? CHANNEL_TYPES : [preset!.type]
 
   const applyPreset = (id: string) => {
     setPresetId(id)
@@ -244,15 +321,15 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
-    let modelMapping: Record<string, string> | null = null
-    if (mapping.trim()) {
-      try {
-        modelMapping = JSON.parse(mapping)
-      } catch {
-        alert('模型映射不是合法 JSON')
-        return
-      }
+    const timeouts: Record<string, number> = {}
+    if (connectSec.trim()) timeouts.connect_sec = Number(connectSec)
+    if (firstTokenSec.trim()) timeouts.first_token_sec = Number(firstTokenSec)
+    if (overallSec.trim()) timeouts.overall_sec = Number(overallSec)
+    if (Object.values(timeouts).some((v) => !Number.isFinite(v) || v <= 0)) {
+      setFormError('超时必须为正整数秒')
+      return
     }
+    setFormError('')
     save.mutate(
       {
         id: channel?.id,
@@ -262,12 +339,22 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         priority: Number(priority) || 0,
         weight: Number(weight) || 1,
         models: models.split('\n').map((s) => s.trim()).filter(Boolean),
-        model_mapping: modelMapping,
+        model_mapping: Object.keys(mapping).length ? mapping : null,
         supports_responses: supportsResponses,
         supports_anthropic: supportsAnthropic,
         supports_gemini: supportsGemini,
+        ...(Object.keys(timeouts).length ? { timeout_config: timeouts } : {}),
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: (saved) => {
+          const keys = keysText.trim()
+          if (!channel && keys) {
+            addKeys.mutate({ channelId: saved.id, keys }, { onSuccess: onClose, onError: () => onClose() })
+            return
+          }
+          onClose()
+        },
+      },
     )
   }
 
@@ -294,11 +381,11 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               </Select>
             </Field>
             {preset && (
-              <div className={`rounded-lg border px-3 py-2.5 ${preset.warning ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50/70'}`}>
-                <div className={`text-xs ${preset.warning ? 'text-amber-800' : 'text-slate-600'}`}>{preset.description}</div>
-                <div className="mt-1 font-mono text-[11px] text-slate-500">{preset.baseUrl}</div>
+              <div className={`rounded-lg border px-3 py-2.5 ${preset.warning ? 'border-warning-border bg-warning-subtle' : 'border-line bg-surface-soft'}`}>
+                <div className={`text-xs ${preset.warning ? 'text-warning-text' : 'text-muted'}`}>{preset.description}</div>
+                <div className="mt-1 font-mono text-[11px] text-muted">{preset.baseUrl}</div>
                 {preset.warning && (
-                  <div className="mt-1.5 flex gap-1.5 text-xs font-medium text-amber-700">
+                  <div className="mt-1.5 flex gap-1.5 text-xs font-medium text-warning-text">
                     <TriangleAlert size={13} className="mt-0.5 shrink-0" />
                     <span>{preset.warning}</span>
                   </div>
@@ -309,45 +396,55 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         )}
         <div className="eg-grid eg-grid-auto-wide">
           <Field label="名称"><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
-          <Field label="类型">
+          <Field label="类型" hint={CHANNEL_TYPE_HELP[type]}>
             <Select value={type} onChange={(e) => setType(e.target.value)}>
-              {['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic', 'anthropic-compatible', 'gemini', 'gemini-compat'].map((t) => <option key={t}>{t}</option>)}
+              {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
             </Select>
           </Field>
         </div>
         <Field label="Base URL" hint={`上游 API 根地址；网关按能力拼接 ${supportsAnthropic ? '/v1/messages、' : ''}${supportsResponses ? '/responses、' : ''}${supportsGemini ? '/v1beta/models/{model}、' : ''}/chat/completions`}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
         </Field>
+        {!channel && (
+          <Field label="上游 API key（可选，每行一把）" hint="填写后创建时直接导入，保存后即可「从上游拉取」模型目录；留空可稍后在渠道行展开导入">
+            <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-...\nsk-...'} autoComplete="off" className="font-mono text-xs" />
+          </Field>
+        )}
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-            <div className="min-w-0">
-              <div className="text-sm text-slate-700">原生支持 Responses API</div>
-              <div className="text-xs text-slate-400">开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions</div>
-            </div>
-            <Switch checked={supportsResponses} onChange={setSupportsResponses} label="原生支持 Responses API" />
-          </div>
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-            <div className="min-w-0">
-              <div className="text-sm text-slate-700">原生支持 Anthropic Messages</div>
-              <div className="text-xs text-slate-400">开启后 /v1/messages 透传；关闭时转换为 Chat Completions</div>
-            </div>
-            <Switch checked={supportsAnthropic} onChange={setSupportsAnthropic} label="原生支持 Anthropic Messages" />
-          </div>
-          <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5">
-            <div className="min-w-0">
-              <div className="text-sm text-slate-700">原生支持 Gemini API</div>
-              <div className="text-xs text-slate-400">开启后 /v1beta/models/* 透传；关闭时转换为 Chat Completions</div>
-            </div>
-            <Switch checked={supportsGemini} onChange={setSupportsGemini} label="原生支持 Gemini API" />
-          </div>
+          <SettingRow
+            title="原生支持 Responses API"
+            description="开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions"
+            checked={supportsResponses}
+            onChange={setSupportsResponses}
+            label="原生支持 Responses API"
+          />
+          <SettingRow
+            title="原生支持 Anthropic Messages"
+            description="开启后 /v1/messages 透传；关闭时转换为 Chat Completions"
+            checked={supportsAnthropic}
+            onChange={setSupportsAnthropic}
+            label="原生支持 Anthropic Messages"
+          />
+          <SettingRow
+            title="原生支持 Gemini API"
+            description="开启后 /v1beta/models/* 透传；关闭时转换为 Chat Completions"
+            checked={supportsGemini}
+            onChange={setSupportsGemini}
+            label="原生支持 Gemini API"
+          />
         </div>
         <div className="eg-grid eg-grid-auto-wide">
           <Field label="优先级" hint="越小越优先"><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
           <Field label="权重" hint="同优先级内加权随机"><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
         </div>
+        <div className="eg-grid eg-grid-auto-wide">
+          <Field label="连接超时（秒）" hint="留空用全局设置；1–300"><Input type="number" min={1} max={300} value={connectSec} onChange={(e) => setConnectSec(e.target.value)} placeholder="留空" /></Field>
+          <Field label="首 token 超时（秒）" hint="留空用全局设置；1–3600"><Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => setFirstTokenSec(e.target.value)} placeholder="留空" /></Field>
+          <Field label="整体超时（秒）" hint="留空用全局设置；不小于前两项"><Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => setOverallSec(e.target.value)} placeholder="留空" /></Field>
+        </div>
         <div className="space-y-2">
           <div className="flex flex-wrap items-end justify-between gap-2">
-            <label className="text-sm font-medium text-slate-700">支持的模型（每行一个）</label>
+            <label htmlFor={modelsId} className="text-sm font-medium text-foreground-soft">支持的模型（每行一个）</label>
             <Button
               type="button"
               size="sm"
@@ -364,8 +461,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               {preview.isPending ? '拉取中…' : '从上游拉取'}
             </Button>
           </div>
-          <Textarea rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} required />
-          <div className="text-xs text-slate-400">
+          <Textarea id={modelsId} rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} required />
+          <div className="text-xs text-subtle">
             {!channel
               ? '新建渠道保存并导入 key 后，可从上游拉取模型目录。'
               : channel.key_count === 0
@@ -399,10 +496,9 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             <ErrorText>{(preview.error as Error).message}</ErrorText>
           )}
         </div>
-        <Field label="模型映射（可选 JSON）" hint='{"请求模型": "上游模型"}，如 {"gpt-4": "gpt-4o-2024"}'>
-          <Textarea rows={3} value={mapping} onChange={(e) => setMapping(e.target.value)} placeholder='{}' />
-        </Field>
-        <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
+        <ModelMappingEditor value={mapping} onChange={setMapping} />
+        <ErrorText>{formError}</ErrorText>
+        <ErrorText>{save.isError ? (save.error as Error).message : addKeys.isError ? `渠道已创建，但 key 导入失败：${(addKeys.error as Error).message}。可在渠道行展开重新导入。` : null}</ErrorText>
       </form>
     </Dialog>
   )

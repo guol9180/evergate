@@ -13,11 +13,14 @@ import type { UsageDailyPoint, UsageDimensionRow } from '../api/types'
 import { Badge, Button, Card, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
 import { TrendChart } from '../components/TrendChart'
 import { fmtInt, fmtMoney } from '../lib/format'
+import { usePageTitle } from '../lib/usePageTitle'
+import { t } from '../lib/i18n'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
 
 export default function Usage() {
+  usePageTitle(t('page.usage.title'))
   const [start, setStart] = useState(daysAgo(6))
   const [end, setEnd] = useState(today())
   const [channelID, setChannelID] = useState('')
@@ -44,11 +47,11 @@ export default function Usage() {
   return (
     <div className="eg-page-stack">
       <PageHeader
-        title="用量成本"
-        description="按 UTC 日聚合请求、token 与价格快照。"
+        title={t('page.usage.title')}
+        description={t('page.usage.desc')}
         actions={
           <Button variant="outline" onClick={() => report.refetch()} disabled={report.isFetching}>
-            <RefreshCw size={14} className={report.isFetching ? 'animate-spin' : ''} /> 刷新
+            <RefreshCw size={14} className={report.isFetching ? 'animate-spin' : ''} /> {t('common.refresh')}
           </Button>
         }
       />
@@ -75,12 +78,12 @@ export default function Usage() {
       </Card>
 
       {prices.data && !prices.data.default && prices.data.overrides.length === 0 && (
-        <Card className="border-amber-200 bg-amber-50/70">
-          <div className="flex items-start gap-3 text-sm text-amber-900">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+        <Card className="border-warning-border bg-warning-subtle">
+          <div className="flex items-start gap-3 text-sm text-warning-text">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-warning-text" />
             <div>
               <div className="font-semibold">尚未配置任何模型价格</div>
-              <p className="mt-1 text-xs leading-5 text-amber-800">
+              <p className="mt-1 text-xs leading-5 text-warning-text">
                 usage 与 token 已正常记录，但成本会标记为“未计价”，不会用 <code>$0</code> 冒充已知成本。
                 在下方“模型价格”保存全局默认价或渠道+模型覆盖价后，新请求会按请求时价格快照计价；历史未计价请求不会追溯重算。
               </p>
@@ -124,9 +127,9 @@ export default function Usage() {
 function Metric({ label, value, hint, warning }: { label: string; value: string; hint: string; warning?: boolean }) {
   return (
     <Card>
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className={`mt-1 text-2xl font-bold ${warning ? 'text-amber-600' : 'text-slate-900'}`}>{value}</div>
-      <div className="mt-1 text-xs text-slate-400">{hint}</div>
+      <div className="text-xs text-muted">{label}</div>
+      <div className={`mt-1 text-2xl font-bold ${warning ? 'text-warning-text' : 'text-foreground'}`}>{value}</div>
+      <div className="mt-1 text-xs text-subtle">{hint}</div>
     </Card>
   )
 }
@@ -135,13 +138,13 @@ function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
   return (
     <Card className="flex h-full flex-col">
       <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-indigo-500" /> 日趋势</h3>
-        <div className="flex items-center gap-3 text-xs text-slate-400">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-indigo-500" />请求数</span>
-          <span className="flex items-center gap-1.5"><span className="h-0.5 w-3.5 rounded bg-emerald-500" />成功率</span>
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-brand-text" /> 日趋势</h3>
+        <div className="flex items-center gap-3 text-xs text-subtle">
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-brand" />请求数</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-3.5 rounded bg-success-solid" />成功率</span>
         </div>
       </div>
-      {daily.length === 0 ? <Empty title="所选范围暂无数据" /> : (
+      {daily.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
         <div className="mt-4 h-[clamp(224px,32vw,360px)] xl:h-auto xl:min-h-72 xl:flex-1">
           <TrendChart data={daily} className="h-full" />
         </div>
@@ -174,12 +177,12 @@ function fillDailyGaps(points: UsageDailyPoint[], start?: string, end?: string):
 function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) {
   return (
     <Card flush>
-      <h3 className="border-b border-slate-100 text-sm font-semibold" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>{title}</h3>
-      {rows.length === 0 ? <Empty title="暂无数据" /> : (
+      <h3 className="border-b border-line-soft text-sm font-semibold" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>{title}</h3>
+      {rows.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[300px]">
-            <thead className="bg-slate-50/60"><tr><Th>名称</Th><Th>请求</Th><Th>成本</Th></tr></thead>
-            <tbody className="divide-y divide-slate-50">
+            <thead className="bg-surface-soft"><tr><Th>名称</Th><Th>请求</Th><Th>成本</Th></tr></thead>
+            <tbody className="divide-y divide-line-soft">
               {rows.map((row) => (
                 <tr key={`${row.id}-${row.name}`}>
                   <Td className="max-w-40 truncate font-medium" title={row.name}>{row.name}</Td>
@@ -236,10 +239,10 @@ function PriceCard() {
   if (prices.isPending) return <Card className="flex justify-center p-8"><Spinner /></Card>
   return (
     <Card>
-      <h3 className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign size={15} className="text-emerald-500" /> 模型价格</h3>
-      <p className="mt-1 text-xs text-slate-400">单位：USD / 百万 token；价格只影响之后的新请求。</p>
-      <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
-        <div className="mb-2 text-xs font-medium text-slate-600">全局默认</div>
+      <h3 className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign size={15} className="text-success-text" /> 模型价格</h3>
+      <p className="mt-1 text-xs text-subtle">单位：USD / 百万 token；价格只影响之后的新请求。</p>
+      <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
+        <div className="mb-2 text-xs font-medium text-muted">全局默认</div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="输入"><Input type="number" min={0} step="0.000001" value={defaultIn} onChange={(e) => setDefaultIn(e.target.value)} /></Field>
           <Field label="输出"><Input type="number" min={0} step="0.000001" value={defaultOut} onChange={(e) => setDefaultOut(e.target.value)} /></Field>
@@ -247,8 +250,8 @@ function PriceCard() {
         <Button type="submit" size="sm" className="mt-2" disabled={setDefault.isPending}>保存默认价格</Button>
       </form>
 
-      <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-slate-300 p-3">
-        <div className="text-xs font-medium text-slate-600">渠道 + 模型覆盖</div>
+      <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-line-strong p-3">
+        <div className="text-xs font-medium text-muted">渠道 + 模型覆盖</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
             {(channels.data?.items ?? []).map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
@@ -261,11 +264,11 @@ function PriceCard() {
       </form>
       <div className="mt-3 max-h-44 space-y-1 overflow-auto">
         {(prices.data?.overrides ?? []).map((price) => (
-          <div key={price.id} className="flex items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5 text-xs">
-            <Badge tone="bg-indigo-100 text-indigo-700">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
-            <span className="min-w-0 flex-1 truncate font-medium text-slate-700">{price.model}</span>
-            <span className="text-slate-500">{toPriceInput(price.input_micros_per_million)} / {toPriceInput(price.output_micros_per_million)}</span>
-            <button onClick={() => remove.mutate(price.id)} className="text-slate-400 hover:text-red-500" title="删除覆盖"><Trash2 size={13} /></button>
+          <div key={price.id} className="flex items-center gap-2 rounded-md bg-surface-soft px-2 py-1.5 text-xs">
+            <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
+            <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
+            <span className="text-muted">{toPriceInput(price.input_micros_per_million)} / {toPriceInput(price.output_micros_per_million)}</span>
+            <button onClick={() => remove.mutate(price.id)} className="text-subtle hover:text-danger-text" title="删除覆盖"><Trash2 size={13} /></button>
           </div>
         ))}
       </div>

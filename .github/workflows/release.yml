@@ -46,8 +46,9 @@ jobs:
       - name: Lint frontend
         run: npm --prefix web run lint
 
-      - name: Test backend
-        run: go test -p 1 ./... -count=1
+      # 与 ci.yml 保持同一套 Go 侧门禁：-race 需要 cgo，ubuntu runner 自带 gcc。
+      - name: Test backend with race detector
+        run: go test -race -p 1 ./... -count=1
 
       - name: Vet backend
         run: go vet ./...
@@ -55,12 +56,30 @@ jobs:
       - name: Enforce scheduler coverage
         run: make coverage-scheduler
 
+      - name: Enforce relay coverage
+        run: make coverage-relay
+
+      # 个人仓库无需 GITLEAKS_LICENSE；组织账户需在 Secrets 配置。
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_SUMMARY: true
+
+      - name: Lint workflows
+        uses: rhysd/actionlint@v1.7.7
+        with:
+          shellcheck: ""
+
       - name: Check diff whitespace
         run: git diff --check
 
   release:
     needs: quality
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      # id-token 仅在仓库变量 NPM_TRUSTED_PUBLISHING=true 时用于 npm OIDC Trusted Publishing；未启用时无副作用。
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -117,26 +136,39 @@ jobs:
             --main-ref origin/main \
             --staged-dir "$PWD/dist-npm"
 
-      - name: Check npm token
+      - name: Check npm credentials
         id: npm
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
         run: |
-          if [ -n "$NPM_TOKEN" ]; then
+          if [ "$TRUSTED_PUBLISHING" = "true" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "mode=oidc" >> "$GITHUB_OUTPUT"
+          elif [ -n "$NPM_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "mode=token" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "mode=none" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish npm packages
         if: steps.npm.outputs.enabled == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_PUBLISH_MODE: ${{ steps.npm.outputs.mode }}
         run: |
           set -euo pipefail
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
           VERSION="${RELEASE_TAG#v}"
           NPM_TAG="${{ steps.gate.outputs.npm_tag }}"
+          PROVENANCE_FLAG=""
+          if [ "$NPM_PUBLISH_MODE" = "oidc" ]; then
+            # Trusted Publishing：不落盘长期 token，使用 OIDC 短期凭据并附 provenance 证明。
+            PROVENANCE_FLAG="--provenance"
+          else
+            echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
+          fi
           WRAPPER_PKG=$(node -p "require('./dist-npm/evergate/package.json').name")
           LATEST_BEFORE=""
           if [ "$NPM_TAG" = "next" ]; then
@@ -147,7 +179,7 @@ jobs:
             if npm view "$pkg@$VERSION" version >/dev/null 2>&1; then
               echo "$pkg@$VERSION already published; skipping"
             else
-              npm publish "./dist-npm/$dir" --access public --tag "$NPM_TAG"
+              npm publish "./dist-npm/$dir" --access public --tag "$NPM_TAG" $PROVENANCE_FLAG
             fi
             npm dist-tag add "$pkg@$VERSION" "$NPM_TAG" >/dev/null
           done
@@ -176,9 +208,9 @@ jobs:
             fi
           fi
 
-      - name: Skip npm publish (NPM_TOKEN missing)
+      - name: Skip npm publish (no credentials)
         if: steps.npm.outputs.enabled != 'true'
-        run: echo "NPM_TOKEN is not configured; staged npm packages were not published."
+        run: echo "Neither NPM_TOKEN nor NPM_TRUSTED_PUBLISHING is configured; staged npm packages were not published."
 
       - name: Attach to Release
         uses: softprops/action-gh-release@v2
@@ -358,6 +390,9 @@ jobs:
     if: ${{ always() && needs.release.result == 'success' && needs.windows-installer.result == 'success' && (vars.ENABLE_MACOS_INSTALLER != 'true' || needs.macos-installer.result == 'success') }}
     needs: [release, windows-installer, macos-installer]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
     env:
       ENABLE_MACOS_INSTALLER: ${{ vars.ENABLE_MACOS_INSTALLER || 'false' }}
     steps:
@@ -407,10 +442,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN is required for the npm update package"
+          PROVENANCE_FLAG=""
+          if [ "$TRUSTED_PUBLISHING" = "true" ]; then
+            PROVENANCE_FLAG="--provenance"
+          elif [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN (or NPM_TRUSTED_PUBLISHING=true) is required for the npm update package"
             exit 1
+          else
+            echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
           fi
           version="${RELEASE_TAG#v}"
           npm_tag=latest
@@ -418,12 +459,11 @@ jobs:
             npm_tag=next
           fi
           node scripts/stage-update-npm.mjs "$version" "$PWD/verify" "$PWD/dist-updates"
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$HOME/.npmrc"
           pkg=$(node -p "require('./dist-updates/package.json').name")
           if npm view "$pkg@$version" version >/dev/null 2>&1; then
             echo "$pkg@$version already published; skipping"
           else
-            npm publish ./dist-updates --access public --tag "$npm_tag"
+            npm publish ./dist-updates --access public --tag "$npm_tag" $PROVENANCE_FLAG
           fi
           npm dist-tag add "$pkg@$version" "$npm_tag" >/dev/null
           deadline=$((SECONDS + 360))

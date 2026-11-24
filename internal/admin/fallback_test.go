@@ -78,7 +78,7 @@ func TestTokenDisableFallbackFieldRoundTrip(t *testing.T) {
 
 func readyLogin(t *testing.T, env *testEnv) string {
 	t.Helper()
-	cookie, _ := login(t, env, store.DefaultAdminUsername, store.DefaultAdminPassword)
+	cookie, _ := login(t, env, store.DefaultAdminUsername, "admin123")
 	if code, body, _ := env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`); code != 200 {
 		t.Fatalf("change password: %d %s", code, body)
 	}

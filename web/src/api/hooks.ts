@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, jsonBody } from './client'
-import type { AdminInfo, Channel, ChannelDetail, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import { api, ApiError, jsonBody } from './client'
+import { withBasePath } from '../lib/runtime'
+import type { AdminInfo, AuditLog, Channel, ChannelDetail, ConfigImportResult, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -266,20 +267,95 @@ export interface LogFilters {
   channel_id?: string
   token_id?: string
   start?: string
+  end?: string
   page?: number
   page_size?: number
 }
 
-export function useLogs(filters: LogFilters) {
+/** 把筛选条件编成 query string；导出与列表共用，保证"导出即所见"。 */
+export function buildLogQuery(filters: LogFilters): string {
   const params = new URLSearchParams()
   Object.entries(filters).forEach(([k, v]) => {
     if (v !== undefined && v !== '' && v !== null) params.set(k, String(v))
   })
+  return params.toString()
+}
+
+export function useLogs(filters: LogFilters) {
   return useQuery({
     queryKey: ['logs', filters],
-    queryFn: () => api<LogsPage>(`/admin/api/logs?${params.toString()}`),
+    queryFn: () => api<LogsPage>(`/admin/api/logs?${buildLogQuery(filters)}`),
     placeholderData: (prev) => prev,
   })
+}
+
+/** 全量匹配行聚合（不受分页限制），修复 Dashboard 只看最新 100 条的口径偏差。 */
+export function useLogsStats(filters: Omit<LogFilters, 'page' | 'page_size'>) {
+  return useQuery({
+    queryKey: ['logs-stats', filters],
+    queryFn: () => api<{ stats: LogStats }>(`/admin/api/logs/stats?${buildLogQuery(filters)}`),
+    placeholderData: (prev) => prev,
+  })
+}
+
+// ---------- 渠道批量探测 ----------
+export function useChannelsTestAll() {
+  return useMutation({
+    mutationFn: () => api<{ items: TestAllItem[]; timeout_sec: number }>('/admin/api/channels/test-all', { method: 'POST' }),
+  })
+}
+
+// ---------- 审计 ----------
+export function useAuditLogs(page: number, pageSize: number, action?: string) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+  if (action) params.set('action', action)
+  return useQuery({
+    queryKey: ['audit-logs', page, pageSize, action],
+    queryFn: () => api<{ items: AuditLog[]; total: number }>(`/admin/api/audit-logs?${params.toString()}`),
+    placeholderData: (prev) => prev,
+  })
+}
+
+// ---------- 配置导出 / 导入 ----------
+export function useImportConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: unknown) => api<{ result: ConfigImportResult }>('/admin/api/config/import', jsonBody(payload)),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channels'] })
+      qc.invalidateQueries({ queryKey: ['tokens'] })
+      qc.invalidateQueries({ queryKey: ['model-fallbacks'] })
+      qc.invalidateQueries({ queryKey: ['system-settings'] })
+      qc.invalidateQueries({ queryKey: ['usage-prices'] })
+    },
+  })
+}
+
+/** 带 Cookie 下载管理台生成的文件（CSV / JSON），失败时抛 ApiError 而不是下载一个错误页。 */
+export async function downloadAdminFile(path: string, fallbackName: string) {
+  const resp = await fetch(withBasePath(path), { credentials: 'same-origin' })
+  if (!resp.ok) {
+    let message = `HTTP ${resp.status}`
+    try {
+      const json = await resp.json()
+      if (json?.message) message = json.message
+    } catch {
+      // 非 JSON 错误体，保留 HTTP 状态文案
+    }
+    throw new ApiError(message, resp.status)
+  }
+  const blob = await resp.blob()
+  const disposition = resp.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename="?([^";]+)"?/i)
+  const name = match?.[1] ?? fallbackName
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
 }
 
 // ---------- 用量与价格 ----------

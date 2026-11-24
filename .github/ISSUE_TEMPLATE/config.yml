@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题
+    url: https://github.com/guol9180/evergate/blob/main/docs/FAQ.md
+    about: 先查 FAQ：错误码、cooldown、成本显示、初始密码、备份迁移

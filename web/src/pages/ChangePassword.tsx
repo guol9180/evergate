@@ -2,9 +2,12 @@ import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ShieldAlert } from 'lucide-react'
 import { useChangePassword } from '../api/hooks'
+import { usePageTitle } from '../lib/usePageTitle'
+import { t } from '../lib/i18n'
 import { Button, Card, ErrorText, Field, Input } from '../components/ui'
 
 export default function ChangePassword() {
+  usePageTitle(t('page.changePassword.title'))
   const change = useChangePassword()
   const navigate = useNavigate()
   const [oldPwd, setOldPwd] = useState('')
@@ -15,11 +18,11 @@ export default function ChangePassword() {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (newPwd.length < 8) {
-      setLocalError('新密码至少 8 位')
+      setLocalError(t('changePassword.tooShort'))
       return
     }
     if (newPwd !== confirm) {
-      setLocalError('两次输入的新密码不一致')
+      setLocalError(t('changePassword.mismatch'))
       return
     }
     setLocalError('')
@@ -31,25 +34,25 @@ export default function ChangePassword() {
 
   return (
     <div className="flex h-full items-center justify-center p-6">
-      <Card className="w-full max-w-md bg-white/95 p-6 shadow-xl backdrop-blur sm:p-8">
+      <Card className="w-full max-w-md bg-surface/95 p-6 shadow-xl backdrop-blur sm:p-8">
         <div className="mb-4 flex flex-col items-center gap-2 text-center">
-          <ShieldAlert size={28} className="text-amber-500" />
-          <h1 className="text-lg font-bold">首次登录须修改密码</h1>
-          <p className="text-xs text-slate-400">默认密码 admin/admin123 已不安全，请立即更换</p>
+          <ShieldAlert size={28} className="text-warning-text" />
+          <h1 className="text-lg font-bold">{t('changePassword.heading')}</h1>
+          <p className="text-xs text-subtle">{t('changePassword.hint')}</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">
-          <Field label="旧密码">
+          <Field label={t('changePassword.old')}>
             <Input type="password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} autoComplete="current-password" />
           </Field>
-          <Field label="新密码（≥8 位）">
+          <Field label={t('changePassword.new')}>
             <Input type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} autoComplete="new-password" />
           </Field>
-          <Field label="确认新密码">
+          <Field label={t('changePassword.confirm')}>
             <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
           </Field>
           <ErrorText>{localError || (change.isError ? (change.error as Error).message : null)}</ErrorText>
           <Button type="submit" className="w-full" disabled={change.isPending}>
-            {change.isPending ? '提交中…' : '修改密码'}
+            {change.isPending ? t('changePassword.submitting') : t('changePassword.submit')}
           </Button>
         </form>
       </Card>
