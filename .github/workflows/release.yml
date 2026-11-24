@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -86,7 +86,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ env.RELEASE_TAG }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -237,7 +237,7 @@ jobs:
           git fetch --no-tags origin main
           git checkout origin/main -- installer/evergate.iss scripts/release-gate.mjs scripts/release-gate.test.mjs
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -322,7 +322,7 @@ jobs:
           git fetch --no-tags origin main
           git checkout origin/main -- scripts/build-macos-app.sh scripts/build-macos-installer.sh installer/macos
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -401,7 +401,7 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
