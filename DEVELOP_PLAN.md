@@ -225,10 +225,12 @@ P0 功能完成定义（1–10 全部通过）：
   5. 工作树只包含 P4 收尾相关改动；提交前 `git diff --check` 通过，完成后提交并推送 main，等待 CI 全绿
 - 边界：不新增业务功能；不做有支出的签名/公证；不重发已发布 tag；深层低频文案允许作为 T79 后续批次记录，但不影响导航、页面标题、主要操作与错误反馈的语言切换
 - 阻塞项：本机 CGO 已关闭且无 gcc，`go test -race` 只能在 Ubuntu CI 执行；类型：待复验；重启条件：收尾提交推送 main 后 CI 完成；复查日期：2026-11-24
-- 状态：in-progress
+- 状态：done
 - 进度：
   - 2026-11-24 计划 用户指令完成收尾；建立唯一收尾卡，统一验收 P4 已有实现并修正计划状态
   - 2026-11-24 验证 本地 Go/vet/覆盖率/前端/OpenAPI/链接/actionlint/gitleaks/build/build-all 通过；远端 Quality 与 Security 通过；首个 CI 发现的两处 SSE keepalive recorder race 已修复
+  - 2026-11-24 交付 提交 `1c4ab62` 完成 P4 批次，`2c28cbc`/`3189f78` 修复 race，`0f848b6`/`198eb31` 隔离不可用 macOS runner；最终 CI [45356406575](https://github.com/guol9180/evergate/actions/runs/45356406575) 的 Quality（go -race/覆盖率/前端）与 Security（gitleaks/actionlint）全绿，macOS job 按 T74v 外部条件跳过
+  - 2026-11-24 验证 本地 `go test -p 1 ./...`、vet、scheduler 93.5%、relay 81%、前端 11+19 测试、ESLint、OpenAPI/24 个 Markdown 链接、`make build`、`make build-all` 通过；DEVELOP_PLAN 269 行、AGENTS 48 行，收尾后无 in-progress 卡
 
 ### P3 待复验任务（由 T73 拆分）
 
