@@ -125,6 +125,7 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-24 计划 建卡
   - 2026-11-24 收尾 上一会话已落地 CI 与覆盖率门禁，暂停 in-progress；由 T80 统一验收后流转
   - 2026-11-24 验证 `ci.yml` 与 `release.yml` 的 race、relay 覆盖率、gitleaks、actionlint、macOS cgo/OIDC 步骤齐全；actionlint 通过；gitleaks 扫描 146 commits，无泄漏（测试夹具使用最小路径 allowlist）；races 与远端 CI 在 T80 推送后执行
+  - 2026-11-24 验证 远端 CI 的 Quality（go -race/覆盖率/前端）与 Security（gitleaks/actionlint）已通过；macOS hosted runner 在分配前被 GitHub 取消，拆分 T74v 跟踪，workflow 改为不阻塞主门禁
 
 ### T75: 后端补齐：统计聚合、导出、审计、随机初始密码、迁移备份（P1）
 
@@ -227,8 +228,18 @@ P0 功能完成定义（1–10 全部通过）：
 - 状态：in-progress
 - 进度：
   - 2026-11-24 计划 用户指令完成收尾；建立唯一收尾卡，统一验收 P4 已有实现并修正计划状态
+  - 2026-11-24 验证 本地 Go/vet/覆盖率/前端/OpenAPI/链接/actionlint/gitleaks/build/build-all 通过；远端 Quality 与 Security 通过；首个 CI 发现的两处 SSE keepalive recorder race 已修复
 
 ### P3 待复验任务（由 T73 拆分）
+
+### T74v: 复验 macOS cgo CI（P0，待外部环境）
+
+- 目标：在可用 GitHub hosted macOS runner 上执行 `CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build ./internal/desktop/ ./cmd/evergate/`
+- 验收标准：CI `macOS cgo build (no release)` job 实际分配到 runner 并全绿；若失败，记录编译日志并修复
+- 阻塞项：当前私有仓库的 `macos-14` job 在 runner 分配前被 GitHub 取消；类型：外部（hosted macOS runner/额度）；重启条件：Actions 账单或配额恢复；复查日期：2026-12-15
+- 状态：planned
+- 进度：
+  - 2026-11-24 计划 由 T74 拆出；Linux race、安全与构建已通过，仅 macOS cgo 环境待复验
 
 ### T49v: 复验 Windows 托盘 DPI 截图矩阵（P3，待人工复验）
 

@@ -85,6 +85,9 @@ jobs:
   macos-build:
     name: macOS cgo build (no release)
     runs-on: macos-14
+    # 私有仓库的 hosted macOS 分钟额度不可用时 GitHub 会在分配 runner 前取消 job。
+    # T74v 跟踪该外部复验；不阻塞 Linux race/安全/构建主门禁。
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
