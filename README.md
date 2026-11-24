@@ -121,7 +121,7 @@ curl http://localhost:8787/v1/messages \
 - [HTTPS 与反向代理](./docs/agents/HTTPS与反向代理.md)：Caddy / Nginx 最小配置
 - [回滚与备份](./docs/agents/回滚与备份.md)
 - [OpenAPI（下游 /v1）](./docs/agents/openapi.yaml)
-- [发版检查清单](./docs/agents/发版检查清单.md) · [风险登记](./docs/agents/RISK.md) · [文档索引](./docs/README.md)
+- [发版检查清单](./docs/agents/发版检查清单.md) · [风险登记](./docs/agents/RISK.md) · [文档索引](./docs/agents/README.md)
 - [开发规范](./AGENTS.md) · [开发计划](./DEVELOP_PLAN.md) · [贡献指南](./CONTRIBUTING.md) · [安全披露](./SECURITY.md)
 
 ## License

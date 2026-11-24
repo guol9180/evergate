@@ -10,7 +10,7 @@
 - 管理台：新建渠道可内联粘贴上游 key、类型逐项说明、模型映射表格编辑、渠道级超时字段、「测试全部」并按延迟排序；日志筛选改为渠道/令牌下拉 + 日期范围并支持导出 CSV；令牌创建成功直接给出可复制的客户端环境变量片段；Dashboard 成功率/延迟改为后端全量聚合、四段引导与额度不足 20% 预警；系统设置新增配置导出/导入与审计日志
 - 新接口：`GET /admin/api/logs/stats`、`GET /admin/api/logs/export`、`GET /admin/api/config/export`、`POST /admin/api/config/import`、`POST /admin/api/channels/test-all`
 - CI：新增 `ci.yml` 在 main 推送与 PR 运行 `go test -race`、vet、前端 lint/test/build、调度与 relay 覆盖率门禁（relay ≥81%）、gitleaks、actionlint 与 macOS cgo 编译；npm 发布支持可选 OIDC Trusted Publishing（仓库变量 `NPM_TRUSTED_PUBLISHING`）
-- 文档：README 新增七类客户端接入指南与如实描述 macOS 现状；新增 FAQ、HTTPS 与反向代理、回滚与备份、OpenAPI、发版检查清单、风险登记、贡献指南与安全策略；按 `init-project-docs` 复审三件套，专题文档迁入 `docs/agents/`，DEVELOP_PLAN done 卡归档至 `docs/archive/`
+- 文档：README 新增七类客户端接入指南与如实描述 macOS 现状；新增 FAQ、HTTPS 与反向代理、回滚与备份、OpenAPI、发版检查清单、风险登记、贡献指南与安全策略；按 `init-project-docs` 复审三件套，专题文档迁入 `docs/agents/`，已完成卡与已结题调研原文归档至 `docs/archive/`
 
 ## v0.5.5
 

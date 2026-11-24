@@ -1,6 +1,6 @@
 # 开发计划与验收
 
-> 需求与技术设计全文见 [docs/agents/AI网关项目-开发任务书.md](./docs/agents/AI网关项目-开发任务书.md)。本文件只管任务、状态与验收，架构与技术选型见 [README.md](./README.md)，改码规则见 [AGENTS.md](./AGENTS.md)。
+> 已完成的历史需求原文见 [归档任务书](./docs/archive/historical-AI网关项目-开发任务书.md)，仅用于追溯。本文件只管任务、状态与验收，当前定位与技术选型见 [README.md](./README.md)，改码规则见 [AGENTS.md](./AGENTS.md)。
 
 ## 状态枚举
 
@@ -138,6 +138,24 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-24 决策 转 deferred。阻塞项：macOS App/安装器签名与公证；类型：外部（需 Apple Developer Program 与 6 个签名/公证 Secrets）；重启条件：凭据可用并设置仓库变量 ENABLE_MACOS_INSTALLER=true；复查日期 2027-01-15。Windows/Linux 产物已随 v0.3.0+ 发布，不受本卡阻塞
 
 ### 最近完成 / 已取消
+
+#### T82: 按新版 init-project-docs 补齐调研与设计分层（P1，用户指令）
+
+- 目标：按新版 `init-project-docs` 复审文档目录与内容归属，移除 `docs/` 根目录散文件，将已结题调研 / 审计 / 历史需求原文归档，并确保结论只由 README、AGENTS、现行 `docs/agents/` 文档与任务卡承载
+- 验收标准：
+  1. `docs/` 根目录只保留子目录；文档索引迁入 `docs/agents/README.md`，仓库内所有入口链接同步更新
+  2. 已结题的参考评审、管理台设计调研、协议生态调研、Responses 审计、三项 P2 调研与最初任务书迁入 `docs/archive/`；只搬不改，索引明确标注 `concluded`、日期与权威结论入口
+  3. `docs/agents/` 只保留现行领域规范、用户 / 运维文档、风险评估与 API 契约；不创建空的 `research/`、`design/` 或 `adr/`，同一决策不同时写 design 与 ADR
+  4. README、AGENTS、DEVELOP_PLAN 的引用单向且准确：当前事实不依赖旧调研，历史原文只作为追溯材料；无旧路径残留
+  5. 七条自检通过：五条规范完整、内容归属唯一、无重复正文、进度只追加、预算内、分区与状态一致、调研 / 设计状态与结案去向明确；全部 Markdown 链接与锚点可解析
+- 边界：只调整文档索引、目录与引用；不改写结题原文和历史任务卡，不重新论证已有技术结论，不改业务代码、版本号或发布产物
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-24 计划 新版 skill 复审确认 `docs/README.md` 为根目录散文件、7 份结题调研 / 审计仍混在 agents、最初任务书被误作现时权威入口；建立本卡并开始整理
+  - 2026-11-24 验证 文档索引迁入 `docs/agents/README.md`；`docs/` 根目录无散文件，仅保留非空 `agents/`、`archive/`；7 份结题调研 / 审计与最初任务书逐字迁入归档，并在索引记录 `concluded`、日期和权威结论入口
+  - 2026-11-24 验证 新版七项自检通过：README 134 行、AGENTS 57 行、DEVELOP_PLAN 179 行；36 个 Markdown 文件链接与锚点可解析；现行文档无重复长正文；`docs/agents/openapi.yaml` 解析通过；`git diff --check` 通过
+  - 2026-11-24 修正 行数按实际内容行为 README 133、AGENTS 56、DEVELOP_PLAN 179；前一行 134 / 57 为脚本包含尾随空元素的计数，三份文档均低于预算
+  - 2026-11-24 交付 调研 / 设计分层与单向引用已补齐；未创建空的 research/design/adr，未改业务代码、版本号或发布产物
 
 #### T81: 按 init-project-docs 复审并整理项目文档（P1，用户指令）
 

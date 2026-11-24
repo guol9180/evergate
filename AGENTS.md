@@ -1,6 +1,6 @@
 # 开发规范
 
-## 通用规范（必建五条）
+## 通用规范（强制遵守）
 
 1. **复用优先，不过度设计**：同一逻辑或结构出现第二份副本时，立即抽取为公共函数 / 公共样式 / 公共组件；前端表现层优先组件化；不牺牲可读性、可测性与可维护性，不为假想的未来需求预先抽象。
 2. **文档同步**：DEVELOP_PLAN.md 逐任务更新（进度只追加、状态如实流转）；AGENTS.md 仅当开发规范变化时更新；README.md 仅当项目定位、结构、用法或环境变化时更新——新增功能默认只记录在 DEVELOP_PLAN.md，不逐条追加进 README，README 不是变更日志。文档与代码不同步视为任务未完成。
@@ -12,7 +12,7 @@
 
 - `cmd/evergate/main.go` 唯一入口；`internal/` 每包一个职责（relay 转发、router/pool/retry/affinity 调度、store/admin/health/settings/usage 数据与管理、desktop/winres/browser 桌面、update/selfupdate/npmregistry 更新发布、metrics/telemetry 可观测、config/appdir/applog/server 基础设施）
 - `web/` React 管理台（`web/dist` 随仓库提交，改前端后必须 `make build-web` 并提交）；`web/public/logo.svg` 品牌图标唯一视觉源
-- `scripts/` 构建发布脚本；`installer/` 桌面安装器；`npm/` 发布模板；`docs/agents/` 领域文档；`docs/archive/` 归档任务卡
+- `scripts/` 构建发布脚本；`installer/` 桌面安装器；`npm/` 发布模板；`docs/agents/` 现行领域文档；`docs/archive/` 历史原文；`docs/research/`、`docs/design/`、`docs/adr/` 按需创建
 - 业务数据一律存 DB，不进 YAML；配置与数据路径统一由 `internal/appdir` 解析；Go 文件小写、测试同包白盒；React 组件 PascalCase
 
 ## 代码风格（跨模块不变量；功能专属约束见 [协议与转发](./docs/agents/约束-协议与转发.md)、[管理台与运维](./docs/agents/约束-管理台与运维.md)）
@@ -51,6 +51,6 @@
 
 - [目录与模块职责](./docs/agents/目录约定.md) · [协议与转发](./docs/agents/约束-协议与转发.md) · [管理台、可观测性与发布](./docs/agents/约束-管理台与运维.md)
 - [运维配置](./docs/agents/运维配置.md) · [FAQ](./docs/agents/FAQ.md) · [HTTPS 与反向代理](./docs/agents/HTTPS与反向代理.md) · [回滚与备份](./docs/agents/回滚与备份.md)
-- [发版检查清单](./docs/agents/发版检查清单.md) · [风险登记](./docs/agents/RISK.md) · [文档索引](./docs/README.md)
+- [发版检查清单](./docs/agents/发版检查清单.md) · [风险登记](./docs/agents/RISK.md) · [文档索引](./docs/agents/README.md)
 
 （项目背景见 [README.md](./README.md)，勿在此重复）
