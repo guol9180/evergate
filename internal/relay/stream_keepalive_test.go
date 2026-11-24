@@ -27,10 +27,9 @@ func TestSSEWriterKeepaliveDoesNotEmitDataFrames(t *testing.T) {
 	stop := w.startKeepalive()
 	defer stop()
 
-	deadline := time.Now().Add(250 * time.Millisecond)
-	for !strings.Contains(rec.Body.String(), ": keepalive\n\n") && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
+	// stop 同步等待后台 goroutine 退出后，测试才能读取 recorder。
+	time.Sleep(60 * time.Millisecond)
+	stop()
 
 	body := rec.Body.String()
 	if !strings.Contains(body, ": keepalive\n\n") {
