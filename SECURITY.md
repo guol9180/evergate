@@ -11,7 +11,7 @@
 - 管理台 API 默认仅 loopback；管理员初始密码随机生成（或由 `EVERGATE_INITIAL_ADMIN_PASSWORD` 预设），首登强制改密，登录失败限流
 - 会话亲和只保存 SHA-256 指纹；请求级覆盖只接受白名单字段，摘要脱敏落日志
 - 审计日志记录管理台写操作，不含密钥明文
-- 已知限制：下游 `/v1` 默认无 TLS（见 [HTTPS 与反向代理](./docs/HTTPS与反向代理.md)）；Windows 安装器未签名；经反代终止 TLS 时会话 Cookie 不带 `Secure`
+- 已知限制：下游 `/v1` 默认无 TLS（见 [HTTPS 与反向代理](./docs/agents/HTTPS与反向代理.md)）；Windows 安装器未签名；经反代终止 TLS 时会话 Cookie 不带 `Secure`
 
 ## 不在范围内
 

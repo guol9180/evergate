@@ -13,7 +13,7 @@
 
 ## 能力概览
 
-- **统一入口**：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 与 Gemini API 四种协议，见[协议接入](./docs/运维配置.md#协议接入)
+- **统一入口**：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 与 Gemini API 四种协议，见[协议接入](./docs/agents/运维配置.md#协议接入)
 - **高可用**：多渠道与 key 池调度，故障自动切换、按预算模型降级
 - **管理台**：渠道、下游令牌、请求日志（重试轨迹）、调试台、用量成本、系统设置与审计日志
 - **轻量交付**：单二进制 + SQLite，无需 Docker / Redis / 外部数据库
@@ -23,7 +23,7 @@
 
 | 平台 | 方式 | 说明 |
 |---|---|---|
-| Windows x64 | [GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 的 `evergate_<version>_windows_amd64_setup.exe` | 安装器含系统托盘；**未做代码签名**，首次运行 SmartScreen 会提示，见 [FAQ](./docs/FAQ.md#windows-smartscreen-拦截怎么办) |
+| Windows x64 | [GitHub Releases](https://github.com/guol9180/evergate/releases/latest) 的 `evergate_<version>_windows_amd64_setup.exe` | 安装器含系统托盘；**未做代码签名**，首次运行 SmartScreen 会提示，见 [FAQ](./docs/agents/FAQ.md#windows-smartscreen-拦截怎么办) |
 | Linux x64 | `evergate_<version>_linux_amd64.tar.gz` | 解压即用，可放入 Docker 镜像 |
 | macOS Apple Silicon | `npm i -g @heguoliang/evergate` | **仅 CLI / npm 渠道**；图形安装器需 Apple 开发者签名与公证凭据，尚未提供，无时间承诺 |
 | 任意平台 | `npm i -g @heguoliang/evergate` | 自动选择本平台子包，实际运行仍是原生单二进制 |
@@ -39,7 +39,7 @@
 4. 「令牌管理」创建下游令牌，复制生成的客户端配置片段
 5. 客户端把 base_url 指向 `http://localhost:8787/v1`，用该令牌作为 API key
 
-默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改；存活检查 `GET /healthz`。路径发现顺序、固定安装目录与数据位置见 [运维配置 · 配置与数据路径](./docs/运维配置.md#配置与数据路径)。
+默认端口 `8787`，通过 `evergate.yml` 的 `server.port` 修改；存活检查 `GET /healthz`。路径发现顺序、固定安装目录与数据位置见 [运维配置 · 配置与数据路径](./docs/agents/运维配置.md#配置与数据路径)。
 
 ## 接入客户端
 
@@ -99,7 +99,7 @@ curl http://localhost:8787/v1/messages \
 
 - 上游 key 加密存储（主密钥仅在 `evergate.yml`，已 gitignore），管理台接口不回显明文；下游令牌仅存哈希，明文只在创建时展示一次
 - 管理台 API 默认仅允许 loopback 访问；确需远程管理时显式设置 `server.admin_loopback_only: false`，并自行增加 TLS 与访问控制
-- **下游 `/v1` 默认监听所有网卡且无 TLS，令牌以明文传输**：请仅在本机或可信局域网使用；跨网络访问按 [HTTPS 与反向代理](./docs/HTTPS与反向代理.md) 配置
+- **下游 `/v1` 默认监听所有网卡且无 TLS，令牌以明文传输**：请仅在本机或可信局域网使用；跨网络访问按 [HTTPS 与反向代理](./docs/agents/HTTPS与反向代理.md) 配置
 - 初始管理员密码随机生成（或由环境变量预设），首登强制修改；管理台写操作记录在审计日志中
 - 设置 `server.base_path: /eg` 后，管理台、静态资源与 API 统一挂载到 `http://localhost:8787/eg/`
 
@@ -116,12 +116,12 @@ curl http://localhost:8787/v1/messages \
 
 ## 文档
 
-- [FAQ 与故障排查](./docs/FAQ.md)：错误码含义、cooldown 恢复、成本显示、初始密码、备份迁移
-- [运维与配置](./docs/运维配置.md)：路径、协议接入矩阵、健康探测、环境变量
-- [HTTPS 与反向代理](./docs/HTTPS与反向代理.md)：Caddy / Nginx 最小配置
-- [回滚与备份](./docs/回滚与备份.md)
-- [OpenAPI（下游 /v1）](./docs/openapi.yaml)
-- [发版检查清单](./docs/发版检查清单.md) · [风险登记](./docs/RISK.md) · [文档索引](./docs/README.md)
+- [FAQ 与故障排查](./docs/agents/FAQ.md)：错误码含义、cooldown 恢复、成本显示、初始密码、备份迁移
+- [运维与配置](./docs/agents/运维配置.md)：路径、协议接入矩阵、健康探测、环境变量
+- [HTTPS 与反向代理](./docs/agents/HTTPS与反向代理.md)：Caddy / Nginx 最小配置
+- [回滚与备份](./docs/agents/回滚与备份.md)
+- [OpenAPI（下游 /v1）](./docs/agents/openapi.yaml)
+- [发版检查清单](./docs/agents/发版检查清单.md) · [风险登记](./docs/agents/RISK.md) · [文档索引](./docs/README.md)
 - [开发规范](./AGENTS.md) · [开发计划](./DEVELOP_PLAN.md) · [贡献指南](./CONTRIBUTING.md) · [安全披露](./SECURITY.md)
 
 ## License
