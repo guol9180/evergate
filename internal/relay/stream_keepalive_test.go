@@ -52,10 +52,9 @@ func TestChatSSEWriterKeepaliveIsEmptyDelta(t *testing.T) {
 	stop := w.startKeepalive()
 	defer stop()
 
-	deadline := time.Now().Add(250 * time.Millisecond)
-	for !strings.Contains(rec.Body.String(), "data:") && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
+	// 等待至少数个 tick；stop 会同步等待后台 goroutine 退出，之后才能安全读取 recorder。
+	time.Sleep(60 * time.Millisecond)
+	stop()
 
 	body := rec.Body.String()
 	if !strings.Contains(body, `"object":"chat.completion.chunk"`) ||

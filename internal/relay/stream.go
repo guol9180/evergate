@@ -266,7 +266,9 @@ func (s *sseWriter) startKeepalive() (stop func()) {
 	}
 	ticker := time.NewTicker(interval)
 	done := make(chan struct{})
+	finished := make(chan struct{})
 	go func() {
+		defer close(finished)
 		for {
 			select {
 			case <-done:
@@ -287,8 +289,12 @@ func (s *sseWriter) startKeepalive() (stop func()) {
 			}
 		}
 	}()
+	var stopOnce sync.Once
 	return func() {
-		ticker.Stop()
-		close(done)
+		stopOnce.Do(func() {
+			ticker.Stop()
+			close(done)
+			<-finished
+		})
 	}
 }
