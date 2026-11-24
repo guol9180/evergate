@@ -19,7 +19,7 @@ jobs:
     name: Quality (go -race / web / coverage)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -67,7 +67,7 @@ jobs:
     name: Security (gitleaks / actionlint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -89,7 +89,7 @@ jobs:
     # 私有仓库的 hosted macOS 分钟额度不可用时 GitHub 会在分配 runner 前取消 job。
     # 默认跳过并保持主 CI 绿色；账单/配额恢复后设置仓库变量 ENABLE_MACOS_CI=true 复验 T74v。
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v5
         with:
