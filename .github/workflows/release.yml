@@ -61,7 +61,7 @@ jobs:
 
       # 个人仓库无需 GITLEAKS_LICENSE；组织账户需在 Secrets 配置。
       - name: Scan for secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITLEAKS_ENABLE_SUMMARY: true
 
