@@ -84,10 +84,10 @@ jobs:
 
   macos-build:
     name: macOS cgo build (no release)
+    if: ${{ vars.ENABLE_MACOS_CI == 'true' }}
     runs-on: macos-14
     # 私有仓库的 hosted macOS 分钟额度不可用时 GitHub 会在分配 runner 前取消 job。
-    # T74v 跟踪该外部复验；不阻塞 Linux race/安全/构建主门禁。
-    continue-on-error: true
+    # 默认跳过并保持主 CI 绿色；账单/配额恢复后设置仓库变量 ENABLE_MACOS_CI=true 复验 T74v。
     steps:
       - uses: actions/checkout@v4
 
