@@ -55,6 +55,23 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 执行中
 
+#### T83: 发布 v0.6.0-rc.1（P0，用户指令）
+
+- 目标：将 P4 三视角改进批次与新版文档分层按 MINOR 预发布通道发布为 `v0.6.0-rc.1`，验证 GitHub prerelease、Windows/Linux 资产、npm 五包 `next` 标签与发布门禁
+- 版本判断：`v0.5.5 → v0.6.0-rc.1`。本批次新增管理台能力、后端统计/配置/审计接口与安全/可靠性改进，按 0.x 语义提升 MINOR；先发布候选版，正式 `v0.6.0` 待候选验证后再发
+- 验收标准：
+  1. `CHANGELOG.md` 含唯一非空 `## v0.6.0-rc.1` 段，发版提交位于 `main` 历史
+  2. 本地 Go、前端、覆盖率、脚本、构建、actionlint 与文档门禁通过
+  3. `main` 推送后的 CI Quality / Security 全绿；macOS cgo job 按仓库变量如实跳过或通过
+  4. annotated tag `v0.6.0-rc.1` 指向 `main` 提交；Release workflow 的 quality / release / windows-installer / verify-release 全绿，macOS 安装器按签名开关跳过
+  5. GitHub Release 为 prerelease，仅含 Windows setup、Linux tar.gz 与 checksums，不含裸二进制或未签名 DMG
+  6. npm 主包、三个平台子包与 updates 包均为 `0.6.0-rc.1`，`next` 指向该版本，`latest` 保持 `0.5.5`
+  7. 回写 Action URL、资产大小与 SHA256、npm dist-tags；真实旧→新升级继续由 T50v 在正式版发布后复验
+- 边界：不发布正式 `v0.6.0`、不移动 `latest`、不发布未签名 DMG 或裸二进制；不夹带业务代码；不改写历史 tag
+- 状态：in-progress
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-24 计划 用户确认推送并发布；按 MINOR 预发布规则确定 `v0.6.0-rc.1`，建立发版卡并开始本地门禁
+
 ### 待执行（自上而下即执行顺序）
 
 > 来源：P3 待复验任务（由 T73 拆分）。

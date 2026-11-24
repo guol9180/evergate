@@ -2,8 +2,9 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
-## Unreleased
+## v0.6.0-rc.1
 
+- 本版本为 `v0.6.0` 的首个候选版，按预发布通道发布到 npm `next`，不移动正式版 `latest`
 - 安全：首次启动的管理员密码改为随机生成（打印到控制台与 `logs/evergate.log`，可用 `EVERGATE_INITIAL_ADMIN_PASSWORD` 预设），不再使用固定 `admin123`；新增管理台写操作审计日志（`GET /admin/api/audit-logs`）
 - 可靠性：检测到应用版本变化时在数据库迁移前自动备份 `evergate.db` 到 `data/backups/`（保留 5 份）
 - 管理台：颜色语义 token 与暗色模式（侧栏切换、跟随系统）、中英文切换、Dialog/Drawer 焦点管理与 Esc、骨架屏、页码分页器、危险操作确认对话框替代浏览器原生弹窗、页面标题随路由变化
