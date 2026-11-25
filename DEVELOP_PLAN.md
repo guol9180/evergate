@@ -55,23 +55,6 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 执行中
 
-#### T84: 改为直接正式版发布并发布 v0.6.0（P0，用户指令）
-
-- 目标：移除标准流程中的预发布环节，后续默认直接发布正式版，并立即将当前候选功能集发布为 `v0.6.0`
-- 版本判断：`v0.5.5 → v0.6.0`。P4 新增功能按 0.x 语义提升 MINOR；用户明确取消 RC / 24 小时前置门槛
-- 验收标准：
-  1. AGENTS 与发版检查清单不再要求 MINOR 先发 `-rc.1`，默认直接发布正式 tag
-  2. `CHANGELOG.md` 含唯一非空 `## v0.6.0` 段，正式 tag 指向 `main` 提交
-  3. 本地 Go、前端、覆盖率、脚本、构建、actionlint 与文档门禁通过
-  4. `main` CI Quality / Security 全绿；macOS cgo 按仓库变量如实跳过或通过
-  5. annotated tag `v0.6.0` 指向 `main`；Release workflow 的 quality / release / windows-installer / verify-release 全绿，macOS 安装器按签名开关跳过
-  6. GitHub Release 为正式 Latest，资产为 Windows setup、Linux tar.gz 与 checksums；npm 五包 `latest` 均为 `0.6.0`
-  7. 下载资产重算 SHA256，并回写 Action URL、资产大小 / 哈希、npm dist-tags 与 npmmirror 证据
-- 边界：不发布未签名 DMG、裸二进制或第二个候选 tag；不改写历史 tag；真实旧→新升级仍由 T50v 人工复验
-- 状态：in-progress
-- 进度（只追加新行，不修改旧行）：
-  - 2026-11-25 计划 用户明确取消预发布环节并要求直接发布正式版；建立 T84，开始更新发布规范与正式版门禁
-
 ### 待执行（自上而下即执行顺序）
 
 > 来源：P3 待复验任务（由 T73 拆分）。
@@ -155,6 +138,28 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-24 决策 转 deferred。阻塞项：macOS App/安装器签名与公证；类型：外部（需 Apple Developer Program 与 6 个签名/公证 Secrets）；重启条件：凭据可用并设置仓库变量 ENABLE_MACOS_INSTALLER=true；复查日期 2027-01-15。Windows/Linux 产物已随 v0.3.0+ 发布，不受本卡阻塞
 
 ### 最近完成 / 已取消
+
+#### T84: 改为直接正式版发布并发布 v0.6.0（P0，用户指令）
+
+- 目标：移除标准流程中的预发布环节，后续默认直接发布正式版，并立即将当前候选功能集发布为 `v0.6.0`
+- 版本判断：`v0.5.5 → v0.6.0`。P4 新增功能按 0.x 语义提升 MINOR；用户明确取消 RC / 24 小时前置门槛
+- 验收标准：
+  1. AGENTS 与发版检查清单不再要求 MINOR 先发 `-rc.1`，默认直接发布正式 tag
+  2. `CHANGELOG.md` 含唯一非空 `## v0.6.0` 段，正式 tag 指向 `main` 提交
+  3. 本地 Go、前端、覆盖率、脚本、构建、actionlint 与文档门禁通过
+  4. `main` CI Quality / Security 全绿；macOS cgo 按仓库变量如实跳过或通过
+  5. annotated tag `v0.6.0` 指向 `main`；Release workflow 的 quality / release / windows-installer / verify-release 全绿，macOS 安装器按签名开关跳过
+  6. GitHub Release 为正式 Latest，资产为 Windows setup、Linux tar.gz 与 checksums；npm 五包 `latest` 均为 `0.6.0`
+  7. 下载资产重算 SHA256，并回写 Action URL、资产大小 / 哈希、npm dist-tags 与 npmmirror 证据
+- 边界：不发布未签名 DMG、裸二进制或第二个候选 tag；不改写历史 tag；真实旧→新升级仍由 T50v 人工复验
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-25 计划 用户明确取消预发布环节并要求直接发布正式版；建立 T84，开始更新发布规范与正式版门禁
+  - 2026-11-25 验证 AGENTS 与发版清单已改为默认直接正式版；本地 Go/vet、前端 11+19、lint/build、脚本 10 项、scheduler 93.5%、relay 81%、actionlint、`make build`、`make build-all`、Markdown/OpenAPI 门禁通过
+  - 2026-11-25 验证 main CI [45524001137](https://github.com/guol9180/evergate/actions/runs/45524001137) Quality/Security 成功，macOS cgo 按变量跳过；annotated tag `v0.6.0` 指向 `9e6cc0f` 并推送
+  - 2026-11-25 交付 Release [45525049079](https://github.com/guol9180/evergate/actions/runs/45525049079)：首次 verify-release 因 updates 包 registry 元数据等待超时失败，但五包已实际发布；同一 tag 重放失败 job 后 attempt 2 全成功，macOS-installer 按开关跳过
+  - 2026-11-25 验证 GitHub Release 为正式 Latest，资产 Windows setup 9,841,266B（SHA256 `da20e2c7427609a281ee44a7ed77bab7c12fb0c987019b04939f9d0d22ad9ccf`）、Linux tar.gz 10,883,933B（SHA256 `1f0087a31b10f1a59c7351ffa7869ab991f94c6619446d05b0b1f35a5111e240`）、checksums 205B；独立下载重算一致
+  - 2026-11-25 验证 npm 官方与 npmmirror 五包均 `latest=0.6.0` 且版本存在；npmmirror 主包通过公开同步任务 `6b064029a8442cc48b9fca64` 刷新成功；历史 `next=0.6.0-rc.1` 仅为旧记录，后续标准流程不再产生候选通道
 
 #### T83: 发布 v0.6.0-rc.1（P0，用户指令）
 
