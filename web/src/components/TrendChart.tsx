@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import type { UsageDailyPoint } from '../api/types'
 import { fmtInt, fmtMoney } from '../lib/format'
+import { t, tf } from '../lib/i18n'
 
 type TrendRow = UsageDailyPoint & {
   label: string
@@ -72,7 +73,7 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
           <Bar
             yAxisId="requests"
             dataKey="requests"
-            name="请求数"
+            name={t('chart.requests')}
             fill="#6366f1"
             radius={[4, 4, 0, 0]}
             maxBarSize={28}
@@ -81,7 +82,7 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
           <Line
             yAxisId="rate"
             dataKey="successRate"
-            name="成功率"
+            name={t('chart.successRate')}
             stroke="#10b981"
             strokeWidth={2}
             connectNulls={false}
@@ -105,25 +106,25 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
       <div className="font-medium text-foreground-soft">{row.date}</div>
       <dl className="mt-1.5 space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-subtle">请求</dt>
+          <dt className="text-subtle">{t('chart.request')}</dt>
           <dd className="tabular-nums text-foreground-soft">{fmtInt(row.requests)}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-subtle">成功</dt>
+          <dt className="text-subtle">{t('chart.success')}</dt>
           <dd className="tabular-nums text-foreground-soft">{fmtInt(row.success)}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-subtle">成功率</dt>
+          <dt className="text-subtle">{t('chart.successRate')}</dt>
           <dd className="tabular-nums text-success-text">{row.successRate == null ? '—' : `${row.successRate.toFixed(1)}%`}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-subtle">成本</dt>
+          <dt className="text-subtle">{t('chart.cost')}</dt>
           <dd className="tabular-nums text-foreground-soft">{costKnown ? fmtMoney(row.cost_micros) : '—'}</dd>
         </div>
         {costIssues > 0 && (
           <div className="flex items-center justify-between gap-4 text-warning-text">
-            <dt>成本状态</dt>
-            <dd>{fmtInt(costIssues)} 条未完整计价</dd>
+            <dt>{t('chart.costStatus')}</dt>
+            <dd>{tf('chart.costIssues', { count: fmtInt(costIssues) })}</dd>
           </div>
         )}
       </dl>

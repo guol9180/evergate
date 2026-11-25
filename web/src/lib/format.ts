@@ -1,6 +1,8 @@
 // 展示层格式化（存储 UTC，展示转本地时区——AGENTS 红线）
 // 错误类别人话映射参照 gpt-load credential-failure-presenter 模式
 import type { Tone } from './tone'
+// 带 .ts 后缀：node --experimental-strip-types 跑单测时不做扩展名解析
+import { t, type MessageKey } from './i18n.ts'
 
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -30,11 +32,11 @@ export function fmtRequestCost(micros: number | null | undefined, status: string
     case 'priced':
       return fmtMoney(micros)
     case 'unpriced':
-      return '未计价'
+      return t('cost.unpriced')
     case 'no_usage':
-      return '无 usage'
+      return t('cost.noUsage')
     default:
-      return '未记录'
+      return t('cost.unknown')
   }
 }
 
@@ -107,21 +109,31 @@ export function httpStatusTone(code: number): Tone {
   return 'danger'
 }
 
-export const tokenStatusLabel: Record<string, string> = {
-  active: '可用',
-  disabled: '停用',
-  expired: '过期',
-  exhausted: '额度用尽',
+const tokenStatusKeys: Record<string, MessageKey> = {
+  active: 'tokenStatus.active',
+  disabled: 'tokenStatus.disabled',
+  expired: 'tokenStatus.expired',
+  exhausted: 'tokenStatus.exhausted',
 }
 
-export const stateLabel: Record<string, string> = {
-  active: '正常',
-  half_open: '半开探测',
-  cooldown: '冷却中',
-  disabled: '已禁用',
-  degraded: '降级',
-  down: '不可用',
-  inconclusive: '无法判定',
+export function tokenStatusLabel(status: string): string {
+  const key = tokenStatusKeys[status]
+  return key ? t(key) : status
+}
+
+const stateKeys: Record<string, MessageKey> = {
+  active: 'keyState.active',
+  half_open: 'keyState.half_open',
+  cooldown: 'keyState.cooldown',
+  disabled: 'keyState.disabled',
+  degraded: 'keyState.degraded',
+  down: 'keyState.down',
+  inconclusive: 'keyState.inconclusive',
+}
+
+export function stateLabel(status: string): string {
+  const key = stateKeys[status]
+  return key ? t(key) : status
 }
 
 export function statusRank(status: string): number {
@@ -130,19 +142,20 @@ export function statusRank(status: string): number {
 }
 
 // retry.ErrorKind → 人话（与后端 T4a 分类学对齐）
-export const kindLabel: Record<string, string> = {
-  transient: '服务器故障',
-  rate_limited: '限流/配额',
-  auth: '凭据无效',
-  model_unavailable: '模型不可用',
-  non_retryable: '请求错误',
-  content_policy: '内容策略',
-  budget_threshold: '预算降级',
-  channel_exhausted: '渠道耗尽降级',
+const kindKeys: Record<string, MessageKey> = {
+  transient: 'kind.transient',
+  rate_limited: 'kind.rate_limited',
+  auth: 'kind.auth',
+  model_unavailable: 'kind.model_unavailable',
+  non_retryable: 'kind.non_retryable',
+  content_policy: 'kind.content_policy',
+  budget_threshold: 'kind.budget_threshold',
+  channel_exhausted: 'kind.channel_exhausted',
 }
 
 export function kindText(kind: string): string {
-  return kindLabel[kind] || kind || '成功'
+  const key = kindKeys[kind]
+  return key ? t(key) : kind || t('kind.success')
 }
 
 export function statusTone(code: number): string {

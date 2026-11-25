@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button, ErrorText, Textarea } from './ui'
+import { t, tf } from '../lib/i18n'
 
 type Mapping = Record<string, string>
 type Row = { from: string; to: string }
@@ -63,10 +64,10 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
     }
     try {
       const parsed: unknown = JSON.parse(text)
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('必须是 {对外模型: 上游模型} 对象')
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(t('mapping.jsonInvalid'))
       const next: Mapping = {}
       for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
-        if (typeof v !== 'string') throw new Error(`键 ${k} 的值必须是字符串`)
+        if (typeof v !== 'string') throw new Error(tf('mapping.valueInvalid', { key: k }))
         next[k] = v
       }
       setJsonError('')
@@ -79,9 +80,9 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-foreground-soft">模型映射（可选）</span>
+        <span className="text-sm font-medium text-foreground-soft">{t('mapping.title')}</span>
         <Button type="button" size="sm" variant="ghost" onClick={() => (mode === 'table' ? switchToJson() : setMode('table'))}>
-          {mode === 'table' ? '切换 JSON' : '切换表格'}
+          {mode === 'table' ? t('mapping.toJson') : t('mapping.toTable')}
         </Button>
       </div>
       {mode === 'table' ? (
@@ -90,8 +91,8 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
             <table className="w-full min-w-[420px] text-sm">
               <thead className="bg-surface-soft">
                 <tr>
-                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">对外模型（客户端请求的模型名）</th>
-                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">上游模型（真实发送给供应商）</th>
+                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('mapping.publicHeader')}</th>
+                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('mapping.upstreamHeader')}</th>
                   <th scope="col" className="w-12" />
                 </tr>
               </thead>
@@ -102,27 +103,27 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
                     <tr key={i}>
                       <td className="eg-cell-x eg-cell-y">
                         <input
-                          aria-label={isNew ? '新增对外模型' : `对外模型 ${i + 1}`}
+                          aria-label={isNew ? t('mapping.newPublicAria') : tf('mapping.publicAria', { n: i + 1 })}
                           value={row.from}
-                          placeholder={isNew ? '例如 gpt-4' : ''}
+                          placeholder={isNew ? t('mapping.publicPlaceholder') : ''}
                           onChange={(e) => updateRow(i, 'from', e.target.value)}
                           className="h-8 w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-foreground outline-none focus:border-brand"
                         />
                       </td>
                       <td className="eg-cell-x eg-cell-y">
                         <input
-                          aria-label={isNew ? '新增上游模型' : `上游模型 ${i + 1}`}
+                          aria-label={isNew ? t('mapping.newUpstreamAria') : tf('mapping.upstreamAria', { n: i + 1 })}
                           value={row.to}
-                          placeholder={isNew ? '例如 gpt-4o-2024' : ''}
+                          placeholder={isNew ? t('mapping.upstreamPlaceholder') : ''}
                           onChange={(e) => updateRow(i, 'to', e.target.value)}
                           className="h-8 w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-foreground outline-none focus:border-brand"
                         />
                       </td>
                       <td className="eg-cell-x eg-cell-y text-right">
                         {isNew ? (
-                          <span className="inline-block whitespace-nowrap text-xs text-subtle" title="直接输入即可新增一行映射">输入即新增</span>
+                          <span className="inline-block whitespace-nowrap text-xs text-subtle" title={t('mapping.addRowTitle')}>{t('mapping.addRow')}</span>
                         ) : (
-                          <button type="button" onClick={() => removeRow(i)} aria-label={`删除第 ${i + 1} 行映射`} title="删除" className="rounded p-1 text-subtle hover:bg-danger-subtle hover:text-danger-text">
+                          <button type="button" onClick={() => removeRow(i)} aria-label={tf('mapping.deleteRowAria', { n: i + 1 })} title={t('common.delete')} className="rounded p-1 text-subtle hover:bg-danger-subtle hover:text-danger-text">
                             <Trash2 size={13} aria-hidden="true" />
                           </button>
                         )}
@@ -133,7 +134,7 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-subtle">留空表示不映射；对外模型必须同时出现在「支持的模型」列表中。</p>
+          <p className="text-xs text-subtle">{t('mapping.hint')}</p>
         </>
       ) : (
         <>

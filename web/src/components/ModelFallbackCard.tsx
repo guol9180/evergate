@@ -3,6 +3,7 @@ import { GitBranch, Plus, Save, Trash2 } from 'lucide-react'
 import { useModelFallbacks, useSaveModelFallbacks } from '../api/hooks'
 import type { ModelFallback } from '../api/types'
 import { Button, Card, ErrorText, Field, Input, Spinner, Textarea } from './ui'
+import { t, tf } from '../lib/i18n'
 
 type FallbackForm = {
   model: string
@@ -27,8 +28,8 @@ export default function ModelFallbackCard() {
   if (fallbacks.isError || rows === null) {
     return (
       <Card>
-        <h2 className="mb-2 text-sm font-semibold">模型降级</h2>
-        <ErrorText>{(fallbacks.error as Error)?.message || '降级链配置不可用'}</ErrorText>
+        <h2 className="mb-2 text-sm font-semibold">{t('fallback.title')}</h2>
+        <ErrorText>{(fallbacks.error as Error)?.message || t('fallback.unavailable')}</ErrorText>
       </Card>
     )
   }
@@ -43,29 +44,29 @@ export default function ModelFallbackCard() {
     <Card>
       <div className="eg-control-row mb-4 flex flex-wrap items-start justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={15} className="text-brand-text" /> 模型降级</h2>
-          <p className="mt-1 text-xs text-muted">令牌余额低于阈值或原模型渠道耗尽时，按顺序尝试低成本候选模型。</p>
+          <h2 className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={15} className="text-brand-text" /> {t('fallback.title')}</h2>
+          <p className="mt-1 text-xs text-muted">{t('fallback.desc')}</p>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => setRows([...rows, { model: '', budgetThreshold: '0', fallbacks: '' }])}>
-          <Plus size={14} /> 新增链
+          <Plus size={14} /> {t('fallback.add')}
         </Button>
       </div>
 
       {rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line-strong px-3 py-6 text-center text-xs text-muted">
-          暂无降级链；原模型渠道耗尽时保持 503 语义。
+          {t('fallback.empty')}
         </div>
       ) : (
         <div className="space-y-[var(--eg-control-gap)]">
           {rows.map((row, index) => (
             <div key={index} className="eg-grid rounded-lg border border-line p-3 min-[1100px]:grid-cols-[minmax(0,1fr)_150px_minmax(0,1.5fr)_40px] min-[1100px]:items-start">
-              <Field label="源模型">
+              <Field label={t('fallback.sourceModel')}>
                 <Input value={row.model} onChange={(e) => update(index, { model: e.target.value })} placeholder="gpt-4o" />
               </Field>
-              <Field label="预算阈值" hint="剩余 token 低于该值触发；0 不触发">
+              <Field label={t('fallback.budget')} hint={t('fallback.budgetHint')}>
                 <Input type="number" min={0} value={row.budgetThreshold} onChange={(e) => update(index, { budgetThreshold: e.target.value })} />
               </Field>
-              <Field label="候选模型（按序尝试，每行一个）">
+              <Field label={t('fallback.candidates')}>
                 <Textarea rows={2} value={row.fallbacks} onChange={(e) => update(index, { fallbacks: e.target.value })} placeholder={'gpt-4o-mini\ngpt-4o-nano'} />
               </Field>
               <div className="flex items-center justify-end md:pt-7">
@@ -73,8 +74,8 @@ export default function ModelFallbackCard() {
                   type="button"
                   size="sm"
                   variant="ghost"
-                  aria-label={`删除降级链 ${row.model || index + 1}`}
-                  title="删除降级链"
+                  aria-label={tf('fallback.deleteAria', { name: row.model || index + 1 })}
+                  title={t('fallback.delete')}
                   className="h-7 w-7 justify-center px-0 text-danger-text hover:bg-danger-subtle"
                   onClick={() => setRows(rows.filter((_, i) => i !== index))}
                 >
@@ -87,11 +88,11 @@ export default function ModelFallbackCard() {
       )}
 
       <div className="mt-4 space-y-[var(--eg-control-gap)] border-t border-line-soft pt-4">
-        {save.isSuccess && <span className="text-xs text-success-text">已保存，新请求立即使用新降级链</span>}
+        {save.isSuccess && <span className="text-xs text-success-text">{t('fallback.saved')}</span>}
         <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
         <div className="flex justify-end">
           <Button type="button" onClick={submit} disabled={save.isPending}>
-            <Save size={15} /> {save.isPending ? '保存中…' : '保存降级链'}
+            <Save size={15} /> {save.isPending ? t('common.saving') : t('fallback.save')}
           </Button>
         </div>
       </div>

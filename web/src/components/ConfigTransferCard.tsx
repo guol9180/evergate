@@ -3,6 +3,7 @@ import { Download, Upload } from 'lucide-react'
 import { downloadAdminFile, useImportConfig } from '../api/hooks'
 import type { ConfigImportResult } from '../api/types'
 import { Button, Card, ConfirmDialog, ErrorText, SuccessText } from './ui'
+import { t, tf } from '../lib/i18n'
 
 /** 配置导出 / 导入：导出永不含上游 key 与令牌哈希；导入按名称幂等 upsert，导入前需确认。 */
 export default function ConfigTransferCard() {
@@ -20,7 +21,7 @@ export default function ConfigTransferCard() {
     try {
       await downloadAdminFile('/admin/api/config/export', 'evergate-config.json')
     } catch (err) {
-      setError((err as Error).message || '导出失败')
+      setError((err as Error).message || t('config.exportFailed'))
     } finally {
       setBusy(false)
     }
@@ -37,11 +38,11 @@ export default function ConfigTransferCard() {
         ? (parsed as { data: unknown }).data
         : parsed
       const version = (payload as { version?: number } | null)?.version
-      if (version !== 1) throw new Error('不是 EverGate 配置文件（version 应为 1）')
+      if (version !== 1) throw new Error(t('config.notEverGate'))
       setPending(payload)
       setPendingName(file.name)
     } catch (err) {
-      setError(`读取失败：${(err as Error).message}`)
+      setError(tf('config.readFailed', { message: (err as Error).message }))
     } finally {
       if (fileRef.current) fileRef.current.value = ''
     }
@@ -55,37 +56,35 @@ export default function ConfigTransferCard() {
         setResult(resp.result)
         setPending(null)
       },
-      onError: (err) => setError((err as Error).message || '导入失败'),
+      onError: (err) => setError((err as Error).message || t('config.importFailed')),
       onSettled: () => setBusy(false),
     })
   }
 
   return (
     <Card>
-      <h2 className="mb-1 text-sm font-semibold text-foreground">配置导出 / 导入</h2>
-      <p className="mb-4 text-xs text-muted">
-        导出渠道（不含上游 key）、模型降级链、系统设置、价格与令牌治理字段为 JSON；导入按名称幂等更新，令牌需重新创建以获得新 key。
-      </p>
+      <h2 className="mb-1 text-sm font-semibold text-foreground">{t('config.title')}</h2>
+      <p className="mb-4 text-xs text-muted">{t('config.desc')}</p>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={() => void exportConfig()} disabled={busy}>
-          <Download size={14} /> {busy ? '导出中…' : '导出配置'}
+          <Download size={14} /> {busy ? t('config.exporting') : t('config.export')}
         </Button>
         <Button type="button" size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={busy}>
-          <Upload size={14} /> 导入配置
+          <Upload size={14} /> {t('config.import')}
         </Button>
         <input
           ref={fileRef}
           type="file"
           accept="application/json,.json"
           className="sr-only"
-          aria-label="选择配置文件"
+          aria-label={t('config.pickFile')}
           onChange={(e) => void onPickFile(e.target.files?.[0])}
         />
       </div>
       <ErrorText>{error}</ErrorText>
       {result && (
         <div role="status" className="mt-3 rounded-md bg-success-subtle px-3 py-2 text-xs text-success-text">
-          导入完成：新增 {result.created} · 更新 {result.updated} · 跳过 {result.skipped}
+          {tf('config.importResult', { created: result.created, updated: result.updated, skipped: result.skipped })}
           {result.errors && result.errors.length > 0 && (
             <ul className="mt-1 list-disc space-y-0.5 pl-4">
               {result.errors.map((line, i) => <li key={i}>{line}</li>)}
@@ -93,14 +92,14 @@ export default function ConfigTransferCard() {
           )}
         </div>
       )}
-      {result && result.errors?.length === 0 && <SuccessText>全部条目已生效。</SuccessText>}
+      {result && result.errors?.length === 0 && <SuccessText>{t('config.importDone')}</SuccessText>}
 
       <ConfirmDialog
         open={pending != null}
-        title="导入配置"
-        confirmText="开始导入"
+        title={t('config.import')}
+        confirmText={t('config.importConfirm')}
         loading={busy}
-        message={<>将按名称更新已有渠道与降级链、覆盖系统设置与价格；不会触碰任何上游 key。文件：{pendingName}。此操作会覆盖当前同名配置。</>}
+        message={tf('config.importMessage', { name: pendingName })}
         onConfirm={confirmImport}
         onCancel={() => setPending(null)}
       />

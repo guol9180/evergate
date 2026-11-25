@@ -7,7 +7,7 @@ import { UpdateDialog } from '../components/UpdateDialog'
 import { channelStateTone, fmtInt, fmtMs, fmtTime, stateLabel, statusRank } from '../lib/format'
 import { currentBasePath } from '../lib/runtime'
 import { usePageTitle } from '../lib/usePageTitle'
-import { t } from '../lib/i18n'
+import { t, tf } from '../lib/i18n'
 
 export default function Dashboard() {
   usePageTitle(t('page.dashboard.title'))
@@ -38,7 +38,7 @@ export default function Dashboard() {
   }, [chs])
 
   // 额度预警：剩余 ≤20% 且设置了额度的令牌。
-  const lowQuotaTokens = tokenItems.filter((t) => t.quota > 0 && t.remaining_quota / t.quota <= 0.2)
+  const lowQuotaTokens = tokenItems.filter((tok) => tok.quota > 0 && tok.remaining_quota / tok.quota <= 0.2)
   const baseURL = `${window.location.origin}${currentBasePath() || ''}/v1`
 
   const updateBanner = update.data?.update_available ? (
@@ -47,15 +47,15 @@ export default function Dashboard() {
         <Download size={16} aria-hidden="true" />
       </span>
       <div className="min-w-56 flex-1">
-        <div className="text-sm font-semibold text-foreground">EverGate {update.data.latest_version} 可更新</div>
-        <p className="text-xs text-muted">下载并校验当前平台安装包，优雅退出后进入标准安装流程；数据目录保持不变。</p>
+        <div className="text-sm font-semibold text-foreground">{tf('dashboard.update.available', { version: String(update.data.latest_version) })}</div>
+        <p className="text-xs text-muted">{t('dashboard.update.desc')}</p>
       </div>
       <Button size="sm" onClick={() => setUpdateOpen(true)}>
-        <Download size={14} /> 立即更新
+        <Download size={14} /> {t('dashboard.update.now')}
       </Button>
       {update.data.release_url && (
         <a href={update.data.release_url} target="_blank" rel="noreferrer" className="text-xs font-medium text-brand-text hover:underline">
-          查看更新说明
+          {t('dashboard.update.notes')}
         </a>
       )}
     </div>
@@ -65,11 +65,11 @@ export default function Dashboard() {
     <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-warning-border bg-warning-subtle px-4 py-3 text-sm text-warning-text">
       <AlertTriangle size={16} className="shrink-0" aria-hidden="true" />
       <span>
-        {lowQuotaTokens.length} 个令牌额度剩余不足 20%：
-        {lowQuotaTokens.slice(0, 3).map((t) => `「${t.name}」剩余 ${fmtInt(t.remaining_quota)}`).join('、')}
-        {lowQuotaTokens.length > 3 ? ' 等' : ''}
+        {tf('dashboard.lowQuota.title', { count: lowQuotaTokens.length })}
+        {lowQuotaTokens.slice(0, 3).map((tok) => tf('dashboard.lowQuota.item', { name: tok.name, remaining: fmtInt(tok.remaining_quota) })).join(', ')}
+        {lowQuotaTokens.length > 3 ? t('dashboard.lowQuota.more') : ''}
       </span>
-      <Link to="/tokens" className="font-medium underline-offset-2 hover:underline">调整额度</Link>
+      <Link to="/tokens" className="font-medium underline-offset-2 hover:underline">{t('dashboard.lowQuota.adjust')}</Link>
     </div>
   ) : null
 
@@ -83,7 +83,7 @@ export default function Dashboard() {
       description={t('page.dashboard.desc')}
       actions={
         <span className="text-xs text-subtle">
-          {update.isPending ? '版本检查中…' : update.data?.development ? '开发版本' : `版本 ${update.data?.current_version ?? '未知'}`}
+          {update.isPending ? t('dashboard.version.checking') : update.data?.development ? t('dashboard.version.dev') : tf('dashboard.version.current', { version: String(update.data?.current_version ?? t('common.unknown')) })}
         </span>
       }
     />
@@ -95,16 +95,16 @@ export default function Dashboard() {
       <Empty icon={<TowerControl size={40} />} title={t('dashboard.welcome.title')} hint={t('dashboard.welcome.hint')} />
       <ol className="mx-auto max-w-md space-y-3 text-sm">
         {[
-          { n: 1, text: '创建渠道：选预设、填入上游 base_url 与 API key（可多行）', to: '/channels' },
-          { n: 2, text: '确认渠道已导入至少一把启用的 key，并「从上游拉取」模型', to: '/channels' },
-          { n: 3, text: '创建下游令牌，复制生成的客户端配置片段', to: '/tokens' },
-          { n: 4, text: `客户端 base_url 指向 ${baseURL}，并发起第一次请求`, to: null },
+          { n: 1, text: t('dashboard.onboarding.step1'), to: '/channels' },
+          { n: 2, text: t('dashboard.onboarding.step2'), to: '/channels' },
+          { n: 3, text: t('dashboard.onboarding.step3'), to: '/tokens' },
+          { n: 4, text: tf('dashboard.onboarding.step4', { url: baseURL }), to: null },
         ].map((step) => (
           <li key={step.n} className="flex items-center gap-3 rounded-lg border border-line px-4 py-3">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-subtle text-xs font-bold text-brand-text">{step.n}</span>
             <span className="flex-1 text-muted">{step.text}</span>
             {step.to && (
-              <Link to={step.to} className="text-xs font-medium text-brand-text hover:underline">前往 <ArrowRight size={12} className="inline" aria-hidden="true" /></Link>
+              <Link to={step.to} className="text-xs font-medium text-brand-text hover:underline">{t('dashboard.onboarding.go')} <ArrowRight size={12} className="inline" aria-hidden="true" /></Link>
             )}
           </li>
         ))}
@@ -132,8 +132,13 @@ export default function Dashboard() {
     <Card className="p-6">
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Waypoints size={18} className="shrink-0 text-brand-text" aria-hidden="true" />
-        <span className="text-foreground-soft">今天还没有请求经过网关。确认客户端 base_url 为 <code className="rounded bg-surface-strong px-1.5 py-0.5 font-mono text-xs">{baseURL}</code> 并使用已创建的令牌。</span>
-        <Link to="/tokens" className="font-medium text-brand-text hover:underline">查看令牌</Link>
+        <span className="text-foreground-soft">
+          {/* 占位 URL 以 <code> 呈现：按 {url} 切片后拼装，文案本身仍走字典 */}
+          {t('dashboard.noRequests.text').split('{url}').map((part, index, parts) => (
+            <span key={index}>{part}{index < parts.length - 1 && <code className="rounded bg-surface-strong px-1.5 py-0.5 font-mono text-xs">{baseURL}</code>}</span>
+          ))}
+        </span>
+        <Link to="/tokens" className="font-medium text-brand-text hover:underline">{t('dashboard.noRequests.tokens')}</Link>
       </div>
     </Card>
   ) : null
@@ -155,10 +160,10 @@ export default function Dashboard() {
       {/* 事实行（gpt-load HomeSummary 模式） */}
       <div className="flex flex-wrap gap-x-8 gap-y-3">
         {[
-          { value: facts.channels, label: '渠道' },
-          { value: facts.models, label: '去重模型' },
-          { value: facts.keys, label: '上游 key' },
-          { value: tokenItems.length, label: '下游令牌' },
+    { value: facts.channels, label: t('dashboard.fact.channels') },
+    { value: facts.models, label: t('dashboard.fact.models') },
+    { value: facts.keys, label: t('dashboard.fact.keys') },
+    { value: tokenItems.length, label: t('dashboard.fact.tokens') },
         ].map((item) => (
           <div key={item.label} className="flex items-baseline gap-2">
             <span className="text-2xl font-bold tabular-nums text-foreground">{item.value}</span>
@@ -170,10 +175,10 @@ export default function Dashboard() {
       {/* 今日卡片 */}
       <div className="eg-grid eg-grid-kpi">
         {[
-          { label: '今日请求', value: fmtInt(s?.total), icon: Activity },
-          { label: '成功率', value: s?.success_rate != null ? `${s.success_rate.toFixed(1)}%` : '—', icon: Zap },
-          { label: 'P95 延迟', value: fmtMs(s?.p95_ms ?? undefined), icon: Timer },
-          { label: '异常渠道', value: fmtInt(chs.filter((c) => c.status !== 'active').length), icon: AlertTriangle },
+          { label: t('dashboard.kpi.today'), value: fmtInt(s?.total), icon: Activity },
+          { label: t('dashboard.kpi.successRate'), value: s?.success_rate != null ? `${s.success_rate.toFixed(1)}%` : '—', icon: Zap },
+          { label: t('dashboard.kpi.p95'), value: fmtMs(s?.p95_ms ?? undefined), icon: Timer },
+          { label: t('dashboard.kpi.abnormal'), value: fmtInt(chs.filter((c) => c.status !== 'active').length), icon: AlertTriangle },
         ].map((c) => (
           <Card key={c.label} className="p-4">
             <div className="flex items-center gap-2 text-xs text-muted">
@@ -189,17 +194,17 @@ export default function Dashboard() {
       {chs.length > 0 && (
         <Card flush>
           <div className="eg-card-fluid flex items-center justify-between border-b border-line-soft">
-            <h3 className="text-sm font-semibold text-foreground">渠道健康</h3>
-            <Link to="/channels" className="text-xs text-brand-text hover:underline">管理渠道</Link>
+            <h3 className="text-sm font-semibold text-foreground">{t('dashboard.health.title')}</h3>
+            <Link to="/channels" className="text-xs text-brand-text hover:underline">{t('dashboard.health.manage')}</Link>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[620px] lg:min-w-0">
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
-                  <Th>渠道</Th><Th>状态</Th><Th className="hidden min-[1120px]:table-cell">类型</Th>
-                  <Th className="hidden min-[1200px]:table-cell">优先级</Th><Th>key / 可用</Th><Th>模型数</Th>
-                  <Th className="hidden min-[1280px]:table-cell">最近探测</Th><Th className="hidden min-[1180px]:table-cell">异常摘要</Th>
-                  <Th className="hidden min-[1280px]:table-cell">更新时间</Th>
+          <Th>{t('table.channel')}</Th><Th>{t('table.status')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.type')}</Th>
+          <Th className="hidden min-[1200px]:table-cell">{t('table.priority')}</Th><Th>{t('table.keys')}</Th><Th>{t('table.models')}</Th>
+          <Th className="hidden min-[1280px]:table-cell">{t('table.lastProbe')}</Th><Th className="hidden min-[1180px]:table-cell">{t('table.errorSummary')}</Th>
+          <Th className="hidden min-[1280px]:table-cell">{t('table.updatedAt')}</Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-soft">
@@ -208,7 +213,7 @@ export default function Dashboard() {
                     <Td className="font-medium">{c.name}</Td>
                     <Td>
                       <StatusBadge tone={channelStateTone(c.status)}>
-                        <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
+          <span title={c.last_probe_error || undefined}>{stateLabel(c.status)}</span>
                       </StatusBadge>
                     </Td>
                     <Td className="hidden text-muted min-[1120px]:table-cell">{c.type}</Td>
@@ -219,7 +224,7 @@ export default function Dashboard() {
                     </Td>
                     <Td>{(c.models || []).length}</Td>
                     <Td className="hidden text-xs text-muted min-[1280px]:table-cell">
-                      {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : '未探测'}
+          {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
                     </Td>
                     <Td className="hidden max-w-56 min-[1180px]:table-cell">
                       <div className="truncate text-xs text-subtle" title={c.last_probe_error || undefined}>

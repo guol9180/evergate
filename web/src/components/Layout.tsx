@@ -5,7 +5,7 @@ import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
 import { PageSkeleton } from './ui'
 import { withBasePath } from '../lib/runtime'
 import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
-import { getLocale, setLocale, t, useLocale, type MessageKey } from '../lib/i18n'
+import { getLocale, setLocale, t, tf, useLocale, type MessageKey } from '../lib/i18n'
 
 const nav: { to: string; label: MessageKey; end?: boolean; icon: typeof LayoutDashboard }[] = [
   { to: '/', label: 'nav.dashboard', icon: LayoutDashboard, end: true },
@@ -100,15 +100,15 @@ export default function Layout() {
           </div>
           <div className="eg-sidebar-meta px-2 text-[11px] leading-4 text-subtle">
             {update.isPending
-              ? '正在检查更新…'
+              ? t('update.checking')
               : update.isError
-                ? '更新检查失败，可稍后重试'
+                ? t('update.failed')
                 : update.data?.development
-                  ? '开发版本，更新检查已跳过'
-                  : `当前 ${update.data?.current_version ?? '未知'}`}
+                  ? t('update.dev')
+                  : tf('update.current', { version: String(update.data?.current_version ?? t('common.unknown')) })}
             {update.data?.update_available && (
               <a href={update.data.release_url} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-1 font-medium text-brand-text hover:underline">
-                获取 {update.data.latest_version} <ExternalLink size={11} aria-hidden="true" />
+                {tf('update.get', { version: String(update.data.latest_version) })} <ExternalLink size={11} aria-hidden="true" />
               </a>
             )}
           </div>
@@ -125,8 +125,8 @@ export default function Layout() {
             <button
               type="button"
               onClick={() => setThemeState(cycleTheme(theme))}
-              aria-label={`${t('theme.toggle')}：${t('theme.current')}${t(themeLabelKey[theme])}，${t('theme.next')}${t(themeLabelKey[nextTheme[theme]])}`}
-              title={`${t('nav.theme')}：${t(themeLabelKey[theme])}`}
+              aria-label={tf('theme.aria', { current: t(themeLabelKey[theme]), next: t(themeLabelKey[nextTheme[theme]]) })}
+              title={tf('theme.title', { current: t(themeLabelKey[theme]) })}
               className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <ThemeIcon size={16} className="shrink-0" aria-hidden="true" />

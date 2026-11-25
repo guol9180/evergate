@@ -4,6 +4,7 @@ import type { TestAllItem } from '../api/types'
 import { useChannelsTestAll } from '../api/hooks'
 import { Button, Card, StatusBadge } from './ui'
 import { fmtMs } from '../lib/format'
+import { t, tf } from '../lib/i18n'
 
 type SortKey = 'latency' | 'name' | 'result'
 
@@ -39,18 +40,18 @@ export default function TestAllPanel() {
       <div role="status">
         <Card className="eg-card-fluid text-sm text-muted">
           <RefreshCw size={14} className="mr-2 inline animate-spin" aria-hidden="true" />
-          正在探测全部启用渠道（只请求模型列表，最长 30s）…
+          {t('testAll.probing')}
         </Card>
       </div>
     )
   }
   if (testAll.isError && !testAll.data) {
-    return <div role="alert"><Card className="eg-card-fluid text-sm text-danger-text">测试全部失败：{(testAll.error as Error).message}</Card></div>
+    return <div role="alert"><Card className="eg-card-fluid text-sm text-danger-text">{tf('testAll.failed', { message: (testAll.error as Error).message })}</Card></div>
   }
   if (!testAll.data) {
     return (
       <Button size="sm" variant="outline" onClick={() => testAll.mutate()} disabled={testAll.isPending}>
-        <RefreshCw size={14} className={testAll.isPending ? 'animate-spin' : ''} /> 测试全部
+        <RefreshCw size={14} className={testAll.isPending ? 'animate-spin' : ''} /> {t('common.testAll')}
       </Button>
     )
   }
@@ -59,30 +60,30 @@ export default function TestAllPanel() {
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft">
       <div className="text-sm font-semibold text-foreground">
-        批量探测结果 <span className="ml-2 text-xs font-normal text-muted">{okCount}/{items.length} 成功</span>
+        {t('testAll.title')} <span className="ml-2 text-xs font-normal text-muted">{tf('testAll.summary', { ok: okCount, total: items.length })}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5 text-xs text-muted">
-          排序
+          {t('testAll.sort')}
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
             className="h-7 rounded-md border border-line-strong bg-surface px-2 text-xs text-foreground-soft outline-none focus:border-brand"
           >
-            <option value="latency">延迟升序</option>
-            <option value="name">名称</option>
-            <option value="result">结果</option>
+            <option value="latency">{t('testAll.sort.latency')}</option>
+            <option value="name">{t('testAll.sort.name')}</option>
+            <option value="result">{t('testAll.sort.result')}</option>
           </select>
         </label>
         <Button size="sm" variant="outline" onClick={() => testAll.mutate()} disabled={testAll.isPending}>
-          <RefreshCw size={14} className={testAll.isPending ? 'animate-spin' : ''} /> 重新测试
+          <RefreshCw size={14} className={testAll.isPending ? 'animate-spin' : ''} /> {t('testAll.retry')}
         </Button>
       </div>
     </div>
   )
 
   if (items.length === 0) {
-    return <Card className="eg-card-fluid">{header}<p className="py-6 text-center text-sm text-muted">没有启用的渠道可测试。</p></Card>
+    return <Card className="eg-card-fluid">{header}<p className="py-6 text-center text-sm text-muted">{t('testAll.none')}</p></Card>
   }
 
   return (
@@ -92,17 +93,17 @@ export default function TestAllPanel() {
         <table className="w-full min-w-[560px]">
           <thead className="border-b border-line-soft bg-surface-soft">
             <tr>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">渠道</th>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">结果</th>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">延迟</th>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">说明</th>
+              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('table.channel')}</th>
+              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('testAll.sort.result')}</th>
+              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('testAll.col.latency')}</th>
+              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('testAll.col.error')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line-soft">
             {items.map((item) => (
               <tr key={item.channel_id}>
                 <td className="eg-cell-x eg-cell-y text-sm font-medium text-foreground">{item.name}</td>
-                <td className="eg-cell-x eg-cell-y"><StatusBadge tone={item.ok ? 'success' : item.result === 'inconclusive' ? 'neutral' : 'danger'}>{item.ok ? '可用' : item.result === 'inconclusive' ? '无法判定' : '失败'}</StatusBadge></td>
+                <td className="eg-cell-x eg-cell-y"><StatusBadge tone={item.ok ? 'success' : item.result === 'inconclusive' ? 'neutral' : 'danger'}>{item.ok ? t('testAll.ok') : item.result === 'inconclusive' ? t('keyState.inconclusive') : t('testAll.fail')}</StatusBadge></td>
                 <td className="eg-cell-x eg-cell-y text-sm tabular-nums text-foreground-soft">{item.latency_ms ? fmtMs(item.latency_ms) : '—'}</td>
                 <td className="eg-cell-x eg-cell-y max-w-md truncate text-xs text-muted" title={item.error}>{item.error || '—'}</td>
               </tr>

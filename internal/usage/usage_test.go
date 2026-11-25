@@ -151,21 +151,21 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	channelNames := map[string]bool{}
+	channelKinds := map[string]string{}
 	for _, row := range named.TopChannels {
-		channelNames[row.Name] = true
+		channelKinds[row.NameKind+":"+row.Name] = row.NameKind
 	}
-	tokenNames := map[string]bool{}
+	tokenKinds := map[string]string{}
 	for _, row := range named.TopTokens {
-		tokenNames[row.Name] = true
+		tokenKinds[row.NameKind+":"+row.Name] = row.NameKind
 	}
-	for _, want := range []string{"未命中渠道", "已删除 #999"} {
-		if !channelNames[want] {
+	for _, want := range []string{"unattributed:", "deleted:#999"} {
+		if _, ok := channelKinds[want]; !ok {
 			t.Fatalf("top channels missing %q: %#v", want, named.TopChannels)
 		}
 	}
-	for _, want := range []string{"调试台（无令牌）", "已删除 #888"} {
-		if !tokenNames[want] {
+	for _, want := range []string{"playground:", "deleted:#888"} {
+		if _, ok := tokenKinds[want]; !ok {
 			t.Fatalf("top tokens missing %q: %#v", want, named.TopTokens)
 		}
 	}

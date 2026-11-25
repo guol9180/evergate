@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
 import { currentBasePath } from './lib/runtime'
 import { initTheme } from './lib/theme'
+import { t } from './lib/i18n'
 import Layout from './components/Layout'
 import { PageSkeleton } from './components/ui'
 import Login from './pages/Login'
@@ -32,7 +33,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={currentBasePath() || undefined}>
-        <Suspense fallback={<div className="eg-page" role="status" aria-label="加载中"><PageSkeleton /></div>}>
+    <Suspense fallback={<div className="eg-page" role="status" aria-label={t('common.loading')}><PageSkeleton /></div>}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route element={<Layout />}>

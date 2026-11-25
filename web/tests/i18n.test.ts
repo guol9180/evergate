@@ -1,6 +1,32 @@
 import assert from 'node:assert/strict'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import test from 'node:test'
 import { dictionaryDiff, dict, getLocale, setLocale, t } from '../src/lib/i18n.ts'
+
+const CJK = /[\u4e00-\u9fff]/
+
+function sourceFiles(dir: string): string[] {
+  const out: string[] = []
+  for (const name of readdirSync(dir)) {
+    const full = join(dir, name)
+    if (statSync(full).isDirectory()) out.push(...sourceFiles(full))
+    else if (/\.(ts|tsx)$/.test(name) && !full.endsWith('i18n.ts')) out.push(full)
+  }
+  return out
+}
+
+test('UI source contains no hard-coded Chinese outside the dictionary (T90)', () => {
+  // 去掉注释后再扫描：注释允许中文，字符串字面量与 JSX 文本必须走 t()/tf()
+  const offenders: string[] = []
+  for (const file of sourceFiles(join(process.cwd(), 'src'))) {
+    const src = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/.*$/gm, '$1')
+    src.split('\n').forEach((line, index) => {
+      if (CJK.test(line)) offenders.push(`${file}:${index + 1}: ${line.trim().slice(0, 80)}`)
+    })
+  }
+  assert.deepEqual(offenders, [])
+})
 
 test('zh-CN and en dictionaries share the same key set', () => {
   const diff = dictionaryDiff()

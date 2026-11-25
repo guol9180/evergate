@@ -286,6 +286,7 @@ export interface UsageDailyPoint {
 export interface UsageDimensionRow {
   id: number
   name: string
+  name_kind?: 'unattributed' | 'playground' | 'deleted'
   requests: number
   success: number
   tokens_in: number

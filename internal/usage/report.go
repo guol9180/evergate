@@ -48,6 +48,7 @@ type DailyPoint struct {
 type DimensionRow struct {
 	ID                  int64   `json:"id"`
 	Name                string  `json:"name"`
+	NameKind            string  `json:"name_kind,omitempty"` // synthetic: unattributed（未命中渠道）/ playground（无令牌）/ deleted（已删除）
 	Requests            int64   `json:"requests"`
 	Success             int64   `json:"success"`
 	TokensIn            int64   `json:"tokens_in"`
@@ -209,6 +210,7 @@ func dimensionRows(filter func(*gorm.DB) *gorm.DB, db *gorm.DB, column string) (
 	for _, row := range aggregates {
 		var id int64
 		var name string
+		var nameKind string
 		switch column {
 		case "channel_id":
 			id = row.ChannelID
@@ -217,18 +219,20 @@ func dimensionRows(filter func(*gorm.DB) *gorm.DB, db *gorm.DB, column string) (
 		case "model":
 			name = row.Model
 		}
-		// id 为 0 表示请求未命中任何渠道 / 未携带令牌（如调试台），不展示裸内部编号。
+		// id 为 0 表示请求未命中任何渠道 / 未携带令牌（如调试台）：名称留空并打标，由前端按语言翻译。
 		if name == "" {
-			name = "#" + strconv.FormatInt(id, 10)
 			if id == 0 {
-				name = "未命中渠道"
+				nameKind = "unattributed"
 				if column == "token_id" {
-					name = "调试台（无令牌）"
+					nameKind = "playground"
 				}
+			} else {
+				name = "#" + strconv.FormatInt(id, 10)
 			}
 		}
 		rows = append(rows, DimensionRow{
 			ID: id, Name: name, Requests: row.Requests, Success: row.Success,
+			NameKind: nameKind,
 			TokensIn: row.TokensIn, TokensOut: row.TokensOut,
 			CostMicros: row.CostMicros, Cost: float64(row.CostMicros) / 1_000_000,
 			PricedRequests: row.PricedRequests, UnpricedRequests: row.UnpricedRequests,
@@ -261,7 +265,7 @@ func fillDimensionNames(db *gorm.DB, rows []DimensionRow, model any) {
 		if name := byID[rows[i].ID]; name != "" {
 			rows[i].Name = name
 		} else if rows[i].ID > 0 && strings.HasPrefix(rows[i].Name, "#") {
-			rows[i].Name = "已删除 " + rows[i].Name
+			rows[i].NameKind = "deleted"
 		}
 	}
 }

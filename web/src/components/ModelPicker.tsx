@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Check, Search } from 'lucide-react'
 import { Badge, Button, ErrorText, Input, Spinner } from './ui'
+import { t, tf } from '../lib/i18n'
 
 export interface ModelPickerOption {
   publicModel: string
@@ -60,12 +61,12 @@ export default function ModelPicker({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="text-sm font-medium text-foreground-soft">{title}</div>
-          <div className="mt-0.5 text-xs text-muted">勾选后确认；不会自动保存当前表单。</div>
+          <div className="mt-0.5 text-xs text-muted">{t('picker.hint')}</div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {protocol && <Badge tone="brand">{protocol}</Badge>}
-          <Badge tone="neutral">{options.length} 项</Badge>
-          <Badge tone="success">已选 {selected.size}</Badge>
+          <Badge tone="neutral">{tf('picker.count', { n: options.length })}</Badge>
+          <Badge tone="success">{tf('picker.selected', { n: selected.size })}</Badge>
         </div>
       </div>
 
@@ -76,20 +77,20 @@ export default function ModelPicker({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="pl-8"
-            placeholder="搜索模型或映射"
-            aria-label={`搜索${title}`}
+            placeholder={t('picker.search')}
+            aria-label={tf('picker.searchAria', { title })}
             disabled={loading}
           />
         </div>
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted"><Spinner /> 拉取中…</div>
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted"><Spinner /> {t('picker.loading')}</div>
       ) : error ? (
         <div className="mt-3"><ErrorText>{error}</ErrorText></div>
       ) : visible.length === 0 ? (
         <div className="py-8 text-center text-sm text-subtle">
-          {options.length === 0 ? '上游没有返回可选择的模型' : '没有匹配的模型'}
+          {options.length === 0 ? t('picker.emptyUpstream') : t('picker.noMatch')}
         </div>
       ) : (
         <div className="mt-3 max-h-64 overflow-y-auto rounded-md border border-line bg-surface">
@@ -110,7 +111,7 @@ export default function ModelPicker({
                 <span className="min-w-0 flex-1">
                   <span className="block break-all text-sm font-medium text-foreground-soft">{option.publicModel}</span>
                   <span className={`mt-0.5 block break-all text-xs ${mapped ? 'text-brand-text' : 'text-subtle'}`}>
-                    {mapped ? `${option.publicModel} → ${option.upstreamModel}` : `上游同名 ${option.upstreamModel}`}
+                    {mapped ? `${option.publicModel} → ${option.upstreamModel}` : tf('picker.upstreamSame', { model: option.upstreamModel })}
                     {option.context && <span className="text-subtle"> · {option.context}</span>}
                   </span>
                 </span>
@@ -122,26 +123,26 @@ export default function ModelPicker({
       )}
 
       {truncated && (
-        <div className="mt-2 text-xs text-warning-text">结果已达到 10 页或 500 条上限，仅展示已拉取部分。</div>
+        <div className="mt-2 text-xs text-warning-text">{t('picker.truncated')}</div>
       )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs text-muted">
-          <span>写入方式</span>
+          <span>{t('picker.writeMode')}</span>
           <label className="inline-flex cursor-pointer items-center gap-1">
             <input type="radio" checked={mode === 'append'} onChange={() => setMode('append')} />
-            追加
+            {t('picker.append')}
           </label>
           <label className="inline-flex cursor-pointer items-center gap-1">
             <input type="radio" checked={mode === 'replace'} onChange={() => setMode('replace')} />
-            替换
+            {t('picker.replace')}
           </label>
         </div>
         <div className="flex gap-2">
           {/* 内联选择器嵌在表单里，叫"取消"会和弹窗自己的取消按钮同名；它只是收起，不丢弃已填内容 */}
-          <Button type="button" variant="outline" onClick={onCancel}>收起</Button>
+          <Button type="button" variant="outline" onClick={onCancel}>{t('picker.collapse')}</Button>
           <Button type="button" disabled={selected.size === 0 || loading || Boolean(error)} onClick={() => onApply([...selected].sort(), mode)}>
-            确认写入
+            {t('picker.confirm')}
           </Button>
         </div>
       </div>

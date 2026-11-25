@@ -1,3 +1,6 @@
+// 带 .ts 后缀：node --experimental-strip-types 跑单测时不做扩展名解析
+import { tf } from './i18n.ts'
+
 export function extractPlaygroundDelta(chunk: any): string {
   if (!chunk) return ''
 
@@ -54,6 +57,6 @@ export function extractPlaygroundText(response: any): string {
     if (text) return text
   }
 
-  if (response.error?.message) return `上游错误：${response.error.message}`
+  if (response.error?.message) return tf('playground.upstreamError', { message: response.error.message })
   return JSON.stringify(response, null, 2)
 }

@@ -1,6 +1,7 @@
 import type { RetryAttempt } from './types'
 import { extractPlaygroundDelta, extractPlaygroundText } from '../lib/playgroundProtocol'
 import { withBasePath } from '../lib/runtime'
+import { t } from '../lib/i18n'
 
 export interface PlaygroundInput {
   protocol: 'chat' | 'responses' | 'anthropic' | 'gemini'
@@ -68,7 +69,7 @@ export async function runPlayground(input: PlaygroundInput, { onDelta, signal }:
     return readSSE(resp, onDelta)
   }
   const payload = await resp.json()
-  if (payload?.ok === false) throw new Error(payload.message || 'Playground 请求失败')
+  if (payload?.ok === false) throw new Error(payload.message || t('playground.requestFailed'))
   const response = payload?.data?.response
   const text = extractPlaygroundText(response)
   if (text) onDelta(text)
@@ -84,7 +85,7 @@ async function safeJSON(resp: Response): Promise<{ message?: string } | null> {
 }
 
 async function readSSE(resp: Response, onDelta: (delta: string) => void): Promise<PlaygroundResult> {
-  if (!resp.body) throw new Error('当前浏览器不支持流式读取')
+  if (!resp.body) throw new Error(t('playground.noStream'))
   const reader = resp.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -107,7 +108,7 @@ async function readSSE(resp: Response, onDelta: (delta: string) => void): Promis
           try {
             meta = JSON.parse(data) as PlaygroundMeta
           } catch {
-            streamError = 'Playground 元数据解析失败'
+      streamError = t('playground.metaFailed')
           }
         } else if (data.trim() !== '[DONE]') {
           let chunk: any

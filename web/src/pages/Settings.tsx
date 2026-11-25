@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Save } from 'lucide-react'
 import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
-import { t } from '../lib/i18n'
+import { t, tf } from '../lib/i18n'
 import type { SystemSettings, SystemSettingsValues } from '../api/types'
 import { Badge, Button, Card, ErrorText, Field, Input, PageHeader, Spinner } from '../components/ui'
 import ModelFallbackCard from '../components/ModelFallbackCard'
@@ -44,7 +44,7 @@ export default function Settings() {
   if (settings.isError || !form) {
     return (
       <Card className="p-6">
-        <h1 className="text-lg font-bold">系统设置</h1>
+        <h1 className="text-lg font-bold">{t('page.settings.title')}</h1>
         <ErrorText>{settings.isError ? (settings.error as Error).message : t('common.settingsMissing')}</ErrorText>
       </Card>
     )
@@ -65,27 +65,27 @@ export default function Settings() {
         description={t('page.settings.desc')}
         actions={
           <div className="text-left text-xs text-muted sm:text-right">
-            <div>来源 <Badge tone="brand">{current?.source === 'database' ? '管理台数据库' : 'evergate.yml'}</Badge></div>
-            <div className="mt-1 break-words">初始化：{fmtTime(current?.initialized_at)} · 更新：{fmtTime(current?.updated_at)}</div>
+            <div>{t('settings.source')} <Badge tone="brand">{current?.source === 'database' ? t('settings.source.database') : 'evergate.yml'}</Badge></div>
+            <div className="mt-1 break-words">{tf('settings.initialized', { init: fmtTime(current?.initialized_at), updated: fmtTime(current?.updated_at) })}</div>
           </div>
         }
       />
 
       {settings.data?.paths && (
         <Card>
-          <h2 className="mb-3 text-sm font-semibold">本地路径</h2>
+          <h2 className="mb-3 text-sm font-semibold">{t('settings.paths')}</h2>
           <dl className="eg-grid eg-grid-auto-wide text-xs">
             <div className="min-w-0">
-              <dt className="text-subtle">配置文件</dt>
+              <dt className="text-subtle">{t('settings.configFile')}</dt>
               <dd className="mt-1 break-all font-mono text-muted">{settings.data.paths.config_path || '—'}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-subtle">数据目录</dt>
+              <dt className="text-subtle">{t('settings.dataDir')}</dt>
               <dd className="mt-1 break-all font-mono text-muted">{settings.data.paths.data_dir || '—'}</dd>
             </div>
             <div className="min-w-0">
-              <dt className="text-subtle">发现来源</dt>
-              <dd className="mt-1"><Badge tone="neutral">{settings.data.paths.config_source || '未记录'}</Badge></dd>
+              <dt className="text-subtle">{t('settings.configSource')}</dt>
+              <dd className="mt-1"><Badge tone="neutral">{settings.data.paths.config_source || t('cost.unknown')}</Badge></dd>
             </div>
           </dl>
         </Card>
@@ -93,42 +93,42 @@ export default function Settings() {
 
       <form onSubmit={onSubmit} className="space-y-[var(--eg-section-gap)]">
         <Card>
-          <h2 className="mb-4 text-sm font-semibold">上游超时</h2>
+          <h2 className="mb-4 text-sm font-semibold">{t('settings.upstreamTimeout')}</h2>
           <div className="eg-grid eg-grid-auto-wide">
-            <NumberField label="连接超时（秒）" hint="100ms - 5m" value={form.connectTimeoutSec} onChange={set('connectTimeoutSec')} />
-            <NumberField label="首 token 超时（秒）" hint="100ms - 10m" value={form.firstTokenTimeoutSec} onChange={set('firstTokenTimeoutSec')} />
-            <NumberField label="整体超时（秒）" hint="1s - 24h，不小于前两项" value={form.overallTimeoutSec} onChange={set('overallTimeoutSec')} />
+        <NumberField label={t('channels.form.connectTimeout')} hint={t('settings.connectTimeoutHint')} value={form.connectTimeoutSec} onChange={set('connectTimeoutSec')} />
+        <NumberField label={t('channels.form.firstTokenTimeout')} hint={t('settings.firstTokenTimeoutHint')} value={form.firstTokenTimeoutSec} onChange={set('firstTokenTimeoutSec')} />
+        <NumberField label={t('channels.form.overallTimeout')} hint={t('settings.overallTimeoutHint')} value={form.overallTimeoutSec} onChange={set('overallTimeoutSec')} />
           </div>
         </Card>
 
         <Card>
-          <h2 className="mb-4 text-sm font-semibold">重试与 cooldown</h2>
+          <h2 className="mb-4 text-sm font-semibold">{t('settings.retryCooldown')}</h2>
           <div className="eg-grid eg-grid-auto-wide">
-            <NumberField label="最多重试渠道数" hint="1-10" value={form.retryChannels} onChange={set('retryChannels')} />
-            <NumberField label="每渠道最多 key 数" hint="1-10" value={form.retryKeysPerChannel} onChange={set('retryKeysPerChannel')} />
-            <NumberField label="重试总时长（秒）" hint="1s - 15m" value={form.retryTotalSec} onChange={set('retryTotalSec')} />
-            <NumberField label="连续失败阈值" hint="1-100" value={form.cooldownFailThreshold} onChange={set('cooldownFailThreshold')} />
-            <NumberField label="cooldown 基础（秒）" hint="1s - 1h" value={form.cooldownBaseSec} onChange={set('cooldownBaseSec')} />
-            <NumberField label="cooldown 上限（秒）" hint="不小于基础值，最大 24h" value={form.cooldownMaxSec} onChange={set('cooldownMaxSec')} />
+        <NumberField label={t('settings.retryChannels')} hint={t('settings.range1to10')} value={form.retryChannels} onChange={set('retryChannels')} />
+        <NumberField label={t('settings.retryKeysPerChannel')} hint={t('settings.range1to10')} value={form.retryKeysPerChannel} onChange={set('retryKeysPerChannel')} />
+        <NumberField label={t('settings.retryTotalSec')} hint={t('settings.retryTotalHint')} value={form.retryTotalSec} onChange={set('retryTotalSec')} />
+        <NumberField label={t('settings.cooldownFailThreshold')} hint={t('settings.range1to100')} value={form.cooldownFailThreshold} onChange={set('cooldownFailThreshold')} />
+        <NumberField label={t('settings.cooldownBaseSec')} hint={t('settings.cooldownBaseHint')} value={form.cooldownBaseSec} onChange={set('cooldownBaseSec')} />
+        <NumberField label={t('settings.cooldownMaxSec')} hint={t('settings.cooldownMaxHint')} value={form.cooldownMaxSec} onChange={set('cooldownMaxSec')} />
           </div>
         </Card>
 
         <Card>
-          <h2 className="mb-4 text-sm font-semibold">维护任务</h2>
+          <h2 className="mb-4 text-sm font-semibold">{t('settings.maintenance')}</h2>
           <div className="eg-grid eg-grid-auto-wide">
-            <NumberField label="日志保留天数" hint="1-3650" value={form.logRetentionDays} onChange={set('logRetentionDays')} />
-            <NumberField label="健康探测间隔（秒）" hint="10s - 24h" value={form.healthProbeIntervalSec} onChange={set('healthProbeIntervalSec')} />
-            <NumberField label="健康探测并发" hint="1-32" value={form.healthProbeConcurrency} onChange={set('healthProbeConcurrency')} />
-            <NumberField label="健康探测超时（秒）" hint="1s - 2m" value={form.healthProbeTimeoutSec} onChange={set('healthProbeTimeoutSec')} />
+        <NumberField label={t('settings.logRetentionDays')} hint={t('settings.retentionHint')} value={form.logRetentionDays} onChange={set('logRetentionDays')} />
+        <NumberField label={t('settings.healthProbeInterval')} hint={t('settings.probeIntervalHint')} value={form.healthProbeIntervalSec} onChange={set('healthProbeIntervalSec')} />
+        <NumberField label={t('settings.healthProbeConcurrency')} hint={t('settings.probeConcurrencyHint')} value={form.healthProbeConcurrency} onChange={set('healthProbeConcurrency')} />
+        <NumberField label={t('settings.healthProbeTimeout')} hint={t('settings.probeTimeoutHint')} value={form.healthProbeTimeoutSec} onChange={set('healthProbeTimeoutSec')} />
           </div>
         </Card>
 
         <div className="space-y-[var(--eg-control-gap)]">
-          {save.isSuccess && <span className="text-xs text-success-text">已保存，新请求立即使用新配置</span>}
+          {save.isSuccess && <span className="text-xs text-success-text">{t('settings.saved')}</span>}
           <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
           <div className="flex justify-end">
             <Button type="submit" disabled={save.isPending}>
-              <Save size={15} /> {save.isPending ? '保存中…' : '保存设置'}
+              <Save size={15} /> {save.isPending ? t('common.saving') : t('settings.save')}
             </Button>
           </div>
         </div>

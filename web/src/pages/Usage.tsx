@@ -14,7 +14,7 @@ import { Badge, Button, Card, Empty, ErrorText, Field, Input, PageHeader, Select
 import { TrendChart } from '../components/TrendChart'
 import { fmtInt, fmtMoney } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
-import { t } from '../lib/i18n'
+import { t, tf } from '../lib/i18n'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
@@ -37,9 +37,9 @@ export default function Usage() {
   const daily = useMemo(() => fillDailyGaps(data?.daily ?? [], data?.start, data?.end), [data])
   const successRate = data?.totals.requests ? (data.totals.success / data.totals.requests) * 100 : null
   const costIssues = data ? [
-    data.totals.unpriced_requests > 0 ? `${fmtInt(data.totals.unpriced_requests)} 条未计价` : '',
-    data.totals.no_usage_requests > 0 ? `${fmtInt(data.totals.no_usage_requests)} 条无 usage` : '',
-    data.totals.unknown_cost_requests > 0 ? `${fmtInt(data.totals.unknown_cost_requests)} 条历史未记录` : '',
+    data.totals.unpriced_requests > 0 ? tf('usage.unpricedCount', { n: fmtInt(data.totals.unpriced_requests) }) : '',
+    data.totals.no_usage_requests > 0 ? tf('usage.noUsageCount', { n: fmtInt(data.totals.no_usage_requests) }) : '',
+    data.totals.unknown_cost_requests > 0 ? tf('usage.unknownCount', { n: fmtInt(data.totals.unknown_cost_requests) }) : '',
   ].filter(Boolean) : []
   const costKnown = data != null && data.totals.requests > 0 &&
     (data.totals.priced_requests > 0 || data.totals.unpriced_requests + data.totals.no_usage_requests + data.totals.unknown_cost_requests === 0)
@@ -58,18 +58,18 @@ export default function Usage() {
 
       <Card>
         <div className="eg-grid eg-grid-auto">
-          <Field label="开始日期"><Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} /></Field>
-          <Field label="结束日期"><Input type="date" value={end} min={start} max={today()} onChange={(e) => setEnd(e.target.value)} /></Field>
-          <Field label="渠道">
+          <Field label={t('logs.filter.start')}><Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} /></Field>
+          <Field label={t('logs.filter.end')}><Input type="date" value={end} min={start} max={today()} onChange={(e) => setEnd(e.target.value)} /></Field>
+          <Field label={t('logs.filter.channel')}>
             <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
-              <option value="">全部渠道</option>
+              <option value="">{t('logs.filter.allChannels')}</option>
               {chs.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
             </Select>
           </Field>
-          <Field label="模型"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="全部模型" /></Field>
-          <Field label="令牌">
+          <Field label={t('logs.filter.model')}><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('tokens.allModels')} /></Field>
+          <Field label={t('logs.filter.token')}>
             <Select value={tokenID} onChange={(e) => setTokenID(e.target.value)}>
-              <option value="">全部令牌</option>
+              <option value="">{t('logs.filter.allTokens')}</option>
               {tks.map((token) => <option key={token.id} value={token.id}>{token.name}</option>)}
             </Select>
           </Field>
@@ -82,10 +82,10 @@ export default function Usage() {
           <div className="flex items-start gap-3 text-sm text-warning-text">
             <AlertTriangle size={18} className="mt-0.5 shrink-0 text-warning-text" />
             <div>
-              <div className="font-semibold">尚未配置任何模型价格</div>
+              <div className="font-semibold">{t('usage.noPrice.title')}</div>
               <p className="mt-1 text-xs leading-5 text-warning-text">
-                usage 与 token 已正常记录，但成本会标记为“未计价”，不会用 <code>$0</code> 冒充已知成本。
-                在下方“模型价格”保存全局默认价或渠道+模型覆盖价后，新请求会按请求时价格快照计价；历史未计价请求不会追溯重算。
+                {t('usage.noPrice.body1')}
+                {t('usage.noPrice.body2')}
               </p>
             </div>
           </div>
@@ -97,13 +97,13 @@ export default function Usage() {
       ) : !data ? null : (
         <>
           <div className="eg-grid eg-grid-kpi">
-            <Metric label="请求数" value={fmtInt(data.totals.requests)} hint={`成功 ${fmtInt(data.totals.success)}`} />
-            <Metric label="成功率" value={successRate == null ? '—' : `${successRate.toFixed(1)}%`} hint="2xx / 3xx" />
-            <Metric label="Token" value={fmtInt(data.totals.tokens_in + data.totals.tokens_out)} hint={`输入 ${fmtInt(data.totals.tokens_in)} · 输出 ${fmtInt(data.totals.tokens_out)}`} />
+            <Metric label={t('usage.requests')} value={fmtInt(data.totals.requests)} hint={tf('usage.successCount', { n: fmtInt(data.totals.success) })} />
+            <Metric label={t('dashboard.kpi.successRate')} value={successRate == null ? '—' : `${successRate.toFixed(1)}%`} hint="2xx / 3xx" />
+            <Metric label={t('usage.tokens')} value={fmtInt(data.totals.tokens_in + data.totals.tokens_out)} hint={tf('usage.tokensHint', { input: fmtInt(data.totals.tokens_in), output: fmtInt(data.totals.tokens_out) })} />
             <Metric
-              label="成本"
+              label={t('table.cost')}
               value={costKnown ? fmtMoney(data.totals.cost_micros) : '—'}
-              hint={costIssues.length > 0 ? costIssues.join(' · ') : '全部已计价'}
+              hint={costIssues.length > 0 ? costIssues.join(' · ') : t('usage.allPriced')}
               warning={costIssues.length > 0}
             />
           </div>
@@ -114,9 +114,9 @@ export default function Usage() {
           </div>
 
           <div className="eg-grid eg-grid-triple">
-            <TopCard title="Top 渠道" rows={data.top_channels} />
-            <TopCard title="Top 模型" rows={data.top_models} />
-            <TopCard title="Top 令牌" rows={data.top_tokens} />
+            <TopCard title={t('usage.topChannels')} rows={data.top_channels} />
+            <TopCard title={t('usage.topModels')} rows={data.top_models} />
+            <TopCard title={t('usage.topTokens')} rows={data.top_tokens} />
           </div>
         </>
       )}
@@ -138,10 +138,10 @@ function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
   return (
     <Card className="flex h-full flex-col">
       <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-brand-text" /> 日趋势</h3>
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-brand-text" /> {t('usage.trend')}</h3>
         <div className="flex items-center gap-3 text-xs text-subtle">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-brand" />请求数</span>
-          <span className="flex items-center gap-1.5"><span className="h-0.5 w-3.5 rounded bg-success-solid" />成功率</span>
+          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-brand" />{t('chart.requests')}</span>
+          <span className="flex items-center gap-1.5"><span className="h-0.5 w-3.5 rounded bg-success-solid" />{t('chart.successRate')}</span>
         </div>
       </div>
       {daily.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
@@ -181,15 +181,15 @@ function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) 
       {rows.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[300px]">
-            <thead className="bg-surface-soft"><tr><Th>名称</Th><Th>请求</Th><Th>成本</Th></tr></thead>
+            <thead className="bg-surface-soft"><tr><Th>{t('table.name')}</Th><Th>{t('table.requests')}</Th><Th>{t('table.cost')}</Th></tr></thead>
             <tbody className="divide-y divide-line-soft">
               {rows.map((row) => (
                 <tr key={`${row.id}-${row.name}`}>
-                  <Td className="max-w-40 truncate font-medium" title={row.name}>{row.name}</Td>
+                  <Td className="max-w-40 truncate font-medium" title={row.name}>{dimensionName(row)}</Td>
                   <Td>{fmtInt(row.requests)}</Td>
                   <Td className="text-xs">
                     {row.priced_requests === 0
-                      ? <span className="text-subtle" title="没有已计价的请求，不用 $0 冒充已知成本">—</span>
+                      ? <span className="text-subtle" title={t('usage.topCostHint')}>—</span>
                       : fmtMoney(row.cost_micros)}
                   </Td>
                 </tr>
@@ -200,6 +200,14 @@ function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) 
       )}
     </Card>
   )
+}
+
+// 服务端对合成行（未命中渠道 / 调试台无令牌 / 已删除）只打标不翻译，由前端按当前语言显示。
+function dimensionName(row: UsageDimensionRow): string {
+  if (row.name_kind === 'unattributed') return t('usage.row.unattributed')
+  if (row.name_kind === 'playground') return t('usage.row.playground')
+  if (row.name_kind === 'deleted') return tf('usage.row.deleted', { name: row.name })
+  return row.name
 }
 
 function PriceCard() {
@@ -243,30 +251,30 @@ function PriceCard() {
   if (prices.isPending) return <Card className="flex justify-center p-8"><Spinner /></Card>
   return (
     <Card>
-      <h3 className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign size={15} className="text-success-text" /> 模型价格</h3>
-      <p className="mt-1 text-xs text-subtle">单位：USD / 百万 token；价格只影响之后的新请求。</p>
+      <h3 className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign size={15} className="text-success-text" /> {t('usage.price.title')}</h3>
+      <p className="mt-1 text-xs text-subtle">{t('usage.price.unit')}</p>
       <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
-        <div className="mb-2 text-xs font-medium text-muted">全局默认</div>
+        <div className="mb-2 text-xs font-medium text-muted">{t('usage.price.globalDefault')}</div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="输入"><Input type="number" min={0} step="0.000001" value={defaultIn} onChange={(e) => setDefaultIn(e.target.value)} /></Field>
-          <Field label="输出"><Input type="number" min={0} step="0.000001" value={defaultOut} onChange={(e) => setDefaultOut(e.target.value)} /></Field>
+          <Field label={t('usage.input')}><Input type="number" min={0} step="0.000001" value={defaultIn} onChange={(e) => setDefaultIn(e.target.value)} /></Field>
+          <Field label={t('usage.output')}><Input type="number" min={0} step="0.000001" value={defaultOut} onChange={(e) => setDefaultOut(e.target.value)} /></Field>
         </div>
-        <Button type="submit" size="sm" className="mt-2" disabled={setDefault.isPending}>保存默认价格</Button>
+        <Button type="submit" size="sm" className="mt-2" disabled={setDefault.isPending}>{t('usage.price.saveDefault')}</Button>
       </form>
 
       <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-line-strong p-3">
-        <div className="text-xs font-medium text-muted">渠道 + 模型覆盖</div>
+        <div className="text-xs font-medium text-muted">{t('usage.price.override')}</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Field label="渠道">
+          <Field label={t('table.channel')}>
             <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
               {(channels.data?.items ?? []).map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
             </Select>
           </Field>
-          <Field label="上游模型名"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="例如 glm-5.4" /></Field>
-          <Field label="输入价格"><Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder="留空用全局默认" /></Field>
-          <Field label="输出价格"><Input type="number" min={0} step="0.000001" value={overrideOut} onChange={(e) => setOverrideOut(e.target.value)} placeholder="留空用全局默认" /></Field>
+          <Field label={t('usage.price.upstreamModel')}><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('usage.price.upstreamPlaceholder')} /></Field>
+          <Field label={t('usage.price.inputPrice')}><Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder={t('usage.price.useDefault')} /></Field>
+          <Field label={t('usage.price.outputPrice')}><Input type="number" min={0} step="0.000001" value={overrideOut} onChange={(e) => setOverrideOut(e.target.value)} placeholder={t('usage.price.useDefault')} /></Field>
         </div>
-        <Button type="submit" size="sm" variant="outline" disabled={upsert.isPending || !model.trim()}><Plus size={13} /> 保存覆盖</Button>
+        <Button type="submit" size="sm" variant="outline" disabled={upsert.isPending || !model.trim()}><Plus size={13} /> {t('usage.price.saveOverride')}</Button>
       </form>
       <div className="mt-3 max-h-44 space-y-1 overflow-auto">
         {(prices.data?.overrides ?? []).map((price) => (
@@ -274,7 +282,7 @@ function PriceCard() {
             <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
             <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
             <span className="text-muted">{toPriceInput(price.input_micros_per_million)} / {toPriceInput(price.output_micros_per_million)}</span>
-            <button onClick={() => remove.mutate(price.id)} className="text-subtle hover:text-danger-text" title="删除覆盖"><Trash2 size={13} /></button>
+            <button onClick={() => remove.mutate(price.id)} className="text-subtle hover:text-danger-text" title={t('usage.price.deleteOverride')}><Trash2 size={13} /></button>
           </div>
         ))}
       </div>

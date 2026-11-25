@@ -6,7 +6,7 @@ import RetryTimeline from '../components/RetryTimeline'
 import { Badge, Button, Card, Empty, PageHeader, Select, SettingRow, Spinner, Textarea } from '../components/ui'
 import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, httpStatusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
-import { t } from '../lib/i18n'
+import { t, tf } from '../lib/i18n'
 
 const MAX_PROMPT = 16000
 const MAX_SYSTEM = 8000
@@ -62,9 +62,9 @@ export default function Playground() {
       if (result.streamError) {
         setError(result.streamError)
       } else if (result.meta && result.meta.status >= 400) {
-        setError(result.meta.error_message || `上游返回 ${result.meta.status}`)
+        setError(result.meta.error_message || tf('playground.upstreamStatus', { status: result.meta.status }))
       } else if (!result.text && result.meta?.status === 200) {
-        setError('上游返回成功，但没有可显示的文本内容')
+        setError(t('playground.noText'))
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -84,7 +84,7 @@ export default function Playground() {
       <PageHeader
         title={<span className="flex items-center gap-2"><FlaskConical size={18} /> {t('page.playground.title')}</span>}
         description={t('page.playground.desc')}
-        actions={<Badge tone="brand">管理台专用 · 不暴露密钥</Badge>}
+        actions={<Badge tone="brand">{t('playground.adminOnly')}</Badge>}
       />
 
       <div className="eg-grid lg:grid-cols-[clamp(280px,24vw,420px)_minmax(0,1fr)]">
@@ -92,7 +92,7 @@ export default function Playground() {
           <div className="space-y-[var(--eg-control-gap)]">
             <div>
               <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium text-foreground-soft">协议</span>
+                <span className="text-sm font-medium text-foreground-soft">{t('playground.protocol')}</span>
                 <span className="text-[11px] text-subtle">Chat / Responses / Messages / Gemini</span>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
@@ -120,24 +120,24 @@ export default function Playground() {
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-sm font-medium text-foreground-soft">模型</span>
+              <span className="text-sm font-medium text-foreground-soft">{t('playground.model')}</span>
               <Select
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 disabled={running || models.length === 0}
-                aria-label="模型"
+                aria-label={t('playground.model')}
               >
-                {models.length === 0 && <option value="">暂无可用模型</option>}
+                {models.length === 0 && <option value="">{t('playground.noModels')}</option>}
                 {models.map((item) => <option key={item} value={item}>{item}</option>)}
               </Select>
               {models.length === 0 && (
-                <p className="text-xs text-warning-text">请先在「渠道管理」添加启用渠道与模型。</p>
+                <p className="text-xs text-warning-text">{t('playground.noModelsHint')}</p>
               )}
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between">
-                <span className="text-sm font-medium text-foreground-soft">System 消息 <span className="font-normal text-subtle">可选</span></span>
+                <span className="text-sm font-medium text-foreground-soft">{t('playground.system')} <span className="font-normal text-subtle">{t('common.optional')}</span></span>
                 <span className="text-[11px] tabular-nums text-subtle">{system.length}/{MAX_SYSTEM}</span>
               </div>
               <Textarea
@@ -145,14 +145,14 @@ export default function Playground() {
                 value={system}
                 maxLength={MAX_SYSTEM}
                 onChange={(e) => setSystem(e.target.value)}
-                placeholder="例如：你是一个简洁的中文助手"
+              placeholder={t('playground.systemPlaceholder')}
                 disabled={running}
               />
             </div>
 
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between">
-                <span className="text-sm font-medium text-foreground-soft">User 消息</span>
+              <span className="text-sm font-medium text-foreground-soft">{t('playground.user')}</span>
                 <span className="text-[11px] tabular-nums text-subtle">{prompt.length}/{MAX_PROMPT}</span>
               </div>
               <Textarea
@@ -160,7 +160,7 @@ export default function Playground() {
                 value={prompt}
                 maxLength={MAX_PROMPT}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="输入要发送给模型的内容"
+              placeholder={t('playground.userPlaceholder')}
                 disabled={running}
               />
             </div>
@@ -179,7 +179,7 @@ export default function Playground() {
                 {running ? <Spinner className="h-3.5 w-3.5 border-white/40 border-t-white" /> : <Play size={14} />}
                 {running ? t('common.sending') : t('common.send')}
               </Button>
-              <Button variant="outline" onClick={stop} disabled={!running} aria-label="停止请求">
+              <Button variant="outline" onClick={stop} disabled={!running} aria-label={t('playground.stopAria')}>
                 <Square size={13} /> {t('common.stop')}
               </Button>
             </div>
@@ -188,12 +188,12 @@ export default function Playground() {
 
         <Card flush className="flex min-w-0 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-line-soft" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
-            <h2 className="text-sm font-semibold text-foreground-soft">响应</h2>
+            <h2 className="text-sm font-semibold text-foreground-soft">{t('playground.response')}</h2>
             <Badge tone="neutral">{protocolLabel(protocol)}</Badge>
             {meta && (
               <div className="ml-auto flex items-center gap-2">
                 <Badge tone={httpStatusTone(meta.status)} className="font-semibold">HTTP {meta.status}</Badge>
-                <span className="text-[11px] text-subtle">{meta.retry_trace.length} 次尝试</span>
+                <span className="text-[11px] text-subtle">{tf('playground.attempts', { n: meta.retry_trace.length })}</span>
               </div>
             )}
           </div>
@@ -220,32 +220,32 @@ export default function Playground() {
           {meta && (
             <div className="border-t border-line-soft bg-surface-soft" style={{ padding: 'var(--eg-card-pad)' }}>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">命中链路</h3>
-                <span className="text-[11px] text-subtle">已写入请求日志 · 来源：调试台</span>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t('playground.trace')}</h3>
+                <span className="text-[11px] text-subtle">{t('playground.loggedFrom')}</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
-                <MetaItem label="渠道" value={meta.channel_name || '—'} hint={meta.channel_id ? `#${meta.channel_id}` : ''} />
-                <MetaItem label="上游模型" value={meta.upstream_model || '—'} />
-                <MetaItem label="首 token" value={fmtMs(meta.first_token_ms || undefined)} />
-                <MetaItem label="总耗时" value={fmtMs(meta.total_ms || undefined)} />
+              <MetaItem label={t('table.channel')} value={meta.channel_name || '—'} hint={meta.channel_id ? `#${meta.channel_id}` : ''} />
+              <MetaItem label={t('table.upstreamModel')} value={meta.upstream_model || '—'} />
+              <MetaItem label={t('table.firstToken')} value={fmtMs(meta.first_token_ms || undefined)} />
+              <MetaItem label={t('table.totalMs')} value={fmtMs(meta.total_ms || undefined)} />
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
                 {meta.usage.usage_seen ? (
                   <>
-                    <UsageChip label="输入" value={fmtInt(meta.usage.prompt_tokens)} />
-                    <UsageChip label="输出" value={fmtInt(meta.usage.completion_tokens)} />
-                    <UsageChip label="合计" value={fmtInt(meta.usage.total_tokens)} />
-                    <UsageChip label="成本" value={fmtRequestCost(meta.cost_micros, meta.cost_status)} />
-                    {meta.usage.cached_tokens > 0 && <UsageChip label="缓存" value={fmtInt(meta.usage.cached_tokens)} />}
-                    {meta.usage.reasoning_tokens > 0 && <UsageChip label="推理" value={fmtInt(meta.usage.reasoning_tokens)} />}
+                    <UsageChip label={t('usage.input')} value={fmtInt(meta.usage.prompt_tokens)} />
+                    <UsageChip label={t('usage.output')} value={fmtInt(meta.usage.completion_tokens)} />
+                    <UsageChip label={t('usage.total')} value={fmtInt(meta.usage.total_tokens)} />
+                    <UsageChip label={t('table.cost')} value={fmtRequestCost(meta.cost_micros, meta.cost_status)} />
+                    {meta.usage.cached_tokens > 0 && <UsageChip label={t('usage.cached')} value={fmtInt(meta.usage.cached_tokens)} />}
+                    {meta.usage.reasoning_tokens > 0 && <UsageChip label={t('usage.reasoning')} value={fmtInt(meta.usage.reasoning_tokens)} />}
                   </>
                 ) : (
-                  <span className="text-subtle">上游未返回 usage</span>
+                  <span className="text-subtle">{t('playground.noUsage')}</span>
                 )}
               </div>
               {/* 错误正文只在响应区底部的横幅展示一次；此处仅保留重试轨迹，避免同一段错误出现三遍 */}
               <div className="mt-4 border-t border-line pt-3">
-                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">重试轨迹</h4>
+                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{t('logs.trace.title')}</h4>
                 <RetryTimeline attempts={meta.retry_trace} />
               </div>
             </div>

@@ -14,6 +14,7 @@ import {
 } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import type { Tone } from '../lib/tone'
+import { t, tf } from '../lib/i18n'
 
 export type { Tone }
 
@@ -164,7 +165,7 @@ export function Skeleton({ className = '', style }: { className?: string; style?
 /** 表格骨架：header 行 + n 数据行。 */
 export function SkeletonRows({ rows = 5, className = '' }: { rows?: number; className?: string }) {
   return (
-    <div className={`space-y-3 ${className}`} role="status" aria-label="加载中">
+    <div className={`space-y-3 ${className}`} role="status" aria-label={t('common.loading')}>
       <Skeleton className="h-8 w-full" />
       {Array.from({ length: rows }).map((_, i) => (
         <Skeleton key={i} className="h-7 w-full" style={{ opacity: 1 - i * 0.08 }} />
@@ -175,7 +176,7 @@ export function SkeletonRows({ rows = 5, className = '' }: { rows?: number; clas
 
 export function PageSkeleton() {
   return (
-    <div className="eg-page-stack" role="status" aria-label="加载中">
+    <div className="eg-page-stack" role="status" aria-label={t('common.loading')}>
       <Skeleton className="h-10 w-64" />
       <div className="eg-grid eg-grid-auto">
         {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
@@ -225,7 +226,7 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
 
 function CloseButton({ onClick }: { onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} aria-label="关闭" title="关闭" className="rounded p-1 text-subtle hover:bg-surface-strong hover:text-foreground-soft">
+    <button type="button" onClick={onClick} aria-label={t('common.close')} title={t('common.close')} className="rounded p-1 text-subtle hover:bg-surface-strong hover:text-foreground-soft">
       <X size={16} aria-hidden="true" />
     </button>
   )
@@ -285,7 +286,7 @@ export function useDialogFocus(open: boolean, onClose: () => void, ref: RefObjec
 }
 
 /** 危险/确认操作对话框：替代浏览器原生 confirm()，文案必须说明后果。 */
-export function ConfirmDialog({ open, title, message, confirmText = '确认', cancelText = '取消', danger = false, loading = false, onConfirm, onCancel }: {
+export function ConfirmDialog({ open, title, message, confirmText, cancelText, danger = false, loading = false, onConfirm, onCancel }: {
   open: boolean
   title: ReactNode
   message: ReactNode
@@ -304,9 +305,9 @@ export function ConfirmDialog({ open, title, message, confirmText = '确认', ca
       role="alertdialog"
       footer={(
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>{cancelText}</Button>
+          <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>{cancelText ?? t('common.cancel')}</Button>
           <Button type="button" variant={danger ? 'danger' : 'default'} onClick={onConfirm} disabled={loading} autoFocus>
-            {loading ? '处理中…' : confirmText}
+            {loading ? t('common.processing') : confirmText ?? t('common.confirm')}
           </Button>
         </div>
       )}
@@ -393,25 +394,25 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
     if (target >= 1 && target <= totalPages && target !== page) onPageChange(target)
   }
   return (
-    <nav aria-label="分页" className={`flex flex-wrap items-center justify-between gap-2 border-t border-line-soft text-xs text-muted ${className}`} style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
-      <span className="tabular-nums">共 {total.toLocaleString('zh-CN')} 条 · 第 {page}/{totalPages} 页</span>
+    <nav aria-label={t('pagination.label')} className={`flex flex-wrap items-center justify-between gap-2 border-t border-line-soft text-xs text-muted ${className}`} style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
+      <span className="tabular-nums">{tf('pagination.summary', { total: total.toLocaleString('zh-CN'), page, pages: totalPages })}</span>
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange && (
           <label className="flex items-center gap-1.5">
-            <span className="sr-only">每页条数</span>
+            <span className="sr-only">{t('pagination.pageSize')}</span>
             <select
-              aria-label="每页条数"
+              aria-label={t('pagination.pageSize')}
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
               className="h-7 rounded-md border border-line-strong bg-surface px-2 text-xs text-foreground-soft outline-none focus:border-brand"
             >
-              {sizes.map((s) => <option key={s} value={s}>{s} 条/页</option>)}
+              {sizes.map((s) => <option key={s} value={s}>{tf('pagination.pageSizeOption', { n: s })}</option>)}
             </select>
           </label>
         )}
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="outline" aria-label="第一页" title="第一页" disabled={page <= 1} onClick={() => goto(1)}>«</Button>
-          <Button size="icon" variant="outline" aria-label="上一页" title="上一页" disabled={page <= 1} onClick={() => goto(page - 1)}>‹</Button>
+          <Button size="icon" variant="outline" aria-label={t('pagination.first')} title={t('pagination.first')} disabled={page <= 1} onClick={() => goto(1)}>«</Button>
+          <Button size="icon" variant="outline" aria-label={t('pagination.prev')} title={t('pagination.prev')} disabled={page <= 1} onClick={() => goto(page - 1)}>‹</Button>
           {pages.map((p, i) => (
             p === null
               ? <span key={`gap-${i}`} className="px-1 text-subtle" aria-hidden="true">…</span>
@@ -420,7 +421,7 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
                   key={p}
                   size="icon"
                   variant={p === page ? 'default' : 'outline'}
-                  aria-label={`第 ${p} 页`}
+                  aria-label={tf('pagination.pageAria', { p })}
                   aria-current={p === page ? 'page' : undefined}
                   onClick={() => goto(p)}
                 >
@@ -428,8 +429,8 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
                 </Button>
               )
           ))}
-          <Button size="icon" variant="outline" aria-label="下一页" title="下一页" disabled={page >= totalPages} onClick={() => goto(page + 1)}>›</Button>
-          <Button size="icon" variant="outline" aria-label="最后一页" title="最后一页" disabled={page >= totalPages} onClick={() => goto(totalPages)}>»</Button>
+          <Button size="icon" variant="outline" aria-label={t('pagination.next')} title={t('pagination.next')} disabled={page >= totalPages} onClick={() => goto(page + 1)}>›</Button>
+          <Button size="icon" variant="outline" aria-label={t('pagination.last')} title={t('pagination.last')} disabled={page >= totalPages} onClick={() => goto(totalPages)}>»</Button>
         </div>
       </div>
     </nav>

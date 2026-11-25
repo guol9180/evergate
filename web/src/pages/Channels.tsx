@@ -8,22 +8,22 @@ import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset } from '../li
 import { channelStateTone, fmtMs, fmtTime, formatRemainingSeconds, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
 import { usePageTitle } from '../lib/usePageTitle'
-import { t } from '../lib/i18n'
+import { t, tf, type MessageKey } from '../lib/i18n'
 import ModelMappingEditor from '../components/ModelMappingEditor'
 import TestAllPanel from '../components/TestAllPanel'
 
 const CHANNEL_TYPES = ['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic', 'anthropic-compatible', 'gemini', 'gemini-compat']
 
 // 类型语义说明：8 个取值与预设部分重叠，对新手是黑盒，这里说明每个取值实际影响什么。
-const CHANNEL_TYPE_HELP: Record<string, string> = {
-  openai: 'OpenAI 官方端点；Chat 与 Responses 走官方路径',
-  'openai-compatible': '任何 OpenAI 兼容服务（vLLM、中转、第三方）；最通用',
-  deepseek: 'DeepSeek 官方；OpenAI 兼容，base_url 可省略 /v1',
-  vllm: '本地 vLLM / OpenAI 兼容推理服务',
-  anthropic: 'Anthropic 官方；需开启「原生支持 Anthropic Messages」',
-  'anthropic-compatible': 'Anthropic 兼容中转；需开启「原生支持 Anthropic Messages」',
-  gemini: 'Google Gemini 官方；需开启「原生支持 Gemini API」',
-  'gemini-compat': 'Gemini 兼容中转；需开启「原生支持 Gemini API」',
+const CHANNEL_TYPE_HELP: Record<string, MessageKey> = {
+  openai: 'channelType.openai',
+  'openai-compatible': 'channelType.openai-compatible',
+  deepseek: 'channelType.deepseek',
+  vllm: 'channelType.vllm',
+  anthropic: 'channelType.anthropic',
+  'anthropic-compatible': 'channelType.anthropic-compatible',
+  gemini: 'channelType.gemini',
+  'gemini-compat': 'channelType.gemini-compat',
 }
 
 export default function Channels() {
@@ -71,10 +71,10 @@ export default function Channels() {
             <table className="w-full min-w-[720px] lg:min-w-0">
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
-                  <Th className="w-8" /><Th>名称</Th><Th>状态</Th><Th className="hidden min-[1120px]:table-cell">类型</Th>
-                  <Th className="hidden min-[1180px]:table-cell">优先级</Th><Th className="hidden min-[1220px]:table-cell">权重</Th>
-                  <Th>模型</Th><Th>key / 可用</Th><Th className="hidden min-[1280px]:table-cell">最近探测</Th>
-                  <Th>启用</Th><Th>测试</Th><Th className="w-24"><span className="block pr-2.5 text-right">操作</span></Th>
+          <Th className="w-8" /><Th>{t('table.name')}</Th><Th>{t('table.status')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.type')}</Th>
+          <Th className="hidden min-[1180px]:table-cell">{t('table.priority')}</Th><Th className="hidden min-[1220px]:table-cell">{t('table.weight')}</Th>
+          <Th>{t('table.model')}</Th><Th>{t('table.keys')}</Th><Th className="hidden min-[1280px]:table-cell">{t('table.lastProbe')}</Th>
+          <Th>{t('table.enabled')}</Th><Th>{t('table.test')}</Th><Th className="w-24"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-soft">
@@ -101,11 +101,11 @@ export default function Channels() {
 
       <ConfirmDialog
         open={deleteTarget != null}
-        title="删除渠道"
+        title={t('channels.delete.title')}
         danger
-        confirmText="删除渠道"
+        confirmText={t('channels.delete.title')}
         loading={delChannel.isPending}
-        message={<>将删除渠道「{deleteTarget?.name}」及其全部 key，正在使用该上游的请求会立即失败。此操作不可撤销。</>}
+        message={tf('channels.delete.message', { name: deleteTarget?.name ?? '' })}
         onConfirm={() => deleteTarget && delChannel.mutate(deleteTarget.id, {
           onSuccess: () => {
             if (expanded === deleteTarget.id) setExpanded(null)
@@ -116,11 +116,11 @@ export default function Channels() {
       />
       <ConfirmDialog
         open={deleteKeyTarget != null}
-        title="删除上游 key"
+        title={t('channels.deleteKey.title')}
         danger
-        confirmText="删除 key"
+        confirmText={t('channels.deleteKey.confirm')}
         loading={delKey.isPending}
-        message={<>将删除{deleteKeyTarget?.label}；删除后立即退出调度，无法恢复。</>}
+        message={tf('channels.deleteKey.message', { label: deleteKeyTarget?.label ?? '' })}
         onConfirm={() => deleteKeyTarget && delKey.mutate(
           { id: deleteKeyTarget.id, channelId: deleteKeyTarget.channelId },
           { onSuccess: () => setDeleteKeyTarget(null) },
@@ -142,14 +142,14 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
     <>
       <tr className="hover:bg-surface-soft">
         <Td>
-          <button onClick={onToggleExpand} aria-label={expanded ? '收起 key 列表' : '展开 key 列表'} className="rounded p-1 text-subtle hover:bg-surface-strong">
+        <button onClick={onToggleExpand} aria-label={expanded ? t('channels.collapseKeys') : t('channels.expandKeys')} className="rounded p-1 text-subtle hover:bg-surface-strong">
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
         </Td>
         <Td className="max-w-[170px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
         <Td>
           <StatusBadge tone={untested ? 'neutral' : channelStateTone(c.status)}>
-            <span title={c.last_probe_error || undefined}>{untested ? '未探测' : stateLabel[c.status] || c.status}</span>
+            <span title={c.last_probe_error || undefined}>{untested ? t('common.notProbed') : stateLabel(c.status)}</span>
           </StatusBadge>
         </Td>
         <Td className="hidden min-[1120px]:table-cell">
@@ -173,14 +173,14 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
         </Td>
         <Td className="hidden max-w-56 min-[1280px]:table-cell">
           <div className="text-xs text-muted">
-            {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : '未探测'}
+          {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
           </div>
           {c.last_probe_error && (
             <div className="truncate text-xs text-subtle" title={c.last_probe_error}>{c.last_probe_error}</div>
           )}
         </Td>
         <Td>
-          <Switch checked={c.enabled} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={`启用渠道 ${c.name}`} />
+          <Switch checked={c.enabled} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={tf('channels.enableAria', { name: c.name })} />
         </Td>
         <Td>
           {test.isPending && test.variables === c.id ? (
@@ -191,18 +191,18 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
               className="cursor-help"
               title={result.error || result.error_type || undefined}
             >
-              {result.result === 'success' ? `✓ ${result.latency_ms}ms` : result.result === 'inconclusive' ? '? 无法判定' : '✗ 失败'}
+              {result.result === 'success' ? tf('channels.test.success', { ms: result.latency_ms }) : result.result === 'inconclusive' ? t('channels.test.inconclusive') : t('channels.test.failed')}
             </Badge>
           ) : (
-            <Button size="sm" variant="outline" aria-label={`测试渠道 ${c.name}`} title="测试连通性" onClick={() => test.mutate(c.id)}>
+            <Button size="sm" variant="outline" aria-label={tf('channels.testAria', { name: c.name })} title={t('channels.test.title')} onClick={() => test.mutate(c.id)}>
               <Plug size={13} />
             </Button>
           )}
         </Td>
         <Td>
           <div className="flex justify-end gap-1 whitespace-nowrap">
-            <Button size="sm" variant="ghost" aria-label={`编辑渠道 ${c.name}`} title="编辑" onClick={onEdit}><Pencil size={13} /></Button>
-            <Button size="sm" variant="ghost" aria-label={`删除渠道 ${c.name}`} title="删除" className="text-danger-text hover:bg-danger-subtle" onClick={onDelete}>
+            <Button size="sm" variant="ghost" aria-label={tf('channels.editAria', { name: c.name })} title={t('common.edit')} onClick={onEdit}><Pencil size={13} /></Button>
+            <Button size="sm" variant="ghost" aria-label={tf('channels.deleteAria', { name: c.name })} title={t('common.delete')} className="text-danger-text hover:bg-danger-subtle" onClick={onDelete}>
               <Trash2 size={13} />
             </Button>
           </div>
@@ -224,15 +224,15 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
 
   return (
     <Card>
-      <h3 className="mb-3 text-sm font-semibold">上游 key（渠道：{detail.data.channel.name}）</h3>
+      <h3 className="mb-3 text-sm font-semibold">{tf('channels.keys.title', { name: detail.data.channel.name })}</h3>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[700px] lg:min-w-0">
           <thead className="border-b border-line-soft bg-surface-soft">
             <tr>
-              <Th>#</Th><Th>状态</Th><Th>权重</Th><Th>连续失败</Th>
-              <Th className="hidden min-[1180px]:table-cell">退避档位</Th><Th>冷却剩余</Th>
-              <Th className="hidden min-[1220px]:table-cell">成功/失败</Th><Th className="hidden min-[1280px]:table-cell">最近错误</Th>
-              <Th>启用</Th><Th className="w-16"><span className="block pr-2.5 text-right">操作</span></Th>
+              <Th>#</Th><Th>{t('table.status')}</Th><Th>{t('table.weight')}</Th><Th>{t('table.consecutiveFails')}</Th>
+              <Th className="hidden min-[1180px]:table-cell">{t('table.backoffLevel')}</Th><Th>{t('table.cooldownRemaining')}</Th>
+              <Th className="hidden min-[1220px]:table-cell">{t('table.successFail')}</Th><Th className="hidden min-[1280px]:table-cell">{t('table.lastError')}</Th>
+              <Th>{t('table.enabled')}</Th><Th className="w-16"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line-soft">
@@ -244,7 +244,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                 <tr key={k.id}>
                   <Td className="text-subtle">{i + 1}</Td>
                   <Td>
-                    <StatusBadge tone={channelStateTone(shownState)}>{stateLabel[shownState] || shownState}</StatusBadge>
+                    <StatusBadge tone={channelStateTone(shownState)}>{stateLabel(shownState)}</StatusBadge>
                   </Td>
                   <Td>{k.weight}</Td>
                   <Td className={k.consecutive_fails > 0 ? 'text-warning-text font-medium' : ''}>{k.consecutive_fails}</Td>
@@ -253,12 +253,12 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                   <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
                   <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1280px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
-                    <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={`启用 key ${i + 1}`} />
+                    <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
                   </Td>
                   <Td>
                     <div className="flex justify-end">
-                      <Button size="sm" variant="ghost" aria-label={`删除 key ${i + 1}`} title="删除" className="text-danger-text hover:bg-danger-subtle"
-                        onClick={() => onDeleteKey(k.id, `第 ${i + 1} 把 key`)}>
+                      <Button size="sm" variant="ghost" aria-label={tf('channels.deleteKeyAria', { n: i + 1 })} title={t('common.delete')} className="text-danger-text hover:bg-danger-subtle"
+                        onClick={() => onDeleteKey(k.id, tf('channels.deleteKeyLabel', { n: i + 1 }))}>
                         <Trash2 size={13} />
                       </Button>
                     </div>
@@ -270,16 +270,16 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
         </table>
       </div>
       <div className="mt-4 rounded-lg border border-dashed border-line-strong p-3">
-        <div className="mb-2 text-xs font-medium text-muted">批量导入 key（每行一把，加密存储，不会回显明文）</div>
+        <div className="mb-2 text-xs font-medium text-muted">{t('channels.import.title')}</div>
         <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-xxxxxxx\nsk-yyyyyyy'} />
         <div className="mt-2 flex items-center gap-3">
           <Button size="sm" disabled={!keysText.trim() || addKeys.isPending} onClick={() => addKeys.mutate(
             { channelId, keys: keysText },
             { onSuccess: () => setKeysText('') },
           )}>
-            {addKeys.isPending ? '导入中…' : '导入'}
+            {addKeys.isPending ? t('channels.importing') : t('channels.import.button')}
           </Button>
-          {addKeys.data && <span className="text-xs text-success-text">已导入 {addKeys.data.added} 把</span>}
+          {addKeys.data && <span className="text-xs text-success-text">{tf('channels.import.done', { n: addKeys.data.added })}</span>}
         </div>
       </div>
     </Card>
@@ -334,7 +334,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     if (firstTokenSec.trim()) timeouts.first_token_sec = Number(firstTokenSec)
     if (overallSec.trim()) timeouts.overall_sec = Number(overallSec)
     if (Object.values(timeouts).some((v) => !Number.isFinite(v) || v <= 0)) {
-      setFormError('超时必须为正整数秒')
+    setFormError(t('channels.form.timeoutInt'))
       return
     }
     setFormError('')
@@ -370,32 +370,32 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     <Dialog
       open
       onClose={onClose}
-      title={channel ? '编辑渠道' : '新建渠道'}
+        title={channel ? t('channels.edit.title') : t('page.channels.create')}
       wide
       footer={
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>取消</Button>
-          <Button type="submit" form={formID} disabled={save.isPending}>{save.isPending ? '保存中…' : '保存'}</Button>
+          <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button type="submit" form={formID} disabled={save.isPending}>{save.isPending ? t('common.saving') : t('common.save')}</Button>
         </div>
       }
     >
       <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]">
         {!channel && (
           <div className="space-y-2">
-            <Field label="供应商预设" hint="选择后自动填充 Base URL 与推荐配置，仍可手动调整">
+            <Field label={t('channels.form.preset')} hint={t('channels.form.presetHint')}>
               <Select value={presetId} onChange={(e) => applyPreset(e.target.value)}>
-                <option value={CUSTOM_CHANNEL_PRESET}>自定义</option>
-                {CHANNEL_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                <option value={CUSTOM_CHANNEL_PRESET}>{t('preset.custom.label')}</option>
+                {CHANNEL_PRESETS.map((p) => <option key={p.id} value={p.id}>{t(p.labelKey)}</option>)}
               </Select>
             </Field>
             {preset && (
-              <div className={`rounded-lg border px-3 py-2.5 ${preset.warning ? 'border-warning-border bg-warning-subtle' : 'border-line bg-surface-soft'}`}>
-                <div className={`text-xs ${preset.warning ? 'text-warning-text' : 'text-muted'}`}>{preset.description}</div>
+              <div className={`rounded-lg border px-3 py-2.5 ${preset.warningKey ? 'border-warning-border bg-warning-subtle' : 'border-line bg-surface-soft'}`}>
+                <div className={`text-xs ${preset.warningKey ? 'text-warning-text' : 'text-muted'}`}>{t(preset.descKey)}</div>
                 <div className="mt-1 font-mono text-[11px] text-muted">{preset.baseUrl}</div>
-                {preset.warning && (
+                {preset.warningKey && (
                   <div className="mt-1.5 flex gap-1.5 text-xs font-medium text-warning-text">
                     <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-                    <span>{preset.warning}</span>
+                    <span>{t(preset.warningKey)}</span>
                   </div>
                 )}
               </div>
@@ -403,62 +403,62 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           </div>
         )}
         <div className="eg-grid eg-grid-auto-wide">
-          <Field label="名称"><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
-          <Field label="类型" hint={CHANNEL_TYPE_HELP[type]}>
+          <Field label={t('channels.form.name')}><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
+          <Field label={t('channels.form.type')} hint={t(CHANNEL_TYPE_HELP[type])}>
             <Select value={type} onChange={(e) => setType(e.target.value)}>
               {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
             </Select>
           </Field>
         </div>
-        <Field label="Base URL" hint={`上游 API 根地址；网关按能力拼接 ${supportsAnthropic ? '/v1/messages、' : ''}${supportsResponses ? '/responses、' : ''}${supportsGemini ? '/v1beta/models/{model}、' : ''}/chat/completions`}>
+        <Field label="Base URL" hint={tf('channels.form.baseUrlHint', { paths: [supportsAnthropic ? '/v1/messages' : '', supportsResponses ? '/responses' : '', supportsGemini ? '/v1beta/models/{model}' : '', '/chat/completions'].filter(Boolean).join(', ') })}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
         </Field>
         {!channel && (
-          <Field label="上游 API key（可选，每行一把）" hint="填写后创建时直接导入，保存后即可「从上游拉取」模型目录；留空可稍后在渠道行展开导入">
+          <Field label={t('channels.form.keys')} hint={t('channels.form.keysHint')}>
             <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-...\nsk-...'} autoComplete="off" className="font-mono text-xs" />
           </Field>
         )}
         <div className="space-y-2">
           <SettingRow
-            title="原生支持 Responses API"
-            description="开启后 /v1/responses 优先透传；关闭时转换为 Chat Completions"
+            title={t('channels.proto.responses.title')}
+            description={t('channels.proto.responses.desc')}
             checked={supportsResponses}
             onChange={setSupportsResponses}
-            label="原生支持 Responses API"
+            label={t('channels.proto.responses.title')}
           />
           <SettingRow
-            title="原生支持 Anthropic Messages"
-            description="开启后 /v1/messages 透传；关闭时转换为 Chat Completions"
+            title={t('channels.proto.anthropic.title')}
+            description={t('channels.proto.anthropic.desc')}
             checked={supportsAnthropic}
             onChange={setSupportsAnthropic}
-            label="原生支持 Anthropic Messages"
+            label={t('channels.proto.anthropic.title')}
           />
           <SettingRow
-            title="原生支持 Gemini API"
-            description="开启后 /v1beta/models/* 透传；关闭时转换为 Chat Completions"
+            title={t('channels.proto.gemini.title')}
+            description={t('channels.proto.gemini.desc')}
             checked={supportsGemini}
             onChange={setSupportsGemini}
-            label="原生支持 Gemini API"
+            label={t('channels.proto.gemini.title')}
           />
         </div>
         <div className="eg-grid eg-grid-auto-wide">
-          <Field label="优先级" hint="越小越优先"><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
-          <Field label="权重" hint="同优先级内加权随机"><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
+          <Field label={t('channels.form.priority')} hint={t('channels.form.priorityHint')}><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
+          <Field label={t('channels.form.weight')} hint={t('channels.form.weightHint')}><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
         </div>
         <div className="eg-grid eg-grid-auto-wide">
-          <Field label="连接超时（秒）" hint="留空用全局设置；1–300"><Input type="number" min={1} max={300} value={connectSec} onChange={(e) => setConnectSec(e.target.value)} placeholder="留空" /></Field>
-          <Field label="首 token 超时（秒）" hint="留空用全局设置；1–3600"><Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => setFirstTokenSec(e.target.value)} placeholder="留空" /></Field>
-          <Field label="整体超时（秒）" hint="留空用全局设置；不小于前两项"><Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => setOverallSec(e.target.value)} placeholder="留空" /></Field>
+          <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')}><Input type="number" min={1} max={300} value={connectSec} onChange={(e) => setConnectSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
+          <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')}><Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => setFirstTokenSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
+          <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')}><Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => setOverallSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
         </div>
         <div className="space-y-2">
           <div className="flex flex-wrap items-end justify-between gap-2">
-            <label htmlFor={modelsId} className="text-sm font-medium text-foreground-soft">支持的模型（每行一个）</label>
+            <label htmlFor={modelsId} className="text-sm font-medium text-foreground-soft">{t('channels.form.models')}</label>
             <Button
               type="button"
               size="sm"
               variant="outline"
               disabled={!channel || channel.key_count === 0 || preview.isPending}
-              title={!channel ? '保存渠道后可用' : channel.key_count === 0 ? '请先导入至少一把 key' : undefined}
+              title={!channel ? t('channels.form.fetchUnavailable') : channel.key_count === 0 ? t('channels.form.fetchNeedKey') : undefined}
               onClick={() => {
                 if (!channel) return
                 setShowModelPicker(false)
@@ -467,20 +467,20 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               }}
             >
               <RefreshCw size={13} className={preview.isPending ? 'animate-spin' : ''} />
-              {preview.isPending ? '拉取中…' : '从上游拉取'}
+              {preview.isPending ? t('channels.form.fetching') : t('channels.form.fetch')}
             </Button>
           </div>
           <Textarea id={modelsId} rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} />
           <div className="text-xs text-subtle">
             {!channel
-              ? '可留空：保存并导入 key 后，再「从上游拉取」模型目录；也可直接手填。'
+              ? t('channels.form.modelsHintNew')
               : channel.key_count === 0
-                ? '请先在渠道行展开并导入至少一把启用 key。'
-                : '候选映射按当前已保存的模型映射生成；确认后会写入本表单，仍需点击保存。'}
+                ? t('channels.form.modelsHintNoKey')
+                : t('channels.form.modelsHintPicker')}
           </div>
           {showModelPicker && preview.data && (
             <ModelPicker
-              title={`${channel?.name ?? ''} 上游模型`}
+              title={tf('channels.form.pickerTitle', { name: channel?.name ?? '' })}
               options={preview.data.items.map((item) => ({
                 publicModel: item.public_model,
                 upstreamModel: item.upstream_model,
@@ -502,12 +502,12 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             />
           )}
           {preview.isError && !preview.data && (
-            <ErrorText>拉取失败：{(preview.error as Error).message}</ErrorText>
+            <ErrorText>{tf('channels.form.fetchFailed', { message: (preview.error as Error).message })}</ErrorText>
           )}
         </div>
         <ModelMappingEditor value={mapping} onChange={setMapping} />
         <ErrorText>{formError}</ErrorText>
-        <ErrorText>{save.isError ? (save.error as Error).message : addKeys.isError ? `渠道已创建，但 key 导入失败：${(addKeys.error as Error).message}。可在渠道行展开重新导入。` : null}</ErrorText>
+        <ErrorText>{save.isError ? (save.error as Error).message : addKeys.isError ? tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message }) : null}</ErrorText>
       </form>
     </Dialog>
   )
