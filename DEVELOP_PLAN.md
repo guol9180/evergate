@@ -55,23 +55,6 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 执行中
 
-#### T83: 发布 v0.6.0-rc.1（P0，用户指令）
-
-- 目标：将 P4 三视角改进批次与新版文档分层按 MINOR 预发布通道发布为 `v0.6.0-rc.1`，验证 GitHub prerelease、Windows/Linux 资产、npm 五包 `next` 标签与发布门禁
-- 版本判断：`v0.5.5 → v0.6.0-rc.1`。本批次新增管理台能力、后端统计/配置/审计接口与安全/可靠性改进，按 0.x 语义提升 MINOR；先发布候选版，正式 `v0.6.0` 待候选验证后再发
-- 验收标准：
-  1. `CHANGELOG.md` 含唯一非空 `## v0.6.0-rc.1` 段，发版提交位于 `main` 历史
-  2. 本地 Go、前端、覆盖率、脚本、构建、actionlint 与文档门禁通过
-  3. `main` 推送后的 CI Quality / Security 全绿；macOS cgo job 按仓库变量如实跳过或通过
-  4. annotated tag `v0.6.0-rc.1` 指向 `main` 提交；Release workflow 的 quality / release / windows-installer / verify-release 全绿，macOS 安装器按签名开关跳过
-  5. GitHub Release 为 prerelease，仅含 Windows setup、Linux tar.gz 与 checksums，不含裸二进制或未签名 DMG
-  6. npm 主包、三个平台子包与 updates 包均为 `0.6.0-rc.1`，`next` 指向该版本，`latest` 保持 `0.5.5`
-  7. 回写 Action URL、资产大小与 SHA256、npm dist-tags；真实旧→新升级继续由 T50v 在正式版发布后复验
-- 边界：不发布正式 `v0.6.0`、不移动 `latest`、不发布未签名 DMG 或裸二进制；不夹带业务代码；不改写历史 tag
-- 状态：in-progress
-- 进度（只追加新行，不修改旧行）：
-  - 2026-11-24 计划 用户确认推送并发布；按 MINOR 预发布规则确定 `v0.6.0-rc.1`，建立发版卡并开始本地门禁
-
 ### 待执行（自上而下即执行顺序）
 
 > 来源：P3 待复验任务（由 T73 拆分）。
@@ -155,6 +138,27 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-24 决策 转 deferred。阻塞项：macOS App/安装器签名与公证；类型：外部（需 Apple Developer Program 与 6 个签名/公证 Secrets）；重启条件：凭据可用并设置仓库变量 ENABLE_MACOS_INSTALLER=true；复查日期 2027-01-15。Windows/Linux 产物已随 v0.3.0+ 发布，不受本卡阻塞
 
 ### 最近完成 / 已取消
+
+#### T83: 发布 v0.6.0-rc.1（P0，用户指令）
+
+- 目标：将 P4 三视角改进批次与新版文档分层按 MINOR 预发布通道发布为 `v0.6.0-rc.1`，验证 GitHub prerelease、Windows/Linux 资产、npm 五包 `next` 标签与发布门禁
+- 版本判断：`v0.5.5 → v0.6.0-rc.1`。本批次新增管理台能力、后端统计/配置/审计接口与安全/可靠性改进，按 0.x 语义提升 MINOR；先发布候选版，正式 `v0.6.0` 待候选验证后再发
+- 验收标准：
+  1. `CHANGELOG.md` 含唯一非空 `## v0.6.0-rc.1` 段，发版提交位于 `main` 历史
+  2. 本地 Go、前端、覆盖率、脚本、构建、actionlint 与文档门禁通过
+  3. `main` 推送后的 CI Quality / Security 全绿；macOS cgo job 按仓库变量如实跳过或通过
+  4. annotated tag `v0.6.0-rc.1` 指向 `main` 提交；Release workflow 的 quality / release / windows-installer / verify-release 全绿，macOS 安装器按签名开关跳过
+  5. GitHub Release 为 prerelease，仅含 Windows setup、Linux tar.gz 与 checksums，不含裸二进制或未签名 DMG
+  6. npm 主包、三个平台子包与 updates 包均为 `0.6.0-rc.1`，`next` 指向该版本，`latest` 保持 `0.5.5`
+  7. 回写 Action URL、资产大小与 SHA256、npm dist-tags；真实旧→新升级继续由 T50v 在正式版发布后复验
+- 边界：不发布正式 `v0.6.0`、不移动 `latest`、不发布未签名 DMG 或裸二进制；不夹带业务代码；不改写历史 tag
+- 状态：done
+- 进度（只追加新行，不修改旧行）：
+  - 2026-11-24 计划 用户确认推送并发布；按 MINOR 预发布规则确定 `v0.6.0-rc.1`，建立发版卡并开始本地门禁
+  - 2026-11-24 验证 本地 `go test -p 1 ./...`、vet、前端 11+19 测试、lint/build、发布脚本 10 项、scheduler 93.5%、relay 81%、actionlint、`make build`、`make build-all` 与文档门禁通过；main CI [45366058083](https://github.com/guol9180/evergate/actions/runs/45366058083) Quality/Security 成功，macOS cgo 按变量跳过
+  - 2026-11-24 交付 annotated tag `v0.6.0-rc.1` 指向 `98b35c4` 并推送；Release [45367176889](https://github.com/guol9180/evergate/actions/runs/45367176889) 的 quality/release/windows-installer/verify-release 全成功，macOS-installer 按开关跳过
+  - 2026-11-24 验证 Release 为 prerelease，资产为 Windows setup 9,840,014B（SHA256 `7f8eea3b2e9e9e87db4090ce435bac0509022c0c456270ee5ccea2e5ef22e044`）、Linux tar.gz 10,884,033B（SHA256 `4eed8b59f10ae697a11e4f894e021f482c8f292af64be5ab7c7171a5464d869f`）、checksums 215B；独立下载重算一致，无裸二进制或 DMG，GitHub Latest 仍为 v0.5.5
+  - 2026-11-24 验证 npm 官方与 npmmirror 五个包均为 `next=0.6.0-rc.1`、`latest=0.5.5`；真实旧→新升级按边界继续由 T50v 在正式版发布后复验
 
 #### T82: 按新版 init-project-docs 补齐调研与设计分层（P1，用户指令）
 
