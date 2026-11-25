@@ -6,7 +6,7 @@
 
 **适用**：个人或小团队在本机 / 局域网聚合多个上游供应商与 key；单二进制 + SQLite，无需 Docker / Redis / 外部数据库。不适合多租户计费场景。
 
-[![Release](https://img.shields.io/github/v/release/guol9180/evergate?include_prereleases&style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
+[![Release](https://img.shields.io/github/v/release/guol9180/evergate?style=flat-square)](https://github.com/guol9180/evergate/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white&style=flat-square)](https://go.dev)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square)](https://github.com/guol9180/evergate/releases/latest)

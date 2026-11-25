@@ -35,7 +35,7 @@
 
 - **单一事实源**：版本号以 git tag `vMAJOR.MINOR.PATCH[-pre.N]` 为准，必须打在 main 上；二进制注入、npm 包版本、CHANGELOG 标题全部由 tag 派生
 - **bump 语义（0.x）**：修复 → PATCH；新增功能或破坏性变更 → MINOR；**1.0 之后**破坏性变更 → MAJOR。禁止把功能发布塞进 PATCH
-- **预发布通道**：tag `-rc.N` / `-beta.N`，npm `--tag next`，GitHub Release 标记 prerelease；`latest` 只随正式版移动；MINOR 发布前先出 `-rc.1` 自用
+- **发布通道**：默认直接发布正式版 `vMAJOR.MINOR.PATCH`；npm `latest` 与 GitHub Latest 随正式版移动，不再把 RC / beta 作为标准发布步骤
 - **发布门禁**：tag 必须有精确对应的 `## vX.Y.Z` CHANGELOG 段且在 main 历史上；发版步骤与"真实旧→新升级一次"见 [docs/agents/发版检查清单.md](./docs/agents/发版检查清单.md)；macOS 安装器只在 `ENABLE_MACOS_INSTALLER=true` 且签名/公证 Secrets 齐全时构建，永远不得发布未签名 DMG
 - **开发构建**：`dev`、`-dirty`、`-N-g<sha>` 统一视为开发态，不参与更新比较
 
