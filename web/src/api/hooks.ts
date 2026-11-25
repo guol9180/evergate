@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, jsonBody } from './client'
 import { withBasePath } from '../lib/runtime'
-import type { AdminInfo, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -17,6 +17,27 @@ export function useLogin() {
   return useMutation({
     mutationFn: (data: { username: string; password: string }) =>
       api<AdminInfo>('/admin/api/auth/login', jsonBody(data)),
+  })
+}
+
+/** 首启设置状态：登录页与 /setup 用它决定跳转方向。 */
+export function useSetupStatus(enabled = true) {
+  return useQuery({
+    queryKey: ['setup-status'],
+    queryFn: () => api<SetupStatus>('/admin/api/auth/setup-status'),
+    retry: false,
+    staleTime: 0,
+    enabled,
+  })
+}
+
+export function useSetupAdmin() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { username: string; password: string }) =>
+      api<{ username: string; setup: boolean }>('/admin/api/auth/setup', jsonBody(data)),
+    // 设置成功后立刻更新状态缓存，否则登录页会读到旧的 setup_required=true 再跳回 /setup
+    onSuccess: () => qc.setQueryData<SetupStatus>(['setup-status'], { setup_required: false }),
   })
 }
 

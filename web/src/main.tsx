@@ -9,6 +9,7 @@ import { t } from './lib/i18n'
 import Layout from './components/Layout'
 import { PageSkeleton } from './components/ui'
 import Login from './pages/Login'
+import Setup from './pages/Setup'
 import ChangePassword from './pages/ChangePassword'
 import Dashboard from './pages/Dashboard'
 import Channels from './pages/Channels'
@@ -36,6 +37,7 @@ createRoot(document.getElementById('root')!).render(
     <Suspense fallback={<div className="eg-page" role="status" aria-label={t('common.loading')}><PageSkeleton /></div>}>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/setup" element={<Setup />} />
             <Route element={<Layout />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/change-password" element={<ChangePassword />} />

@@ -139,19 +139,23 @@ func run() error {
 		return fmt.Errorf("migrate database: %w", err)
 	}
 	initialPassword, fromEnv := store.InitialAdminPassword(os.Getenv(store.InitialAdminEnv))
-	created, err := store.EnsureAdmin(db, store.DefaultAdminUsername, initialPassword)
-	if err != nil {
-		return fmt.Errorf("ensure default admin: %w", err)
-	}
-	if created {
-		if fromEnv {
+	// 设置了环境变量时保持旧的自动创建流程（容器 / 自动化）；否则留空由管理台首启向导设置，
+	// 避免随机密码只存在于日志里。
+	if fromEnv {
+		created, err := store.EnsureAdmin(db, store.DefaultAdminUsername, initialPassword)
+		if err != nil {
+			return fmt.Errorf("ensure default admin: %w", err)
+		}
+		if created {
 			logger.Warn("initial admin created using password from EVERGATE_INITIAL_ADMIN_PASSWORD",
 				slog.String("username", store.DefaultAdminUsername),
 				slog.String("must_change_password", "true"),
 			)
-		} else {
-			logInitialAdminPassword(logger, store.DefaultAdminUsername, initialPassword)
 		}
+	} else if required, err := store.SetupRequired(db); err != nil {
+		return fmt.Errorf("check admin setup: %w", err)
+	} else if required {
+		logger.Warn("no admin account yet; complete initial setup in the admin UI (open /setup)")
 	}
 
 	// 全局 UTC 时钟（AGENTS 红线：所有时间以 UTC 存储）
@@ -399,19 +403,6 @@ func run() error {
 
 func shouldOpenBrowser(server config.Server, autostart bool) bool {
 	return !autostart && server.ShouldOpenBrowser()
-}
-
-// logInitialAdminPassword 把随机初始密码以醒目分隔线写入日志（stdout + 文件双写）。
-// GUI 构建无有效 stdout 时用户可在数据目录 logs/evergate.log 中找到；密码只在此处出现一次。
-func logInitialAdminPassword(logger *slog.Logger, username, password string) {
-	logger.Warn("==========================================================")
-	logger.Warn("EverGate initial admin account created",
-		slog.String("username", username),
-		slog.String("password", password),
-	)
-	logger.Warn("This password is shown ONCE at first start and must be changed on first login.")
-	logger.Warn("If lost: set EVERGATE_INITIAL_ADMIN_PASSWORD and recreate, or delete the admins row in evergate.db and restart.")
-	logger.Warn("==========================================================")
 }
 
 func loadBootstrapConfig(paths appdir.Paths) (config.Config, string, bool, error) {

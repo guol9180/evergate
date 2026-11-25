@@ -34,6 +34,34 @@ func EnsureAdmin(db *gorm.DB, username, password string) (bool, error) {
 	return true, nil
 }
 
+// SetupRequired 报告 admins 表是否为空（首启需要用户在管理台完成管理员设置）。
+func SetupRequired(db *gorm.DB) (bool, error) {
+	var count int64
+	if err := db.Model(&Admin{}).Count(&count).Error; err != nil {
+		return false, fmt.Errorf("count admins: %w", err)
+	}
+	return count == 0, nil
+}
+
+// CreateAdmin 创建已设定密码的管理员，不强制首登改密（首启设置向导用）。
+func CreateAdmin(db *gorm.DB, username, password string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash admin password: %w", err)
+	}
+	admin := Admin{Username: username, PasswordHash: string(hash), MustChangePassword: false}
+	// MustChangePassword 的列默认值是 true，GORM 会跳过零值插入，必须显式回写 false
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&admin).Error; err != nil {
+			return fmt.Errorf("create admin: %w", err)
+		}
+		if err := tx.Model(&admin).Update("must_change_password", false).Error; err != nil {
+			return fmt.Errorf("clear must_change_password: %w", err)
+		}
+		return nil
+	})
+}
+
 // GetAdminByUsername 按用户名查询管理员（登录用，T5 接线）。
 func GetAdminByUsername(db *gorm.DB, username string) (*Admin, error) {
 	var admin Admin

@@ -72,7 +72,9 @@ paths:
     get:
       tags: [openai]
       summary: 当前令牌可见的模型列表
-      description: 合并全部启用渠道的对外模型名并去重；按令牌「允许模型」过滤。
+      description: |
+        合并全部启用渠道的对外模型名并去重；按令牌「允许模型」过滤。
+        携带 `anthropic-version` 头时返回 Anthropic 结构（`data[] / has_more / first_id / last_id`）。
       security:
         - bearerAuth: []
       responses:
@@ -81,6 +83,23 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ModelList' }
+        default:
+          $ref: '#/components/responses/Error'
+  /v1beta/models:
+    get:
+      tags: [gemini]
+      summary: Gemini 风格模型列表
+      description: |
+        与 `/v1/models` 同一目录与令牌过滤，返回 `models[]`，`name` 为 `models/<对外模型>`。
+        鉴权使用 `x-goog-api-key`（禁止 `?key=`）。
+      security:
+        - googApiKey: []
+      responses:
+        '200':
+          description: Gemini 风格列表
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GenericObject' }
         default:
           $ref: '#/components/responses/Error'
   /v1/messages:

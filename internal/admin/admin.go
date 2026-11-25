@@ -14,9 +14,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -65,6 +67,8 @@ type API struct {
 	opt          Options
 	now          func() time.Time
 	loginLimiter *loginLimiter
+	// setupMu 保证并发首启设置只有一个成功（单进程内串行；跨进程由用户名唯一索引兜底）。
+	setupMu sync.Mutex
 }
 
 // New 创建管理 API。
@@ -81,6 +85,8 @@ func New(opt Options) *API {
 // RegisterRoutes 注册 /admin/api 全部路由（由 server.SetupRoutes 挂载）。
 func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.POST("/admin/api/auth/login", a.accessMiddleware(), a.login)
+	r.GET("/admin/api/auth/setup-status", a.accessMiddleware(), a.setupStatus)
+	r.POST("/admin/api/auth/setup", a.accessMiddleware(), a.setupAdmin)
 	r.POST("/admin/api/auth/logout", a.accessMiddleware(), a.logout)
 	// 会话保护区（sessionMiddleware 放行 me/password 以强制首登改密）
 	r.GET("/admin/api/auth/me", a.accessMiddleware(), a.sessionMiddleware(), a.me)
@@ -175,6 +181,67 @@ func (a *API) login(c *gin.Context) {
 	c.SetSameSite(http.SameSiteStrictMode)
 	c.SetCookie(CookieName, a.opt.Session.Issue(req.Username, now), int(a.opt.Session.ttl.Seconds()), "/", "", c.Request.TLS != nil, true)
 	ok(c, gin.H{"username": admin.Username, "must_change_password": admin.MustChangePassword})
+}
+
+// adminUsernamePattern 首启设置的账号规则：3–32 位字母、数字、下划线、点或连字符。
+var adminUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,32}$`)
+
+// setupStatus 供登录页判断是否需要先完成首启管理员设置。
+func (a *API) setupStatus(c *gin.Context) {
+	required, err := store.SetupRequired(a.opt.DB)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "查询初始化状态失败")
+		return
+	}
+	ok(c, gin.H{"setup_required": required})
+}
+
+// setupAdmin 首启管理员设置：仅在 admins 为空且请求来自本机时允许；成功后不自动登录。
+func (a *API) setupAdmin(c *gin.Context) {
+	if !isLoopback(c.ClientIP()) {
+		fail(c, http.StatusForbidden, "初始管理员设置仅允许本机访问")
+		return
+	}
+	var req struct {
+		Username string `json:"username" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, http.StatusBadRequest, "参数错误")
+		return
+	}
+	username := strings.TrimSpace(req.Username)
+	if !adminUsernamePattern.MatchString(username) {
+		fail(c, http.StatusBadRequest, "用户名需为 3–32 位字母、数字、下划线、点或连字符")
+		return
+	}
+	if err := store.ValidateAdminPassword(req.Password); err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	// 单进程内串行，保证并发设置只有一个成功；跨进程由用户名唯一索引兜底
+	a.setupMu.Lock()
+	defer a.setupMu.Unlock()
+	required, err := store.SetupRequired(a.opt.DB)
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "查询初始化状态失败")
+		return
+	}
+	if !required {
+		fail(c, http.StatusForbidden, "管理员已存在，无法重复初始化")
+		return
+	}
+	if err := store.CreateAdmin(a.opt.DB, username, req.Password); err != nil {
+		if stillRequired, _ := store.SetupRequired(a.opt.DB); !stillRequired {
+			fail(c, http.StatusForbidden, "管理员已存在，无法重复初始化")
+			return
+		}
+		fail(c, http.StatusInternalServerError, "创建管理员失败")
+		return
+	}
+	c.Set("admin", username)
+	a.recordAudit(c, "setup_admin", "", "username="+username)
+	ok(c, gin.H{"username": username, "setup": true})
 }
 
 func (a *API) logout(c *gin.Context) {

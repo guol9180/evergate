@@ -34,7 +34,7 @@
 ## 快速开始
 
 1. 启动后管理台默认自动打开 `http://localhost:8787/`（服务器部署可设 `server.open_browser: false`）
-2. **初始管理员密码在首次启动时随机生成**，打印在控制台与数据目录 `logs/evergate.log` 中（WARN 级别、带分隔线）；自动化场景可用环境变量 `EVERGATE_INITIAL_ADMIN_PASSWORD` 预设。首次登录强制改密
+2. **首次启动进入初始化页面**（`/setup`）：设置管理员用户名与密码（至少 8 位、含三类字符），保存后回到登录页登录；自动化 / 容器场景可用环境变量 `EVERGATE_INITIAL_ADMIN_PASSWORD` 跳过向导自动创建（首登强制改密）
 3. 在管理台「渠道管理」选择供应商预设、填入上游 base_url 与 API key，保存后「从上游拉取」模型目录
 4. 「令牌管理」创建下游令牌，复制生成的客户端配置片段
 5. 客户端把 base_url 指向 `http://localhost:8787/v1`，用该令牌作为 API key
@@ -108,7 +108,7 @@ curl http://localhost:8787/v1/messages \
 - 上游 key 加密存储（主密钥仅在 `evergate.yml`，已 gitignore），管理台接口不回显明文；下游令牌仅存哈希，明文只在创建时展示一次
 - 管理台 API 默认仅允许 loopback 访问；确需远程管理时显式设置 `server.admin_loopback_only: false`，并自行增加 TLS 与访问控制
 - **下游 `/v1` 默认监听所有网卡且无 TLS，令牌以明文传输**：请仅在本机或可信局域网使用；跨网络访问按 [HTTPS 与反向代理](./docs/agents/HTTPS与反向代理.md) 配置
-- 初始管理员密码随机生成（或由环境变量预设），首登强制修改；管理台写操作记录在审计日志中
+- 初始管理员由首次启动的 `/setup` 向导创建（仅本机可访问）；自动化场景可用环境变量预设。管理台写操作记录在审计日志中
 - 设置 `server.base_path: /eg` 后，管理台、静态资源与 API 统一挂载到 `http://localhost:8787/eg/`
 
 ## 架构概览

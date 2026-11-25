@@ -46,6 +46,29 @@ func TestInitialAdminPasswordPrefersEnv(t *testing.T) {
 	}
 }
 
+func TestValidateAdminPassword(t *testing.T) {
+	cases := []struct {
+		password string
+		ok       bool
+	}{
+		{"Admin1234!", true}, // 四类
+		{"Abcdefg1", true},   // 大写 + 小写 + 数字
+		{"short1A", false},   // 不足 8 位
+		{"abcdefgh", false},  // 只有一类
+		{"ABCD1234", false},  // 大写 + 数字，两类不够
+		{"aaaa1111", false},  // 小写 + 数字，两类不够
+	}
+	for _, c := range cases {
+		err := ValidateAdminPassword(c.password)
+		if c.ok && err != nil {
+			t.Fatalf("%q 应通过，得到 %v", c.password, err)
+		}
+		if !c.ok && err == nil {
+			t.Fatalf("%q 应被拒绝", c.password)
+		}
+	}
+}
+
 func TestIsDevVersion(t *testing.T) {
 	cases := map[string]bool{
 		"":                  true,

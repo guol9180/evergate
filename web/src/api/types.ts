@@ -5,6 +5,10 @@ export interface AdminInfo {
   must_change_password: boolean
 }
 
+export interface SetupStatus {
+  setup_required: boolean
+}
+
 export interface UpdateAsset {
   name: string
   browser_download_url: string

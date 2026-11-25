@@ -2,8 +2,10 @@ package store
 
 import (
 	"crypto/rand"
+	"errors"
 	"math/big"
 	"strings"
+	"unicode"
 )
 
 // 随机密码字符集：四类字符各至少一个，保证常见密码策略均可通过。
@@ -52,4 +54,34 @@ func randomIndex(n int) int {
 		panic("evergate: crypto/rand unavailable: " + err.Error())
 	}
 	return int(v.Int64())
+}
+
+// ValidateAdminPassword 首启设置向导的密码策略：至少 8 位，且包含大写 / 小写 / 数字 / 符号中的至少三类。
+func ValidateAdminPassword(password string) error {
+	if len([]rune(password)) < 8 {
+		return errors.New("密码至少 8 位")
+	}
+	var lower, upper, digit, symbol bool
+	for _, r := range password {
+		switch {
+		case unicode.IsLower(r):
+			lower = true
+		case unicode.IsUpper(r):
+			upper = true
+		case unicode.IsDigit(r):
+			digit = true
+		default:
+			symbol = true
+		}
+	}
+	classes := 0
+	for _, ok := range []bool{lower, upper, digit, symbol} {
+		if ok {
+			classes++
+		}
+	}
+	if classes < 3 {
+		return errors.New("密码需至少包含三类字符（大写、小写、数字、符号）")
+	}
+	return nil
 }

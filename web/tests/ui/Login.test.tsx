@@ -12,8 +12,16 @@ const loginMutation = vi.hoisted(() => ({
   isPending: false,
 }))
 
+const setupStatus = vi.hoisted(() => ({
+  data: { setup_required: false },
+  isPending: false,
+  isError: false,
+  error: null,
+}))
+
 vi.mock('../../src/api/hooks', () => ({
   useLogin: () => loginMutation,
+  useSetupStatus: () => setupStatus,
 }))
 
 describe('Login', () => {

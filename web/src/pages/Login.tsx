@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useLogin } from '../api/hooks'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useLogin, useSetupStatus } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
 import { Button, Card, ErrorText, Field, Input } from '../components/ui'
@@ -9,9 +9,15 @@ import { withBasePath } from '../lib/runtime'
 export default function Login() {
   usePageTitle(t('page.login.title'))
   const login = useLogin()
+  const setup = useSetupStatus()
   const navigate = useNavigate()
-  const [username, setUsername] = useState('')
+  const location = useLocation()
+  const prefill = (location.state as { username?: string } | null)?.username ?? ''
+  const [username, setUsername] = useState(prefill)
   const [password, setPassword] = useState('')
+
+  // 尚未创建管理员时先走首启设置
+  if (setup.data?.setup_required) return <Navigate to="/setup" replace />
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()

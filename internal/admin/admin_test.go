@@ -35,6 +35,17 @@ type testEnv struct {
 
 func newEnv(t *testing.T) *testEnv {
 	t.Helper()
+	return newEnvOpts(t, true)
+}
+
+// newEnvWithoutAdmin 用于首启设置流程：admins 表保持为空。
+func newEnvWithoutAdmin(t *testing.T) *testEnv {
+	t.Helper()
+	return newEnvOpts(t, false)
+}
+
+func newEnvOpts(t *testing.T, withAdmin bool) *testEnv {
+	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
@@ -42,8 +53,10 @@ func newEnv(t *testing.T) *testEnv {
 	if err := store.Migrate(db); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if _, err := store.EnsureAdmin(db, store.DefaultAdminUsername, "admin123"); err != nil {
-		t.Fatalf("ensure admin: %v", err)
+	if withAdmin {
+		if _, err := store.EnsureAdmin(db, store.DefaultAdminUsername, "admin123"); err != nil {
+			t.Fatalf("ensure admin: %v", err)
+		}
 	}
 	master, _ := store.GenerateRandomKey()
 	settingMgr, err := settings.Load(db, config.Default(), func() time.Time { return time.Now().UTC() })
