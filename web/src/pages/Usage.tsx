@@ -1,6 +1,8 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, BarChart3, CircleDollarSign, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
+  useApplyPresetPrice,
+  useChannel,
   useChannels,
   useDeletePriceOverride,
   useSetDefaultPrice,
@@ -12,6 +14,7 @@ import {
 import type { UsageDailyPoint, UsageDimensionRow } from '../api/types'
 import { Badge, Button, Card, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
 import { TrendChart } from '../components/TrendChart'
+import PriceTable, { fmtPriceMicros } from '../components/PriceTable'
 import { fmtInt, fmtMoney } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
@@ -145,7 +148,8 @@ function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
         </div>
       </div>
       {daily.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
-        <div className="mt-4 h-[clamp(224px,32vw,360px)] xl:h-auto xl:min-h-72 xl:flex-1">
+        // 右侧价格卡更高时，让图跟着卡片一起长，避免图下方留下大块空白
+        <div className="mt-4 min-h-56 flex-1 xl:min-h-72">
           <TrendChart data={daily} className="h-full" />
         </div>
       )}
@@ -216,12 +220,21 @@ function PriceCard() {
   const setDefault = useSetDefaultPrice()
   const upsert = useUpsertPriceOverride()
   const remove = useDeletePriceOverride()
+  const applyPreset = useApplyPresetPrice()
   const [defaultIn, setDefaultIn] = useState('0')
   const [defaultOut, setDefaultOut] = useState('0')
   const [channelID, setChannelID] = useState('')
   const [model, setModel] = useState('')
   const [overrideIn, setOverrideIn] = useState('0')
   const [overrideOut, setOverrideOut] = useState('0')
+  const [presetChannelID, setPresetChannelID] = useState('')
+  const presetChannels = useMemo(
+    () => (channels.data?.items ?? []).filter((ch) => ch.preset_id),
+    [channels.data],
+  )
+  // 默认挑一个已经填了模型的预设渠道，避免一进来就是空表
+  const presetDefault = presetChannels.find((ch) => (ch.models ?? []).length > 0) ?? presetChannels[0]
+  const presetDetail = useChannel(presetChannelID ? Number(presetChannelID) : null)
 
   useEffect(() => {
     if (prices.data) {
@@ -232,6 +245,9 @@ function PriceCard() {
   useEffect(() => {
     if (!channelID && channels.data?.items[0]) setChannelID(String(channels.data.items[0].id))
   }, [channelID, channels.data])
+  useEffect(() => {
+    if (!presetChannelID && presetDefault) setPresetChannelID(String(presetDefault.id))
+  }, [presetChannelID, presetDefault])
 
   const channelName = useMemo(() => new Map((channels.data?.items ?? []).map((ch) => [ch.id, ch.name])), [channels.data])
 
@@ -281,12 +297,65 @@ function PriceCard() {
           <div key={price.id} className="flex items-center gap-2 rounded-md bg-surface-soft px-2 py-1.5 text-xs">
             <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
             <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
-            <span className="text-muted">{toPriceInput(price.input_micros_per_million)} / {toPriceInput(price.output_micros_per_million)}</span>
+            <span className="text-muted">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}</span>
             <button onClick={() => remove.mutate(price.id)} className="text-subtle hover:text-danger-text" title={t('usage.price.deleteOverride')}><Trash2 size={13} /></button>
           </div>
         ))}
       </div>
-      <ErrorText>{prices.isError ? (prices.error as Error).message : setDefault.isError ? (setDefault.error as Error).message : upsert.isError ? (upsert.error as Error).message : null}</ErrorText>
+      <div className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
+        <div className="text-xs font-medium text-muted">{t('usage.price.byPreset')}</div>
+        <p className="mt-1 text-[11px] text-subtle">{t('usage.price.byPresetHint')}</p>
+        {presetChannels.length === 0 ? (
+          <p className="mt-2 text-xs text-subtle">{t('usage.price.byPresetNone')}</p>
+        ) : (
+          <>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <div className="min-w-40 flex-1">
+                <Field label={t('table.channel')}>
+                  <Select
+                    value={presetChannelID}
+                    onChange={(e) => {
+                      setPresetChannelID(e.target.value)
+                      applyPreset.reset()
+                    }}
+                  >
+                    {presetChannels.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                  </Select>
+                </Field>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={applyPreset.isPending || !presetChannelID}
+                onClick={() => applyPreset.mutate(Number(presetChannelID))}
+              >
+                {applyPreset.isPending ? t('common.saving') : t('usage.price.applyPreset')}
+              </Button>
+            </div>
+            {applyPreset.data && (
+              <div className={`mt-2 text-xs ${applyPreset.data.created > 0 ? 'text-success-text' : 'text-subtle'}`}>
+                {applyPreset.data.created > 0
+                  ? tf('usage.price.applyDone', { n: applyPreset.data.created })
+                  : t('usage.price.applyNone')}
+              </div>
+            )}
+            {prices.data?.catalog && (
+              <div className="mt-2 text-[11px] text-subtle">{tf('usage.price.asOf', { asOf: prices.data.catalog.as_of })}</div>
+            )}
+            <div className="mt-2">
+              {presetDetail.isPending ? (
+                <div className="flex justify-center py-3"><Spinner /></div>
+              ) : presetDetail.data && (presetDetail.data.prices?.length ?? 0) > 0 ? (
+                <PriceTable prices={presetDetail.data.prices ?? []} />
+              ) : (
+                <p className="text-xs text-subtle">{t('usage.price.byPresetEmpty')}</p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+      <ErrorText>{prices.isError ? (prices.error as Error).message : setDefault.isError ? (setDefault.error as Error).message : upsert.isError ? (upsert.error as Error).message : applyPreset.isError ? (applyPreset.error as Error).message : presetDetail.isError ? (presetDetail.error as Error).message : null}</ErrorText>
     </Card>
   )
 }

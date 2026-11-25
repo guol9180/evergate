@@ -187,3 +187,28 @@ func TestListModelsUsesOpenCodeGoCatalogEndpoint(t *testing.T) {
 		t.Fatalf("models = %#v", result.Models)
 	}
 }
+
+func TestListModelsParsesOpenRouterStylePricing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"m-priced","pricing":{"prompt":"0.0000015","completion":"0.000006"}},{"id":"m-free","pricing":{"prompt":"0","completion":"0"}},{"id":"m-plain"}]}`))
+	}))
+	t.Cleanup(server.Close)
+	result, err := ListModels(context.Background(), server.Client(), &store.Channel{BaseURL: server.URL}, "sk")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	price, ok := result.Prices["m-priced"]
+	if !ok || price.InputMicrosPerMillion != 1_500_000 || price.OutputMicrosPerMillion != 6_000_000 {
+		t.Fatalf("pricing = %#v %v, want 1.5/6 USD per million", price, ok)
+	}
+	if _, ok := result.Prices["m-free"]; ok {
+		t.Fatal("zero price must not be offered as a catalog price")
+	}
+	if _, ok := result.Prices["m-plain"]; ok {
+		t.Fatal("model without pricing must not appear in Prices")
+	}
+	if len(result.Models) != 3 {
+		t.Fatalf("models = %#v", result.Models)
+	}
+}

@@ -1,15 +1,16 @@
 import { type FormEvent, useId, useState } from 'react'
 import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
-import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey } from '../api/hooks'
+import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
 import { Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, Input, PageHeader, PageSkeleton, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import ModelPicker from '../components/ModelPicker'
-import type { Channel } from '../api/types'
+import type { Channel, EffectivePrice } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset, uniquePresetName } from '../lib/channelPresets'
 import { channelStateTone, fmtMs, fmtTime, formatRemainingSeconds, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import ModelMappingEditor from '../components/ModelMappingEditor'
+import PriceTable from '../components/PriceTable'
 import TestAllPanel from '../components/TestAllPanel'
 
 export default function Channels() {
@@ -278,6 +279,9 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const save = useSaveChannel()
   const preview = usePreviewChannelModels()
   const channels = useChannels()
+  const channelDetail = useChannel(channel?.id ?? null)
+  const usagePrices = useUsagePrices()
+  const upsertPrice = useUpsertPriceOverride()
   const formID = 'channel-form'
   const modelsId = useId()
   const [presetId, setPresetId] = useState(channel?.preset_id || CUSTOM_CHANNEL_PRESET)
@@ -300,6 +304,27 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [overallSec, setOverallSec] = useState(channel?.timeout_config?.overall_sec?.toString() ?? '')
   const preset = findChannelPreset(presetId)
   const presetMode = preset != null
+  // 预设渠道的价格由内置目录兜底：编辑时用服务端算好的生效价格（覆盖 → 全局默认 → 目录），
+  // 新建时还没有渠道记录，只能按目录预览当前填写的模型。
+  const typedModels = splitLines(models).map((model) => mapping[model] || model)
+  const catalogPrices: EffectivePrice[] = presetMode && usagePrices.data
+    ? Array.from(new Set(typedModels)).flatMap((model) => {
+      const entry = usagePrices.data?.catalog?.entries.find((item) => item.preset_id === presetId && item.model === model)
+      return entry ? [{
+        model,
+        input_micros_per_million: entry.input_micros_per_million,
+        output_micros_per_million: entry.output_micros_per_million,
+        source: 'catalog' as const,
+        source_url: entry.source_url,
+      }] : []
+    })
+    : []
+  // 编辑时服务端价格只覆盖已保存的模型；刚在文本框里新增的模型直接按目录预览
+  const serverPrices = channelDetail.data?.prices ?? []
+  const knownModels = new Set(serverPrices.map((item) => item.model))
+  const priceRows = channel
+    ? [...serverPrices, ...catalogPrices.filter((item) => !knownModels.has(item.model))]
+    : catalogPrices
 
   const applyPreset = (id: string) => {
     setPresetId(id)
@@ -504,6 +529,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               options={preview.data.items.map((item) => ({
                 publicModel: item.public_model,
                 upstreamModel: item.upstream_model,
+                price: item.price_micros,
               }))}
               initialModels={splitLines(models)}
               protocol={preview.data.protocol}
@@ -513,9 +539,24 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
                 setShowModelPicker(false)
                 preview.reset()
               }}
-              onApply={(selected, mode) => {
+              onApply={(selected, mode, withPrices) => {
                 const next = applyModelSelection(splitLines(models), selected, mode)
                 setModels(next.join('\n'))
+                // 上游目录声明了价格时勾选"同时写入价格覆盖"，就把价格固化成渠道覆盖，之后目录变动不影响计费
+                if (withPrices && channel) {
+                  const picked = new Set(selected)
+                  const written = new Set<string>()
+                  for (const item of preview.data?.items ?? []) {
+                    if (!picked.has(item.public_model) || !item.price_micros || written.has(item.upstream_model)) continue
+                    written.add(item.upstream_model)
+                    upsertPrice.mutate({
+                      channel_id: channel.id,
+                      model: item.upstream_model,
+                      input_micros_per_million: item.price_micros.input_micros_per_million,
+                      output_micros_per_million: item.price_micros.output_micros_per_million,
+                    })
+                  }
+                }
                 setShowModelPicker(false)
                 preview.reset()
               }}
@@ -525,6 +566,21 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             <ErrorText>{tf('channels.form.fetchFailed', { message: (preview.error as Error).message })}</ErrorText>
           )}
         </div>
+        {presetMode && (
+          <div className="space-y-2">
+            <div>
+              <div className="text-sm font-medium text-foreground-soft">{t('channels.form.prices')}</div>
+              <div className="text-xs text-subtle">{t('channels.form.pricesHint')}</div>
+            </div>
+            {channel && channelDetail.isPending ? (
+              <div className="flex justify-center py-3"><Spinner /></div>
+            ) : priceRows.length > 0 ? (
+              <PriceTable prices={priceRows} />
+            ) : (
+              <div className="rounded-lg border border-dashed border-line-strong px-3 py-2 text-xs text-subtle">{t('channels.form.pricesEmpty')}</div>
+            )}
+          </div>
+        )}
         {!presetMode && <ModelMappingEditor value={mapping} onChange={setMapping} />}
         <ErrorText>{formError}</ErrorText>
         <ErrorText>{save.isError ? (save.error as Error).message : addKeys.isError ? tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message }) : null}</ErrorText>

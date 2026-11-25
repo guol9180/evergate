@@ -69,7 +69,12 @@ func (a *API) listUsagePrices(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "价格查询失败")
 		return
 	}
-	ok(c, gin.H{"default": global, "overrides": overrides})
+	asOf, note, entries, err := usage.Catalog()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "内置价格目录不可用")
+		return
+	}
+	ok(c, gin.H{"default": global, "overrides": overrides, "catalog": gin.H{"as_of": asOf, "note": note, "entries": entries}})
 }
 
 func (a *API) setDefaultUsagePrice(c *gin.Context) {
@@ -148,7 +153,12 @@ func (a *API) respondUsagePrices(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "价格查询失败")
 		return
 	}
-	ok(c, gin.H{"default": global, "overrides": overrides})
+	asOf, note, entries, err := usage.Catalog()
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "内置价格目录不可用")
+		return
+	}
+	ok(c, gin.H{"default": global, "overrides": overrides, "catalog": gin.H{"as_of": asOf, "note": note, "entries": entries}})
 }
 
 func parseDateParam(value string, fallback time.Time) (time.Time, error) {

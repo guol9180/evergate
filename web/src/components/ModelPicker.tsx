@@ -2,11 +2,14 @@ import { useMemo, useState } from 'react'
 import { Check, Search } from 'lucide-react'
 import { Badge, Button, ErrorText, Input, Spinner } from './ui'
 import { t, tf } from '../lib/i18n'
+import { priceHint } from './PriceTable'
 
 export interface ModelPickerOption {
   publicModel: string
   upstreamModel: string
   context?: string
+  /** 上游目录声明的价格（USD / 百万 token，输入 / 输出）；有则可一并写入价格覆盖 */
+  price?: { input_micros_per_million: number; output_micros_per_million: number }
 }
 
 interface ModelPickerProps {
@@ -17,7 +20,7 @@ interface ModelPickerProps {
   error?: string
   truncated?: boolean
   protocol?: string
-  onApply: (models: string[], mode: 'append' | 'replace') => void
+  onApply: (models: string[], mode: 'append' | 'replace', withPrices: boolean) => void
   onCancel: () => void
 }
 
@@ -34,6 +37,8 @@ export default function ModelPicker({
 }: ModelPickerProps) {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<'append' | 'replace'>('append')
+  const [withPrices, setWithPrices] = useState(true)
+  const hasPrices = options.some((option) => option.price != null)
   const [selected, setSelected] = useState(() => {
     const available = new Set(options.map((option) => option.publicModel))
     return new Set(initialModels.filter((model) => available.has(model)))
@@ -113,6 +118,7 @@ export default function ModelPicker({
                   <span className={`mt-0.5 block break-all text-xs ${mapped ? 'text-brand-text' : 'text-subtle'}`}>
                     {mapped ? `${option.publicModel} → ${option.upstreamModel}` : tf('picker.upstreamSame', { model: option.upstreamModel })}
                     {option.context && <span className="text-subtle"> · {option.context}</span>}
+                    {option.price && <span className="text-success-text"> · {priceHint(option.price.input_micros_per_million, option.price.output_micros_per_million)}</span>}
                   </span>
                 </span>
                 {checked && <Check size={15} className="mt-0.5 shrink-0 text-success-text" />}
@@ -137,11 +143,17 @@ export default function ModelPicker({
             <input type="radio" checked={mode === 'replace'} onChange={() => setMode('replace')} />
             {t('picker.replace')}
           </label>
+          {hasPrices && (
+            <label className="inline-flex cursor-pointer items-center gap-1 text-success-text">
+              <input type="checkbox" checked={withPrices} onChange={(e) => setWithPrices(e.target.checked)} />
+              {t('picker.writePrices')}
+            </label>
+          )}
         </div>
         <div className="flex gap-2">
           {/* 内联选择器嵌在表单里，叫"取消"会和弹窗自己的取消按钮同名；它只是收起，不丢弃已填内容 */}
           <Button type="button" variant="outline" onClick={onCancel}>{t('picker.collapse')}</Button>
-          <Button type="button" disabled={selected.size === 0 || loading || Boolean(error)} onClick={() => onApply([...selected].sort(), mode)}>
+          <Button type="button" disabled={selected.size === 0 || loading || Boolean(error)} onClick={() => onApply([...selected].sort(), mode, hasPrices && withPrices)}>
             {t('picker.confirm')}
           </Button>
         </div>

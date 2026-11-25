@@ -5,6 +5,7 @@ import { Badge, Button, Card, Drawer, Empty, Field, Input, PageHeader, Paginatio
 import RetryTimeline from '../components/RetryTimeline'
 import type { RequestLog } from '../api/types'
 import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, fmtTime, kindText, statusTone } from '../lib/format'
+import { PriceSourceBadge } from '../components/PriceTable'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 
@@ -198,6 +199,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
               [t('log.field.cachedTokens'), fmtInt(log.cached_tokens || 0)],
               [t('log.field.reasoningTokens'), fmtInt(log.reasoning_tokens || 0)],
               [t('table.cost'), fmtRequestCost(log.cost_micros, log.cost_status)],
+              [t('usage.price.sourceLabel'), log.price_source ? <PriceSourceBadge source={log.price_source} /> : '—'],
               [t('table.token'), log.token_name || '—'],
               [t('log.field.source'), log.source === 'playground' ? t('log.source.playground') : t('log.source.api')],
               [t('log.field.clientIP'), log.ip || '—'],

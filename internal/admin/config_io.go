@@ -358,5 +358,6 @@ func (a *API) importConfig(c *gin.Context) {
 		result.Created++
 		result.Errors = append(result.Errors, "token imported disabled without key; create a new token in the console: "+name)
 	}
+	a.reloadPrices()
 	ok(c, gin.H{"result": result})
 }

@@ -198,3 +198,64 @@ func TestRecomputeAllAndAggregatorStop(t *testing.T) {
 	stop()
 	stop()
 }
+
+func TestPriceCatalogFallbackAndApplyPreset(t *testing.T) {
+	db := setupDB(t)
+	mgr, err := Load(db)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	preset := store.Channel{Name: "openai-main", Type: "openai", PresetID: "openai", BaseURL: "https://api.openai.com/v1", Models: []string{"gpt-4o", "gpt-4o-mini", "unknown-model"}}
+	custom := store.Channel{Name: "custom", Type: "openai-compatible", BaseURL: "https://example.com/v1", Models: []string{"gpt-4o"}}
+	if err := db.Create(&preset).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&custom).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	// 目录命中：1M 输入 gpt-4o = $2.5
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", 1_000_000, 0); cost != 2_500_000 || source != PriceSourceCatalog {
+		t.Fatalf("catalog price = %d %q, want 2500000 catalog", cost, source)
+	}
+	if _, source := mgr.CalculateWithSource(preset.ID, "unknown-model", 10, 10); source != "" {
+		t.Fatalf("model missing from catalog must stay unpriced, got %q", source)
+	}
+	if _, source := mgr.CalculateWithSource(custom.ID, "gpt-4o", 10, 10); source != "" {
+		t.Fatalf("custom channel must not use the preset catalog, got %q", source)
+	}
+	// 全局默认优先于目录，覆盖优先于全部
+	if err := mgr.SetDefault(context.Background(), 1_000_000, 1_000_000); err != nil {
+		t.Fatal(err)
+	}
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", 1_000_000, 0); cost != 1_000_000 || source != PriceSourceDefault {
+		t.Fatalf("default should win over catalog: %d %q", cost, source)
+	}
+	if _, err := mgr.UpsertOverride(context.Background(), preset.ID, "gpt-4o", 3_000_000, 0); err != nil {
+		t.Fatal(err)
+	}
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", 1_000_000, 0); cost != 3_000_000 || source != PriceSourceOverride {
+		t.Fatalf("override should win: %d %q", cost, source)
+	}
+	prices := mgr.Effective(preset.ID, []string{"gpt-4o", "unknown-model", ""})
+	if len(prices) != 2 || prices[0].Source != PriceSourceOverride || prices[1].Source != PriceSourceDefault {
+		t.Fatalf("effective prices = %#v", prices)
+	}
+	// 一键写入：已覆盖的 gpt-4o 跳过，目录里的 gpt-4o-mini 新建，unknown-model 目录无价格跳过
+	created, err := mgr.ApplyPreset(context.Background(), preset.ID, "openai", []string{"gpt-4o", "gpt-4o-mini", "unknown-model"})
+	if err != nil || created != 1 {
+		t.Fatalf("apply preset = %d %v, want 1", created, err)
+	}
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o-mini", 1_000_000, 1_000_000); cost != 750_000 || source != PriceSourceOverride {
+		t.Fatalf("applied gpt-4o-mini = %d %q, want 750000 override", cost, source)
+	}
+	if created, err := mgr.ApplyPreset(context.Background(), preset.ID, "openai", []string{"gpt-4o", "gpt-4o-mini"}); err != nil || created != 0 {
+		t.Fatalf("second apply must be idempotent: %d %v", created, err)
+	}
+	asOf, _, entries, err := Catalog()
+	if err != nil || asOf == "" || len(entries) == 0 {
+		t.Fatalf("catalog = %q %d %v", asOf, len(entries), err)
+	}
+}

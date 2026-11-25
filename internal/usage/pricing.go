@@ -28,6 +28,7 @@ const (
 type priceSnapshot struct {
 	global    *store.ModelPrice
 	overrides map[priceKey]store.ModelPrice
+	presets   map[int64]string // channel id → preset_id，用于内置目录兜底
 }
 
 // Manager 持有价格快照；价格 CRUD 成功后立即重载，请求路径无锁读取。
@@ -35,6 +36,22 @@ type Manager struct {
 	db      *gorm.DB
 	mu      sync.Mutex
 	current atomic.Pointer[priceSnapshot]
+}
+
+// 价格来源（写入请求日志 price_source，管理台据此标注"预设价格"等）。
+const (
+	PriceSourceOverride = "override"
+	PriceSourceDefault  = "default"
+	PriceSourceCatalog  = "catalog"
+)
+
+// EffectivePrice 某渠道某模型当前生效的价格及其来源（管理台展示用）。
+type EffectivePrice struct {
+	Model                  string `json:"model"`
+	InputMicrosPerMillion  int64  `json:"input_micros_per_million"`
+	OutputMicrosPerMillion int64  `json:"output_micros_per_million"`
+	Source                 string `json:"source"` // override / default / catalog / ""（未计价）
+	SourceURL              string `json:"source_url,omitempty"`
 }
 
 func Load(db *gorm.DB) (*Manager, error) {
@@ -57,6 +74,17 @@ func (m *Manager) Reload() error {
 		return err
 	}
 	snapshot := &priceSnapshot{overrides: make(map[priceKey]store.ModelPrice)}
+	// 渠道的 preset_id 决定能否命中内置目录；渠道增删改后必须 Reload 才会更新这张表
+	var channels []store.Channel
+	if err := m.db.Select("id", "preset_id").Find(&channels).Error; err != nil {
+		return err
+	}
+	snapshot.presets = make(map[int64]string, len(channels))
+	for _, ch := range channels {
+		if ch.PresetID != "" {
+			snapshot.presets[ch.ID] = ch.PresetID
+		}
+	}
 	for i := range rows {
 		row := rows[i]
 		if row.ChannelID == 0 && row.Model == "" {
@@ -71,22 +99,90 @@ func (m *Manager) Reload() error {
 
 // Calculate 返回微美元成本；无匹配价格时 priced=false。
 func (m *Manager) Calculate(channelID int64, upstreamModel string, inputTokens, outputTokens int64) (int64, bool) {
+	cost, source := m.CalculateWithSource(channelID, upstreamModel, inputTokens, outputTokens)
+	return cost, source != ""
+}
+
+// CalculateWithSource 按回退链计价：渠道+模型覆盖 → 全局默认 → 预设内置目录；返回来源便于日志标注。
+func (m *Manager) CalculateWithSource(channelID int64, upstreamModel string, inputTokens, outputTokens int64) (int64, string) {
 	if m == nil || inputTokens+outputTokens <= 0 {
-		return 0, false
+		return 0, ""
 	}
 	snapshot := m.current.Load()
 	if snapshot == nil {
-		return 0, false
+		return 0, ""
 	}
 	price := snapshot.global
+	source := PriceSourceDefault
 	if override, ok := snapshot.overrides[priceKey{ChannelID: channelID, Model: upstreamModel}]; ok {
 		price = &override
+		source = PriceSourceOverride
 	}
 	if price == nil {
-		return 0, false
+		if entry, ok := catalogLookup(snapshot.presets[channelID], upstreamModel); ok {
+			price = &store.ModelPrice{InputMicrosPerMillion: entry.InputMicrosPerMillion, OutputMicrosPerMillion: entry.OutputMicrosPerMillion}
+			source = PriceSourceCatalog
+		}
+	}
+	if price == nil {
+		return 0, ""
 	}
 	total := price.InputMicrosPerMillion*inputTokens + price.OutputMicrosPerMillion*outputTokens
-	return (total + 500_000) / 1_000_000, true
+	return (total + 500_000) / 1_000_000, source
+}
+
+// Effective 列出某渠道各模型的生效价格（覆盖 → 全局 → 预设目录 → 未计价）。
+func (m *Manager) Effective(channelID int64, models []string) []EffectivePrice {
+	out := make([]EffectivePrice, 0, len(models))
+	if m == nil {
+		return out
+	}
+	snapshot := m.current.Load()
+	if snapshot == nil {
+		return out
+	}
+	for _, model := range models {
+		if model == "" {
+			continue
+		}
+		item := EffectivePrice{Model: model}
+		key := priceKey{ChannelID: channelID, Model: model}
+		if row, ok := snapshot.overrides[key]; ok {
+			item.InputMicrosPerMillion, item.OutputMicrosPerMillion, item.Source = row.InputMicrosPerMillion, row.OutputMicrosPerMillion, PriceSourceOverride
+		} else if snapshot.global != nil {
+			item.InputMicrosPerMillion, item.OutputMicrosPerMillion, item.Source = snapshot.global.InputMicrosPerMillion, snapshot.global.OutputMicrosPerMillion, PriceSourceDefault
+		} else {
+			if entry, ok := catalogLookup(snapshot.presets[channelID], model); ok {
+				item.InputMicrosPerMillion, item.OutputMicrosPerMillion, item.Source, item.SourceURL = entry.InputMicrosPerMillion, entry.OutputMicrosPerMillion, PriceSourceCatalog, entry.SourceURL
+			}
+		}
+		out = append(out, item)
+	}
+	return out
+}
+
+// ApplyPreset 把渠道预设目录中、该渠道模型的未覆盖条目写成渠道+模型覆盖；返回新建条数。
+// 只补缺不覆盖：用户已经手填的价格优先于目录。
+func (m *Manager) ApplyPreset(ctx context.Context, channelID int64, presetID string, models []string) (int, error) {
+	created := 0
+	for _, model := range models {
+		entry, ok := catalogLookup(presetID, model)
+		if !ok {
+			continue
+		}
+		var count int64
+		if err := m.db.WithContext(ctx).Model(&store.ModelPrice{}).Where("channel_id = ? AND model = ?", channelID, model).Count(&count).Error; err != nil {
+			return created, err
+		}
+		if count > 0 {
+			continue
+		}
+		if _, err := m.UpsertOverride(ctx, channelID, model, entry.InputMicrosPerMillion, entry.OutputMicrosPerMillion); err != nil {
+			return created, err
+		}
+		created++
+	}
+	return created, nil
 }
 
 func (m *Manager) List(ctx context.Context) (*store.ModelPrice, []store.ModelPrice, error) {

@@ -61,26 +61,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：P5 体验审查与预设/价格/目录（2026-11-25 用户指令，内置浏览器真实环境审查 + 三条产品优化）。
 
 
-#### T92: 预设模型价格（P2，用户决策）
-
-- 目标：预设渠道自动获得模型价格：内置价格目录（按预设厂商，USD / 百万 token），计价按「渠道+模型覆盖 → 全局默认 → 预设目录」回退；管理台可查看、修改；上游返回 OpenRouter 风格价格字段时可在拉取时写入
-- 已确认决策：
-  1. 价格目录放后端 `internal/usage/catalog.json`（go:embed），条目含 `preset_id / upstream_model / input / output / currency / source_url / as_of`；不引入 LiteLLM 价格表（P4 已决策延后）
-  2. 计价回退链：`override(channel, upstream_model)` → `global default` → `catalog[preset_id][upstream_model]`；目录命中时 `cost_status=priced` 并在日志详情/用量页标注「预设价格」；未命中仍为 `unpriced`
-  3. 用量页「模型价格」新增「按预设查看」与「一键写入为该渠道覆盖」；渠道编辑弹窗预设模式下显示当前模型价格与来源
-  4. 「从上游拉取」响应含 `pricing.prompt/completion`（per token）时，选择器显示价格并勾选"写入价格"
-- 验收标准：
-  1. WHEN 预设渠道的模型在目录中且无手工价格 THEN 请求完成后 `cost_status=priced`、成本 = usage × 目录价；日志详情与用量 Top 表显示金额与「预设价格」来源
-  2. WHEN 存在渠道+模型覆盖或全局默认 THEN 以手工价格为准，目录不生效
-  3. WHEN 用量页点「一键写入」 THEN 为该渠道每个目录内模型创建覆盖记录（已存在则不覆盖），审计记录 `prices`
-  4. 目录首次覆盖 OpenAI / DeepSeek / 智谱 BigModel 常规与 Coding / Z.ai Coding / OpenCode Go / Kimi / Anthropic / Gemini 预设的 `modelsPlaceholder` 模型；每条含来源 URL 与日期
-  5. 单测覆盖回退链三种顺序、目录未命中、覆盖优先；`go test -p 1 ./...`、前端通过
-- 边界：不抓取外部网页；不做汇率换算（统一 USD）；不追溯重算历史；不改额度扣减
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
-- 进度：
-  - 2026-11-25 计划 建卡；来源：用户产品优化 #2
-
 #### T93: 下游模型目录接口（P2，用户决策）
 
 - 目标：让下游一键获取可用模型：完善现有 `GET /v1/models`（按令牌允许模型过滤），补 Gemini `GET /v1beta/models` 与 Anthropic 形态（携带 `anthropic-version` 时返回 Anthropic 结构），并在令牌创建结果与 README 展示调用示例

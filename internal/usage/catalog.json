@@ -1,0 +1,16 @@
+{
+  "as_of": "2025-06",
+  "note": "厂商公开定价页手工整理（USD / 百万 token，输入/输出）；随版本内置，仅作兜底，用户可在管理台覆盖。发布前请对照 source_url 复核。",
+  "entries": [
+    { "preset_id": "openai", "model": "gpt-4o", "input_micros_per_million": 2500000, "output_micros_per_million": 10000000, "source_url": "https://openai.com/api/pricing/" },
+    { "preset_id": "openai", "model": "gpt-4o-mini", "input_micros_per_million": 150000, "output_micros_per_million": 600000, "source_url": "https://openai.com/api/pricing/" },
+    { "preset_id": "deepseek", "model": "deepseek-chat", "input_micros_per_million": 270000, "output_micros_per_million": 1100000, "source_url": "https://api-docs.deepseek.com/quick_start/pricing" },
+    { "preset_id": "deepseek", "model": "deepseek-reasoner", "input_micros_per_million": 550000, "output_micros_per_million": 2190000, "source_url": "https://api-docs.deepseek.com/quick_start/pricing" },
+    { "preset_id": "deepseek-anthropic", "model": "deepseek-chat", "input_micros_per_million": 270000, "output_micros_per_million": 1100000, "source_url": "https://api-docs.deepseek.com/quick_start/pricing" },
+    { "preset_id": "deepseek-anthropic", "model": "deepseek-reasoner", "input_micros_per_million": 550000, "output_micros_per_million": 2190000, "source_url": "https://api-docs.deepseek.com/quick_start/pricing" },
+    { "preset_id": "anthropic", "model": "claude-sonnet-4-5", "input_micros_per_million": 3000000, "output_micros_per_million": 15000000, "source_url": "https://www.anthropic.com/pricing" },
+    { "preset_id": "anthropic", "model": "claude-opus-4-1", "input_micros_per_million": 15000000, "output_micros_per_million": 75000000, "source_url": "https://www.anthropic.com/pricing" },
+    { "preset_id": "gemini", "model": "gemini-2.5-pro", "input_micros_per_million": 1250000, "output_micros_per_million": 10000000, "source_url": "https://ai.google.dev/gemini-api/docs/pricing" },
+    { "preset_id": "gemini", "model": "gemini-2.5-flash", "input_micros_per_million": 300000, "output_micros_per_million": 2500000, "source_url": "https://ai.google.dev/gemini-api/docs/pricing" }
+  ]
+}

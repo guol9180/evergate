@@ -385,3 +385,40 @@ func readAll(t *testing.T, resp *http.Response) string {
 	}
 	return sb.String()
 }
+
+func TestPresetPriceCatalogAndApply(t *testing.T) {
+	env := newEnv(t)
+	cookie := readyCookie(t, env)
+	code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie, `{"name":"openai-main","type":"openai","preset_id":"openai","base_url":"https://api.openai.com/v1","models":["gpt-4o","gpt-4o-mini"]}`)
+	if code != http.StatusOK {
+		t.Fatalf("create: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "GET", "/admin/api/usage/prices", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"catalog"`) || !strings.Contains(body, `"as_of"`) || !strings.Contains(body, `"preset_id":"openai"`) {
+		t.Fatalf("prices should expose the embedded catalog: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "GET", "/admin/api/channels/1", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"source":"catalog"`) {
+		t.Fatalf("channel detail should expose catalog-sourced effective prices: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/prices/apply-preset", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"created":2`) {
+		t.Fatalf("apply preset: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/prices/apply-preset", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"created":0`) {
+		t.Fatalf("apply preset twice must be idempotent: %d %s", code, body)
+	}
+	code, body, _ = env.req(t, "GET", "/admin/api/audit-logs?action=price.apply_preset", cookie, "")
+	if code != http.StatusOK || !strings.Contains(body, `"total":2`) {
+		t.Fatalf("apply preset should be audited: %d %s", code, body)
+	}
+	// 自定义渠道没有预设价格
+	code, body, _ = env.req(t, "POST", "/admin/api/channels", cookie, `{"name":"custom","type":"openai-compatible","base_url":"https://example.com/v1","models":["m"]}`)
+	if code != http.StatusOK {
+		t.Fatalf("create custom: %d %s", code, body)
+	}
+	if code, body, _ = env.req(t, "POST", "/admin/api/channels/2/prices/apply-preset", cookie, ""); code != http.StatusBadRequest {
+		t.Fatalf("custom channel apply must be rejected: %d %s", code, body)
+	}
+}

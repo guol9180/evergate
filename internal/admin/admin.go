@@ -98,6 +98,7 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.PUT("/admin/api/usage/prices/default", a.accessMiddleware(), a.sessionMiddleware(), a.setDefaultUsagePrice)
 	r.POST("/admin/api/usage/prices/overrides", a.accessMiddleware(), a.sessionMiddleware(), a.upsertUsagePriceOverride)
 	r.DELETE("/admin/api/usage/prices/overrides/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteUsagePriceOverride)
+	r.POST("/admin/api/channels/:id/prices/apply-preset", a.accessMiddleware(), a.sessionMiddleware(), a.applyPresetPrice)
 	r.GET("/admin/api/channels", a.accessMiddleware(), a.sessionMiddleware(), a.listChannels)
 	r.GET("/admin/api/model-catalog", a.accessMiddleware(), a.sessionMiddleware(), a.modelCatalog)
 	r.POST("/admin/api/channels", a.accessMiddleware(), a.sessionMiddleware(), a.createChannel)
@@ -603,6 +604,7 @@ func (a *API) createChannel(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "创建失败（名称重复？）")
 		return
 	}
+	a.reloadPrices()
 	ok(c, a.toChannelDTO(ch, 0, 0, store.ChannelStatusActive))
 }
 
@@ -632,7 +634,56 @@ func (a *API) getChannel(c *gin.Context) {
 	}
 	status := health.DeriveStatus(ch, keys, a.opt.Pool.StateMachine().State)
 	dto := a.toChannelDTO(ch, int64(len(keys)), int64(health.AvailableKeyCount(keys, a.opt.Pool.StateMachine().State)), status)
-	ok(c, gin.H{"channel": dto, "keys": keyItems})
+	ok(c, gin.H{"channel": dto, "keys": keyItems, "prices": a.effectivePrices(ch)})
+}
+
+// upstreamModels 把对外模型名换成供应商实际计费的上游模型名（无映射时同名）。
+func upstreamModels(ch *store.Channel) []string {
+	out := make([]string, 0, len(ch.Models))
+	for _, model := range ch.Models {
+		if upstream := ch.ModelMapping[model]; upstream != "" {
+			out = append(out, upstream)
+		} else {
+			out = append(out, model)
+		}
+	}
+	return out
+}
+
+func (a *API) effectivePrices(ch *store.Channel) []usage.EffectivePrice {
+	if a.opt.Usage == nil {
+		return nil
+	}
+	return a.opt.Usage.Effective(ch.ID, upstreamModels(ch))
+}
+
+// reloadPrices 渠道的 preset_id 决定内置价格目录能否命中，渠道增删改后刷新计价快照。
+func (a *API) reloadPrices() {
+	if a.opt.Usage != nil {
+		_ = a.opt.Usage.Reload()
+	}
+}
+
+// applyPresetPrice 把渠道预设目录里的价格一键写成该渠道的模型覆盖（只补缺不覆盖）。
+func (a *API) applyPresetPrice(c *gin.Context) {
+	if a.opt.Usage == nil {
+		fail(c, http.StatusServiceUnavailable, "计价配置未初始化")
+		return
+	}
+	ch, found := a.loadChannel(c)
+	if !found {
+		return
+	}
+	if ch.PresetID == "" {
+		fail(c, http.StatusBadRequest, "该渠道不是预设渠道，没有可用的预设价格")
+		return
+	}
+	created, err := a.opt.Usage.ApplyPreset(c.Request.Context(), ch.ID, ch.PresetID, upstreamModels(ch))
+	if err != nil {
+		fail(c, http.StatusInternalServerError, "写入预设价格失败")
+		return
+	}
+	ok(c, gin.H{"created": created, "prices": a.effectivePrices(ch)})
 }
 
 func (a *API) updateChannel(c *gin.Context) {
@@ -664,6 +715,7 @@ func (a *API) updateChannel(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "更新失败")
 		return
 	}
+	a.reloadPrices()
 	var keys []*store.ChannelKey
 	if err := a.opt.DB.Where("channel_id = ?", ch.ID).Find(&keys).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "查询失败")
@@ -687,6 +739,7 @@ func (a *API) deleteChannel(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "删除失败")
 		return
 	}
+	a.reloadPrices()
 	ok(c, gin.H{"deleted": true})
 }
 
@@ -763,6 +816,8 @@ func (a *API) testChannel(c *gin.Context) {
 type modelPreviewItem struct {
 	PublicModel   string `json:"public_model"`
 	UpstreamModel string `json:"upstream_model"`
+	// 上游目录若带 OpenRouter 风格 pricing，则给出微美元 / 百万 token，便于一键写入价格覆盖
+	PriceMicros *provider.ModelPriceHint `json:"price_micros,omitempty"`
 }
 
 // previewChannelModels 拉取渠道上游模型目录并按现有映射反查对外别名。
@@ -817,13 +872,17 @@ func (a *API) previewChannelModels(c *gin.Context) {
 	items := make([]modelPreviewItem, 0, len(result.Models))
 	for _, upstreamModel := range result.Models {
 		aliases := aliasesByUpstream[upstreamModel]
+		var hint *provider.ModelPriceHint
+		if price, ok := result.Prices[upstreamModel]; ok {
+			hint = &price
+		}
 		if len(aliases) == 0 {
-			items = append(items, modelPreviewItem{PublicModel: upstreamModel, UpstreamModel: upstreamModel})
+			items = append(items, modelPreviewItem{PublicModel: upstreamModel, UpstreamModel: upstreamModel, PriceMicros: hint})
 			continue
 		}
 		sort.Strings(aliases)
 		for _, publicModel := range aliases {
-			items = append(items, modelPreviewItem{PublicModel: publicModel, UpstreamModel: upstreamModel})
+			items = append(items, modelPreviewItem{PublicModel: publicModel, UpstreamModel: upstreamModel, PriceMicros: hint})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {

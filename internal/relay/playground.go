@@ -115,7 +115,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	elapsed := r.opt.Now().Sub(start)
 	r.finishRequest(inner, start, hit, trace, status, errType, errMsg)
 	reqSpan.setResult(trace, status, errType, errMsg)
-	costMicros, costStatus := r.requestCost(status, hit)
+	costMicros, costStatus, _ := r.requestCost(status, hit)
 
 	meta := playgroundMeta{
 		Protocol: req.Protocol, Model: req.Model, Status: status,

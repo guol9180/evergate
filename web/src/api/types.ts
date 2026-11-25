@@ -150,6 +150,16 @@ export interface ChannelKey {
 export interface ChannelDetail {
   channel: Channel
   keys: ChannelKey[]
+  prices?: EffectivePrice[]
+}
+
+/** 某渠道某模型的生效价格及来源（override / default / catalog / 空表示未计价）。 */
+export interface EffectivePrice {
+  model: string
+  input_micros_per_million: number
+  output_micros_per_million: number
+  source: 'override' | 'default' | 'catalog' | ''
+  source_url?: string
 }
 
 export interface TestResult {
@@ -169,6 +179,8 @@ export interface TestResult {
 export interface ModelPreviewItem {
   public_model: string
   upstream_model: string
+  /** 上游目录带 OpenRouter 风格 pricing 时的微美元 / 百万 token */
+  price_micros?: { input_micros_per_million: number; output_micros_per_million: number }
 }
 
 export interface ModelPreview {
@@ -246,6 +258,8 @@ export interface RequestLog {
   cost_micros: number
   cost_status: string
   cost: number
+  /** 计价来源：override / default / catalog；空表示历史日志或未计价 */
+  price_source?: '' | 'override' | 'default' | 'catalog'
   ip: string
   user_agent: string
 }
@@ -320,9 +334,18 @@ export interface ModelPrice {
   updated_at: string
 }
 
+export interface CatalogEntry {
+  preset_id: string
+  model: string
+  input_micros_per_million: number
+  output_micros_per_million: number
+  source_url: string
+}
+
 export interface UsagePrices {
   default: ModelPrice | null
   overrides: ModelPrice[]
+  catalog?: { as_of: string; note: string; entries: CatalogEntry[] }
 }
 
 /** /admin/api/logs/stats：基于全部匹配行的聚合（T75）。 */

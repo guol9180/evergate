@@ -300,7 +300,7 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 	}
 	tokenID, tokenName := tokenFromContext(c)
 	total := r.opt.Now().Sub(start)
-	costMicros, costStatus := r.requestCost(status, hit)
+	costMicros, costStatus, priceSource := r.requestCost(status, hit)
 	r.opt.LogWriter.Submit(&store.RequestLog{
 		TokenID: tokenID, TokenName: tokenName,
 		Source:    requestSource(c),
@@ -313,7 +313,7 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
 		PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
 		TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, ReasoningTokens: hit.reasoningTokens,
-		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus,
+		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus, PriceSource: priceSource,
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 		ConfigOverride: configSummaryFromContext(c),
 	})
@@ -398,21 +398,22 @@ func (r *Relay) updateAffinity(c *gin.Context, hit *hitRecord, status int, errTy
 	}
 }
 
-func (r *Relay) requestCost(status int, hit *hitRecord) (int64, string) {
+// requestCost 返回微美元成本、成本状态与价格来源（override / default / catalog）。
+func (r *Relay) requestCost(status int, hit *hitRecord) (int64, string, string) {
 	if status < http.StatusOK || status >= http.StatusBadRequest || hit == nil {
-		return 0, ""
+		return 0, "", ""
 	}
 	if !hit.usageSeen || hit.promptTokens+hit.completionTokens <= 0 {
-		return 0, usage.CostStatusNoUsage
+		return 0, usage.CostStatusNoUsage, ""
 	}
 	if r.opt.Usage == nil {
-		return 0, usage.CostStatusUnpriced
+		return 0, usage.CostStatusUnpriced, ""
 	}
-	costMicros, priced := r.opt.Usage.Calculate(hit.channelID, hit.upstreamModel, hit.promptTokens, hit.completionTokens)
-	if !priced {
-		return 0, usage.CostStatusUnpriced
+	costMicros, source := r.opt.Usage.CalculateWithSource(hit.channelID, hit.upstreamModel, hit.promptTokens, hit.completionTokens)
+	if source == "" {
+		return 0, usage.CostStatusUnpriced, ""
 	}
-	return costMicros, usage.CostStatusPriced
+	return costMicros, usage.CostStatusPriced, source
 }
 
 // enforceTokenGovernance 在调用上游前执行模型白名单与额度预检。

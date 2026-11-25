@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, jsonBody } from './client'
 import { withBasePath } from '../lib/runtime'
-import type { AdminInfo, AuditLog, Channel, ChannelDetail, ConfigImportResult, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -401,12 +401,30 @@ export function useSetDefaultPrice() {
   })
 }
 
+/** 把预设目录价格一键写成该渠道的模型覆盖（只补缺不覆盖）。 */
+export function useApplyPresetPrice() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (channelId: number) =>
+      api<{ created: number; prices: EffectivePrice[] }>(`/admin/api/channels/${channelId}/prices/apply-preset`, { method: 'POST' }),
+    onSuccess: (data, channelId) => {
+      qc.setQueryData<ChannelDetail>(['channel', channelId], (current) =>
+        current ? { ...current, prices: data.prices } : current)
+      void qc.invalidateQueries({ queryKey: ['usage-prices'] })
+    },
+  })
+}
+
 export function useUpsertPriceOverride() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { channel_id: number; model: string; input_micros_per_million: number; output_micros_per_million: number }) =>
       api<UsagePrices>('/admin/api/usage/prices/overrides', { method: 'POST', body: JSON.stringify(data) }),
-    onSuccess: (data) => qc.setQueryData(['usage-prices'], data),
+    onSuccess: (data, variables) => {
+      qc.setQueryData(['usage-prices'], data)
+      // 渠道详情里带着生效价格，覆盖变了要重取，否则编辑弹窗的价格表还是旧值
+      void qc.invalidateQueries({ queryKey: ['channel', variables.channel_id] })
+    },
   })
 }
 

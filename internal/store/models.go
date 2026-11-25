@@ -138,6 +138,7 @@ type RequestLog struct {
 	Cost             float64        `json:"cost"`
 	CostMicros       int64          `gorm:"not null;default:0" json:"cost_micros"`
 	CostStatus       string         `gorm:"size:32;not null;default:''" json:"cost_status"`
+	PriceSource      string         `gorm:"size:16;not null;default:''" json:"price_source"` // override / default / catalog（T92）
 	IP               string         `gorm:"size:45" json:"ip"`
 	UserAgent        string         `json:"user_agent"`
 	ConfigOverride   string         `gorm:"size:512" json:"config_override,omitempty"` // 请求级覆盖脱敏摘要

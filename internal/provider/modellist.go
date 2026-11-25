@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"evergate/internal/store"
@@ -93,11 +95,32 @@ type ModelListResult struct {
 	Protocol  string
 	Pages     int
 	Truncated bool
+	// Prices 仅当上游目录带 OpenRouter 风格 pricing.prompt/completion（per token）时填充，键为上游模型名
+	Prices map[string]ModelPriceHint
+}
+
+// ModelPriceHint 上游目录声明的价格（USD / 百万 token）。
+type ModelPriceHint struct {
+	InputMicrosPerMillion  int64 `json:"input_micros_per_million"`
+	OutputMicrosPerMillion int64 `json:"output_micros_per_million"`
+}
+
+// parsePerTokenUSD 把 OpenRouter 风格的 per-token 价格字符串换算为微美元 / 百万 token：v × 1e6 token × 1e6 micros。
+func parsePerTokenUSD(raw string) (int64, bool) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || v <= 0 || v > 1 {
+		return 0, false
+	}
+	return int64(math.Round(v * 1e12)), true
 }
 
 type modelListPayload struct {
 	Data []struct {
-		ID string `json:"id"`
+		ID      string `json:"id"`
+		Pricing *struct {
+			Prompt     string `json:"prompt"`
+			Completion string `json:"completion"`
+		} `json:"pricing"`
 	} `json:"data"`
 	Models []struct {
 		Name string `json:"name"`
@@ -175,6 +198,21 @@ func ListModels(ctx context.Context, client HTTPClient, ch *store.Channel, key s
 			return result, fmt.Errorf("解析模型列表响应: %w", err)
 		}
 		pageModels := payloadModels(payload)
+		for _, item := range payload.Data {
+			id := strings.TrimSpace(item.ID)
+			if id == "" || item.Pricing == nil {
+				continue
+			}
+			in, okIn := parsePerTokenUSD(item.Pricing.Prompt)
+			out, okOut := parsePerTokenUSD(item.Pricing.Completion)
+			if !okIn || !okOut {
+				continue
+			}
+			if result.Prices == nil {
+				result.Prices = map[string]ModelPriceHint{}
+			}
+			result.Prices[id] = ModelPriceHint{InputMicrosPerMillion: in, OutputMicrosPerMillion: out}
+		}
 		for _, model := range pageModels {
 			if model == "" || seen[model] {
 				continue
