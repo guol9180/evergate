@@ -24,6 +24,7 @@ const configExportVersion = 1
 type configChannelEntry struct {
 	Name              string                `json:"name"`
 	Type              string                `json:"type"`
+	PresetID          string                `json:"preset_id"`
 	BaseURL           string                `json:"base_url"`
 	Priority          int                   `json:"priority"`
 	Weight            int                   `json:"weight"`
@@ -114,7 +115,8 @@ func (a *API) exportConfig(c *gin.Context) {
 		channelName[ch.ID] = ch.Name
 		out.Channels = append(out.Channels, configChannelEntry{
 			Name: ch.Name, Type: ch.Type, BaseURL: ch.BaseURL, Priority: ch.Priority, Weight: ch.Weight,
-			Models: ch.Models, ModelMapping: ch.ModelMapping, Enabled: ch.Enabled,
+			PresetID: ch.PresetID,
+			Models:   ch.Models, ModelMapping: ch.ModelMapping, Enabled: ch.Enabled,
 			SupportsResponses: ch.SupportsResponses, SupportsAnthropic: ch.SupportsAnthropic, SupportsGemini: ch.SupportsGemini,
 			Timeouts: ch.Timeouts,
 		})
@@ -168,6 +170,7 @@ func (a *API) importConfig(c *gin.Context) {
 	for i, ch := range in.Channels {
 		req := channelReq{
 			Name: ch.Name, Type: ch.Type, BaseURL: ch.BaseURL,
+			PresetID: &ch.PresetID,
 			Priority: &ch.Priority, Weight: &ch.Weight, Models: ch.Models, ModelMapping: ch.ModelMapping,
 			SupportsResponses: &ch.SupportsResponses, SupportsAnthropic: &ch.SupportsAnthropic, SupportsGemini: &ch.SupportsGemini,
 			Timeouts: ch.Timeouts,
@@ -207,6 +210,7 @@ func (a *API) importConfig(c *gin.Context) {
 		case errors.Is(err, gorm.ErrRecordNotFound):
 			ch := &store.Channel{
 				Name: req.Name, Type: req.Type, BaseURL: req.BaseURL,
+				PresetID: derefString(req.PresetID, ""),
 				Priority: derefInt(req.Priority, 0), Weight: derefInt(req.Weight, 1),
 				Models: req.Models, ModelMapping: req.ModelMapping,
 				Enabled: in.Channels[i].Enabled, Status: store.ChannelStatusActive,
@@ -223,6 +227,7 @@ func (a *API) importConfig(c *gin.Context) {
 			return
 		default:
 			existing.Type, existing.BaseURL = req.Type, req.BaseURL
+			existing.PresetID = derefString(req.PresetID, existing.PresetID)
 			existing.Priority, existing.Weight = derefInt(req.Priority, existing.Priority), derefInt(req.Weight, existing.Weight)
 			existing.Models, existing.ModelMapping, existing.Timeouts = req.Models, req.ModelMapping, req.Timeouts
 			existing.SupportsResponses = derefBool(req.SupportsResponses, existing.SupportsResponses)

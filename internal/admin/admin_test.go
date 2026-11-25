@@ -271,6 +271,14 @@ func TestChannelAndKeyManagement(t *testing.T) {
 	if code != 200 || !strings.Contains(body, `"id":1`) {
 		t.Fatalf("create channel: %d %s", code, body)
 	}
+	// 预设渠道：preset_id 原样落库并回传；模型列表允许留空（保存后拉取）
+	pcode, pbody, _ := env.req(t, "POST", "/admin/api/channels", cookie, `{"name":"preset-ch","type":"openai-compatible","preset_id":"bigmodel","base_url":"https://api.example.com/v1","models":[]}`)
+	if pcode != 200 || !strings.Contains(pbody, `"preset_id":"bigmodel"`) || !strings.Contains(pbody, `"id":2`) {
+		t.Fatalf("create preset channel without models: %d %s", pcode, pbody)
+	}
+	if pcode, pbody, _ = env.req(t, "PUT", "/admin/api/channels/2", cookie, `{"name":"preset-ch","type":"openai-compatible","preset_id":"","base_url":"https://api.example.com/v1","models":["m"]}`); pcode != 200 || !strings.Contains(pbody, `"preset_id":""`) {
+		t.Fatalf("switch preset channel to custom: %d %s", pcode, pbody)
+	}
 	if !strings.Contains(body, `"supports_responses":true`) {
 		t.Fatalf("create channel should expose Responses capability: %s", body)
 	}

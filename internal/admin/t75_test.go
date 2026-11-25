@@ -187,7 +187,7 @@ func TestAuditLogRecordsWritesWithoutSecrets(t *testing.T) {
 func TestConfigExportImportRoundTrip(t *testing.T) {
 	src := newEnv(t)
 	cookie := readyCookie(t, src)
-	if code, body, _ := src.req(t, "POST", "/admin/api/channels", cookie, `{"name":"export-me","type":"openai-compatible","base_url":"https://example.com","models":["pub"],"model_mapping":{"pub":"up"},"priority":2,"weight":5,"supports_responses":true,"timeout_config":{"connect_sec":5}}`); code != http.StatusOK {
+	if code, body, _ := src.req(t, "POST", "/admin/api/channels", cookie, `{"name":"export-me","type":"openai-compatible","preset_id":"bigmodel","base_url":"https://example.com","models":["pub"],"model_mapping":{"pub":"up"},"priority":2,"weight":5,"supports_responses":true,"timeout_config":{"connect_sec":5}}`); code != http.StatusOK {
 		t.Fatalf("create channel: %d %s", code, body)
 	}
 	if code, body, _ := src.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-upstream-secret"}`); code != http.StatusOK {
@@ -209,7 +209,7 @@ func TestConfigExportImportRoundTrip(t *testing.T) {
 			t.Fatalf("export leaked %q", forbidden)
 		}
 	}
-	for _, want := range []string{`"version":1`, `"name":"export-me"`, `"model_mapping":{"pub":"up"}`, `"connect_sec":5`, `"name":"exported-token"`, `"quota":1000`, `"budget_threshold":10`} {
+	for _, want := range []string{`"version":1`, `"name":"export-me"`, `"preset_id":"bigmodel"`, `"model_mapping":{"pub":"up"}`, `"connect_sec":5`, `"name":"exported-token"`, `"quota":1000`, `"budget_threshold":10`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("export missing %s: %s", want, body)
 		}
@@ -235,6 +235,9 @@ func TestConfigExportImportRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(body, `"created":2`) { // 渠道 + 令牌
 		t.Fatalf("import result: %s", body)
+	}
+	if code, cbody, _ := dst.req(t, "GET", "/admin/api/channels/1", dcookie, ""); code != http.StatusOK || !strings.Contains(cbody, `"preset_id":"bigmodel"`) {
+		t.Fatalf("import should keep preset_id: %d %s", code, cbody)
 	}
 	var ch store.Channel
 	if err := dst.db.Where("name = ?", "export-me").First(&ch).Error; err != nil {

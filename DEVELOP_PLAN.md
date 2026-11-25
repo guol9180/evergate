@@ -60,27 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 
 > 来源：P5 体验审查与预设/价格/目录（2026-11-25 用户指令，内置浏览器真实环境审查 + 三条产品优化）。
 
-#### T91: 渠道预设/自定义分离与四协议（P2，用户决策）
-
-- 目标：新建/编辑渠道分为「供应商预设」与「自定义」两种模式：预设模式下用户只可修改**模型列表、API 地址（预填可改）、API 密钥**三项，名称/协议/优先级/权重/超时全部由预设决定且不显示；自定义模式选择上游协议，协议仅四种：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini API
-- 已确认决策：
-  1. 协议在数据层仍映射到现有 `supports_responses / supports_anthropic / supports_gemini` 能力位，Chat Completions 为基础协议（网关始终以 CC 兜底）；自定义模式 UI 为多选，Chat Completions 固定勾选不可取消；移除 8 个技术性 `type` 选项（openai / openai-compatible / deepseek / vllm / anthropic / anthropic-compatible / gemini / gemini-compat）
-  2. 渠道新增 `preset_id` 列（AutoMigrate）：预设创建的渠道写入预设 id，自定义为空；`type` 字段保留并按协议派生写入，兼容配置导出/导入
-  3. 「DeepSeek（Anthropic 兼容）」「Kimi（Anthropic 兼容）」保留为独立预设（同厂商不同协议）
-  4. 预设模式名称自动生成（预设默认名，重名自动追加 `-2` / `-3`），不可见不可改；优先级 0、权重 1、超时留空跟随全局；这些字段只在「切换为自定义」后显示并可修改（2026-11-25 用户修正：预设后用户可改的只有模型列表、API 地址、API 密钥）
-- 验收标准：
-  1. WHEN 新建渠道选择预设 THEN 表单只有四项：供应商预设、模型列表、API 地址（预填）、API 密钥；不显示名称、类型、协议开关、优先级、权重、超时；保存后 `preset_id` 写入、名称自动生成
-  2. WHEN 同一预设重复创建 THEN 名称自动追加序号，不触发唯一索引冲突
-  3. WHEN 选择「自定义」 THEN 显示名称、「上游协议」四项多选（Chat Completions 固定勾选）、优先级/权重/超时，不再出现技术性 type 下拉；保存后能力位与选择一致
-  4. WHEN 编辑预设渠道 THEN 同样只显示模型列表、API 地址、API 密钥三项，并以只读标签展示协议（如「Chat Completions · Responses 原生」）；点「切换为自定义」后显示全部字段并可修改，`preset_id` 置空
-  5. 现有渠道（`preset_id` 为空）编辑时按自定义模式展示，能力位不变；配置导出/导入含 `preset_id`
-  6. `GET /admin/api/channels` 返回 `preset_id`；`go test -p 1 ./...`、前端 lint/test/build 通过
-- 边界：不改 relay 转发与桥接；不删除 `type` 列；不新增预设厂商
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
-- 进度：
-  - 2026-11-25 计划 建卡；来源：用户产品优化 #1
-  - 2026-11-25 修正 用户明确预设模式只保留模型列表、API 地址、API 密钥三项可改；名称自动生成、高级字段仅切换自定义后可见
 
 #### T92: 预设模型价格（P2，用户决策）
 

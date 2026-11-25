@@ -22,7 +22,8 @@ const (
 type Channel struct {
 	ID                  int64             `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name                string            `gorm:"size:100;not null;uniqueIndex" json:"name"`
-	Type                string            `gorm:"size:32;not null" json:"type"` // openai / openai-compatible / deepseek / vllm / anthropic / gemini ...
+	Type                string            `gorm:"size:32;not null" json:"type"`                 // openai / openai-compatible / deepseek / vllm / anthropic / gemini ...
+	PresetID            string            `gorm:"size:64;not null;default:''" json:"preset_id"` // 供应商预设 id；自定义为空（T91）
 	BaseURL             string            `gorm:"column:base_url;not null" json:"base_url"`
 	Priority            int               `gorm:"not null;default:0;index" json:"priority"` // 越小越优先
 	Weight              int               `gorm:"not null;default:1" json:"weight"`         // 同优先级内加权随机

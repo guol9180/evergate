@@ -4,27 +4,13 @@ import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKe
 import { Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, Input, PageHeader, PageSkeleton, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel } from '../api/types'
-import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset } from '../lib/channelPresets'
+import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset, uniquePresetName } from '../lib/channelPresets'
 import { channelStateTone, fmtMs, fmtTime, formatRemainingSeconds, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
 import { usePageTitle } from '../lib/usePageTitle'
-import { t, tf, type MessageKey } from '../lib/i18n'
+import { t, tf } from '../lib/i18n'
 import ModelMappingEditor from '../components/ModelMappingEditor'
 import TestAllPanel from '../components/TestAllPanel'
-
-const CHANNEL_TYPES = ['openai', 'openai-compatible', 'deepseek', 'vllm', 'anthropic', 'anthropic-compatible', 'gemini', 'gemini-compat']
-
-// 类型语义说明：8 个取值与预设部分重叠，对新手是黑盒，这里说明每个取值实际影响什么。
-const CHANNEL_TYPE_HELP: Record<string, MessageKey> = {
-  openai: 'channelType.openai',
-  'openai-compatible': 'channelType.openai-compatible',
-  deepseek: 'channelType.deepseek',
-  vllm: 'channelType.vllm',
-  anthropic: 'channelType.anthropic',
-  'anthropic-compatible': 'channelType.anthropic-compatible',
-  gemini: 'channelType.gemini',
-  'gemini-compat': 'channelType.gemini-compat',
-}
 
 export default function Channels() {
   usePageTitle(t('page.channels.title'))
@@ -286,16 +272,16 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
   )
 }
 
-// 新建/编辑渠道弹窗
+// 新建/编辑渠道弹窗：预设模式只开放模型列表 / API 地址 / API 密钥三项，其余由预设决定；
+// 名称、上游协议、优先级 / 权重 / 超时、模型映射只在「切换为自定义」后出现（T91）。
 function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: () => void }) {
   const save = useSaveChannel()
   const preview = usePreviewChannelModels()
+  const channels = useChannels()
   const formID = 'channel-form'
   const modelsId = useId()
+  const [presetId, setPresetId] = useState(channel?.preset_id || CUSTOM_CHANNEL_PRESET)
   const [name, setName] = useState(channel?.name ?? '')
-  const [nameTouched, setNameTouched] = useState(Boolean(channel))
-  const [presetId, setPresetId] = useState(CUSTOM_CHANNEL_PRESET)
-  const [type, setType] = useState(channel?.type ?? 'openai-compatible')
   const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? '')
   const [priority, setPriority] = useState(String(channel?.priority ?? 0))
   const [weight, setWeight] = useState(String(channel?.weight ?? 1))
@@ -313,36 +299,49 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [firstTokenSec, setFirstTokenSec] = useState(channel?.timeout_config?.first_token_sec?.toString() ?? '')
   const [overallSec, setOverallSec] = useState(channel?.timeout_config?.overall_sec?.toString() ?? '')
   const preset = findChannelPreset(presetId)
-  const typeOptions = presetId === CUSTOM_CHANNEL_PRESET ? CHANNEL_TYPES : [preset!.type]
+  const presetMode = preset != null
 
   const applyPreset = (id: string) => {
     setPresetId(id)
     const next = findChannelPreset(id)
     if (!next) return
-    setType(next.type)
     setBaseUrl(next.baseUrl)
     setSupportsResponses(next.supportsResponses)
     setSupportsAnthropic(next.supportsAnthropic)
     setSupportsGemini(next.supportsGemini ?? false)
-    if (!nameTouched) setName(next.defaultName)
+    setName(next.defaultName)
   }
+
+  // 切换为自定义：保留预设已填的地址与协议作为起点，解锁名称 / 协议 / 调度字段；保存时清空 preset_id
+  const switchToCustom = () => setPresetId(CUSTOM_CHANNEL_PRESET)
+
+  // 数据层 type 只是派生值：Gemini / Anthropic 原生优先，其余归 openai-compatible；预设渠道沿用预设的 type
+  const derivedType = supportsGemini ? 'gemini' : supportsAnthropic ? 'anthropic' : 'openai-compatible'
+  const type = presetMode ? preset.type : derivedType
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     const timeouts: Record<string, number> = {}
     if (connectSec.trim()) timeouts.connect_sec = Number(connectSec)
     if (firstTokenSec.trim()) timeouts.first_token_sec = Number(firstTokenSec)
+    if (overallSec.trim()) timeouts.overall_timeout = Number(overallSec)
     if (overallSec.trim()) timeouts.overall_sec = Number(overallSec)
+    delete timeouts.overall_timeout
     if (Object.values(timeouts).some((v) => !Number.isFinite(v) || v <= 0)) {
     setFormError(t('channels.form.timeoutInt'))
       return
     }
     setFormError('')
+    // 预设模式新建：名称由预设默认名自动生成，重名追加 -2 / -3
+    const finalName = presetMode && !channel
+      ? uniquePresetName(preset.defaultName, (channels.data?.items ?? []).map((item) => item.name))
+      : name
     save.mutate(
       {
         id: channel?.id,
-        name,
+        name: finalName,
         type,
+        preset_id: presetMode ? presetId : '',
         base_url: baseUrl,
         priority: Number(priority) || 0,
         weight: Number(weight) || 1,
@@ -370,7 +369,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     <Dialog
       open
       onClose={onClose}
-        title={channel ? t('channels.edit.title') : t('page.channels.create')}
+      title={channel ? t('channels.edit.title') : t('page.channels.create')}
       wide
       footer={
         <div className="flex justify-end gap-2">
@@ -380,36 +379,39 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       }
     >
       <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]">
-        {!channel && (
-          <div className="space-y-2">
-            <Field label={t('channels.form.preset')} hint={t('channels.form.presetHint')}>
-              <Select value={presetId} onChange={(e) => applyPreset(e.target.value)}>
-                <option value={CUSTOM_CHANNEL_PRESET}>{t('preset.custom.label')}</option>
-                {CHANNEL_PRESETS.map((p) => <option key={p.id} value={p.id}>{t(p.labelKey)}</option>)}
-              </Select>
-            </Field>
-            {preset && (
-              <div className={`rounded-lg border px-3 py-2.5 ${preset.warningKey ? 'border-warning-border bg-warning-subtle' : 'border-line bg-surface-soft'}`}>
-                <div className={`text-xs ${preset.warningKey ? 'text-warning-text' : 'text-muted'}`}>{t(preset.descKey)}</div>
-                <div className="mt-1 font-mono text-[11px] text-muted">{preset.baseUrl}</div>
-                {preset.warningKey && (
-                  <div className="mt-1.5 flex gap-1.5 text-xs font-medium text-warning-text">
-                    <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-                    <span>{t(preset.warningKey)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        <div className="eg-grid eg-grid-auto-wide">
-          <Field label={t('channels.form.name')}><Input value={name} onChange={(e) => { setName(e.target.value); setNameTouched(true) }} required placeholder="openai-main" /></Field>
-          <Field label={t('channels.form.type')} hint={t(CHANNEL_TYPE_HELP[type])}>
-            <Select value={type} onChange={(e) => setType(e.target.value)}>
-              {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+        <div className="space-y-2">
+          <Field label={t('channels.form.preset')} hint={t('channels.form.presetHint')}>
+            <Select value={presetId} onChange={(e) => applyPreset(e.target.value)}>
+              <option value={CUSTOM_CHANNEL_PRESET}>{t('preset.custom.label')}</option>
+              {CHANNEL_PRESETS.map((p) => <option key={p.id} value={p.id}>{t(p.labelKey)}</option>)}
             </Select>
           </Field>
+          {preset && (
+            <div className={`rounded-lg border px-3 py-2.5 ${preset.warningKey ? 'border-warning-border bg-warning-subtle' : 'border-line bg-surface-soft'}`}>
+              <div className={`text-xs ${preset.warningKey ? 'text-warning-text' : 'text-muted'}`}>{t(preset.descKey)}</div>
+              <div className="mt-1 font-mono text-[11px] text-muted">{preset.baseUrl}</div>
+              {preset.warningKey && (
+                <div className="mt-1.5 flex gap-1.5 text-xs font-medium text-warning-text">
+                  <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+                  <span>{t(preset.warningKey)}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+        {presetMode && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface-soft px-3 py-2 text-xs">
+            <span className="text-muted">{t('channels.form.protocolReadonly')}</span>
+            <Badge tone="brand">Chat Completions</Badge>
+            {supportsResponses && <Badge tone="info">Responses</Badge>}
+            {supportsAnthropic && <Badge tone="brand">Messages</Badge>}
+            {supportsGemini && <Badge tone="success">Gemini</Badge>}
+            <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={switchToCustom}>{t('channels.form.switchToCustom')}</Button>
+          </div>
+        )}
+        {!presetMode && (
+          <Field label={t('channels.form.name')}><Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="openai-main" /></Field>
+        )}
         <Field label="Base URL" hint={tf('channels.form.baseUrlHint', { paths: [supportsAnthropic ? '/v1/messages' : '', supportsResponses ? '/responses' : '', supportsGemini ? '/v1beta/models/{model}' : '', '/chat/completions'].filter(Boolean).join(', ') })}>
           <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
         </Field>
@@ -418,38 +420,56 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-...\nsk-...'} autoComplete="off" className="font-mono text-xs" />
           </Field>
         )}
-        <div className="space-y-2">
-          <SettingRow
-            title={t('channels.proto.responses.title')}
-            description={t('channels.proto.responses.desc')}
-            checked={supportsResponses}
-            onChange={setSupportsResponses}
-            label={t('channels.proto.responses.title')}
-          />
-          <SettingRow
-            title={t('channels.proto.anthropic.title')}
-            description={t('channels.proto.anthropic.desc')}
-            checked={supportsAnthropic}
-            onChange={setSupportsAnthropic}
-            label={t('channels.proto.anthropic.title')}
-          />
-          <SettingRow
-            title={t('channels.proto.gemini.title')}
-            description={t('channels.proto.gemini.desc')}
-            checked={supportsGemini}
-            onChange={setSupportsGemini}
-            label={t('channels.proto.gemini.title')}
-          />
-        </div>
-        <div className="eg-grid eg-grid-auto-wide">
-          <Field label={t('channels.form.priority')} hint={t('channels.form.priorityHint')}><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
-          <Field label={t('channels.form.weight')} hint={t('channels.form.weightHint')}><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
-        </div>
-        <div className="eg-grid eg-grid-auto-wide">
-          <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')}><Input type="number" min={1} max={300} value={connectSec} onChange={(e) => setConnectSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
-          <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')}><Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => setFirstTokenSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
-          <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')}><Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => setOverallSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
-        </div>
+        {!presetMode && (
+          <div className="space-y-2">
+            <div>
+              <div className="text-sm font-medium text-foreground-soft">{t('channels.form.protocol')}</div>
+              <div className="text-xs text-subtle">{t('channels.form.protocolHint')}</div>
+            </div>
+            <SettingRow
+              title={t('channels.proto.cc.title')}
+              description={t('channels.proto.cc.desc')}
+              checked
+              disabled
+              onChange={() => {}}
+              label={t('channels.proto.cc.title')}
+            />
+            <SettingRow
+              title={t('channels.proto.responses.title')}
+              description={t('channels.proto.responses.desc')}
+              checked={supportsResponses}
+              onChange={setSupportsResponses}
+              label={t('channels.proto.responses.title')}
+            />
+            <SettingRow
+              title={t('channels.proto.anthropic.title')}
+              description={t('channels.proto.anthropic.desc')}
+              checked={supportsAnthropic}
+              onChange={setSupportsAnthropic}
+              label={t('channels.proto.anthropic.title')}
+            />
+            <SettingRow
+              title={t('channels.proto.gemini.title')}
+              description={t('channels.proto.gemini.desc')}
+              checked={supportsGemini}
+              onChange={setSupportsGemini}
+              label={t('channels.proto.gemini.title')}
+            />
+          </div>
+        )}
+        {!presetMode && (
+          <div className="eg-grid eg-grid-auto-wide">
+            <Field label={t('channels.form.priority')} hint={t('channels.form.priorityHint')}><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
+            <Field label={t('channels.form.weight')} hint={t('channels.form.weightHint')}><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
+          </div>
+        )}
+        {!presetMode && (
+          <div className="eg-grid eg-grid-auto-wide">
+            <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')}><Input type="number" min={1} max={300} value={connectSec} onChange={(e) => setConnectSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
+            <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')}><Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => setFirstTokenSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
+            <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')}><Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => setOverallSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
+          </div>
+        )}
         <div className="space-y-2">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <label htmlFor={modelsId} className="text-sm font-medium text-foreground-soft">{t('channels.form.models')}</label>
@@ -505,7 +525,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             <ErrorText>{tf('channels.form.fetchFailed', { message: (preview.error as Error).message })}</ErrorText>
           )}
         </div>
-        <ModelMappingEditor value={mapping} onChange={setMapping} />
+        {!presetMode && <ModelMappingEditor value={mapping} onChange={setMapping} />}
         <ErrorText>{formError}</ErrorText>
         <ErrorText>{save.isError ? (save.error as Error).message : addKeys.isError ? tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message }) : null}</ErrorText>
       </form>

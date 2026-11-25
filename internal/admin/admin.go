@@ -373,6 +373,7 @@ func (a *API) authenticateSession(c *gin.Context) bool {
 // ---------- 渠道 ----------
 
 type channelDTO struct {
+	PresetID            string                `json:"preset_id"`
 	ID                  int64                 `json:"id"`
 	Name                string                `json:"name"`
 	Type                string                `json:"type"`
@@ -403,6 +404,7 @@ type channelDTO struct {
 func (a *API) toChannelDTO(ch *store.Channel, keyCount, availableKeyCount int64, status string) channelDTO {
 	return channelDTO{
 		ID: ch.ID, Name: ch.Name, Type: ch.Type, BaseURL: ch.BaseURL,
+		PresetID: ch.PresetID,
 		Priority: ch.Priority, Weight: ch.Weight, Models: ch.Models, ModelMapping: ch.ModelMapping,
 		Enabled: ch.Enabled, Status: status, SupportsResponses: ch.SupportsResponses,
 		SupportsAnthropic: ch.SupportsAnthropic, SupportsGemini: ch.SupportsGemini,
@@ -452,10 +454,11 @@ func (a *API) listChannels(c *gin.Context) {
 type channelReq struct {
 	Name              string                `json:"name" binding:"required"`
 	Type              string                `json:"type" binding:"required"`
+	PresetID          *string               `json:"preset_id"`
 	BaseURL           string                `json:"base_url" binding:"required,url"`
 	Priority          *int                  `json:"priority"`
 	Weight            *int                  `json:"weight"`
-	Models            []string              `json:"models" binding:"required,min=1"`
+	Models            []string              `json:"models"` // 允许留空：保存并导入 key 后再「从上游拉取」（T89）
 	ModelMapping      map[string]string     `json:"model_mapping"`
 	SupportsResponses *bool                 `json:"supports_responses"`
 	SupportsAnthropic *bool                 `json:"supports_anthropic"`
@@ -466,6 +469,9 @@ type channelReq struct {
 func (r *channelReq) normalize() error {
 	r.Name = strings.TrimSpace(r.Name)
 	r.Type = strings.TrimSpace(r.Type)
+	if r.PresetID != nil {
+		*r.PresetID = strings.TrimSpace(*r.PresetID)
+	}
 	r.BaseURL = strings.TrimSpace(strings.TrimSuffix(r.BaseURL, "/"))
 	if r.Name == "" || r.Type == "" {
 		return errors.New("name 和 type 不能为空")
@@ -496,9 +502,7 @@ func (r *channelReq) normalize() error {
 		modelSet[model] = true
 		models = append(models, model)
 	}
-	if len(models) == 0 {
-		return errors.New("models 至少需要一个模型")
-	}
+	// 允许空模型列表：保存并导入 key 后再「从上游拉取」模型目录（T89）
 	if len(r.ModelMapping) > 500 {
 		return errors.New("model_mapping 最多 500 项")
 	}
@@ -587,6 +591,7 @@ func (a *API) createChannel(c *gin.Context) {
 	}
 	ch := &store.Channel{
 		Name: req.Name, Type: req.Type, BaseURL: req.BaseURL,
+		PresetID: derefString(req.PresetID, ""),
 		Priority: derefInt(req.Priority, 0), Weight: derefInt(req.Weight, 1),
 		Models: req.Models, ModelMapping: req.ModelMapping,
 		Enabled: true, Status: store.ChannelStatusActive, SupportsResponses: derefBool(req.SupportsResponses, false),
@@ -649,6 +654,7 @@ func (a *API) updateChannel(c *gin.Context) {
 		return
 	}
 	ch.Name, ch.Type, ch.BaseURL = req.Name, req.Type, req.BaseURL
+	ch.PresetID = derefString(req.PresetID, "")
 	ch.Priority, ch.Weight = derefInt(req.Priority, ch.Priority), derefInt(req.Weight, ch.Weight)
 	ch.Models, ch.ModelMapping, ch.Timeouts = req.Models, req.ModelMapping, req.Timeouts
 	ch.SupportsResponses = derefBool(req.SupportsResponses, ch.SupportsResponses)
@@ -1261,6 +1267,13 @@ func ok(c *gin.Context, data any) {
 
 func fail(c *gin.Context, status int, msg string) {
 	c.JSON(status, gin.H{"ok": false, "message": msg})
+}
+
+func derefString(p *string, def string) string {
+	if p == nil {
+		return def
+	}
+	return *p
 }
 
 func derefInt(p *int, def int) int {

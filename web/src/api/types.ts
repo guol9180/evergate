@@ -106,6 +106,7 @@ export interface Channel {
   id: number
   name: string
   type: string
+  preset_id: string
   base_url: string
   priority: number
   weight: number

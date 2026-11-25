@@ -147,3 +147,13 @@ export const CHANNEL_PRESETS: ChannelPreset[] = [
 export function findChannelPreset(id: string): ChannelPreset | undefined {
   return CHANNEL_PRESETS.find((preset) => preset.id === id)
 }
+
+// 预设渠道的名称自动生成：默认名被占用时依次尝试 -2 / -3 …（名称有唯一索引，重复创建同一预设时必须避开）。
+export function uniquePresetName(base: string, taken: string[]): string {
+  const used = new Set(taken)
+  if (!used.has(base)) return base
+  for (let i = 2; ; i++) {
+    const candidate = `${base}-${i}`
+    if (!used.has(candidate)) return candidate
+  }
+}
