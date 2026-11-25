@@ -192,8 +192,8 @@ export function Dialog({ open, onClose, title, children, footer, wide, role = 'd
   useDialogFocus(open, onClose, ref)
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-overlay p-[var(--eg-page-x)]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} tabIndex={-1} role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={role === 'alertdialog' ? descId : undefined} className={`flex max-h-[90vh] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-surface shadow-xl outline-none`}>
+    <div className="eg-overlay fixed inset-0 z-50 flex items-center justify-center bg-overlay p-[var(--eg-page-x)]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={ref} tabIndex={-1} role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={role === 'alertdialog' ? descId : undefined} className={`eg-dialog-panel flex max-h-[90vh] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-surface shadow-xl outline-none`}>
         <div className="eg-dialog-body flex shrink-0 items-center justify-between border-b border-line-soft">
           <h3 id={titleId} className="text-sm font-semibold text-foreground">{title}</h3>
           <CloseButton onClick={onClose} />
@@ -211,8 +211,8 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
   useDialogFocus(open, onClose, ref)
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className={`flex h-full w-full ${wide ? 'sm:w-[min(560px,92vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-surface shadow-2xl outline-none`}>
+    <div className="eg-overlay fixed inset-0 z-50 flex justify-end bg-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className={`eg-drawer-panel flex h-full w-full ${wide ? 'sm:w-[min(560px,92vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-surface shadow-2xl outline-none`}>
         <div className="eg-dialog-body flex items-center justify-between border-b border-line-soft">
           <h3 id={titleId} className="text-sm font-semibold text-foreground">{title}</h3>
           <CloseButton onClick={onClose} />

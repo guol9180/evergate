@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical, UserRound, Sun, Moon, Monitor, Languages } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
@@ -31,6 +31,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [theme, setThemeState] = useState<Theme>(() => getTheme())
+  const mainRef = useRef<HTMLElement>(null)
   // 订阅语言：setLocale 后本组件与所有调用 useLocale 的页面一起重渲染
   useLocale()
 
@@ -48,6 +49,11 @@ export default function Layout() {
     }
   }, [me.data, location.pathname, navigate])
 
+  // 路由切换时归零 main 滚动位置，避免新页面沿用上一页的偏移（标题被顶出视口）
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0
+  }, [location.pathname])
+
   if (me.isPending) {
     return (
       <div className="eg-page" role="status" aria-label={t('common.loading')}>
@@ -60,7 +66,7 @@ export default function Layout() {
   const ThemeIcon = themeIcon(theme, dark)
 
   return (
-    <div className="flex h-full min-w-0">
+    <div className="eg-shell flex h-full min-w-0">
       <aside className="eg-sidebar flex shrink-0 flex-col border-r border-line bg-surface/95 backdrop-blur">
         <div className="eg-sidebar-brand flex items-center gap-3 px-3 py-5">
           <div className="eg-sidebar-brand-logo flex shrink-0 items-center">
@@ -106,36 +112,36 @@ export default function Layout() {
               </a>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="eg-sidebar-actions">
             <button
               type="button"
               onClick={() => setLocale(getLocale() === 'en' ? 'zh-CN' : 'en')}
               aria-label={t('locale.switch')}
               title={t('locale.switch')}
-              className="eg-nav-link flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <Languages size={15} aria-hidden="true" />
+              <Languages size={16} className="shrink-0" aria-hidden="true" />
             </button>
             <button
               type="button"
               onClick={() => setThemeState(cycleTheme(theme))}
               aria-label={`${t('theme.toggle')}：${t('theme.current')}${t(themeLabelKey[theme])}，${t('theme.next')}${t(themeLabelKey[nextTheme[theme]])}`}
               title={`${t('nav.theme')}：${t(themeLabelKey[theme])}`}
-              className="eg-nav-link flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <ThemeIcon size={15} aria-hidden="true" />
+              <ThemeIcon size={16} className="shrink-0" aria-hidden="true" />
             </button>
             <button
               onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
               title={t('nav.logout')}
-              className="eg-nav-link flex flex-1 items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              className="eg-nav-link eg-icon-btn eg-sidebar-logout gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <LogOut size={16} aria-hidden="true" /> <span className="eg-sidebar-label">{t('nav.logout')}</span>
+              <LogOut size={16} className="shrink-0" aria-hidden="true" /> <span className="eg-sidebar-label">{t('nav.logout')}</span>
             </button>
           </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 overflow-auto" id="main-content">
+      <main ref={mainRef} className="min-w-0 flex-1 overflow-auto" id="main-content">
         <div className="eg-page">
           <Outlet />
         </div>

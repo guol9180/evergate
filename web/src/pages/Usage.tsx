@@ -96,7 +96,7 @@ export default function Usage() {
         <div className="flex justify-center py-16"><Spinner className="h-6 w-6" /></div>
       ) : !data ? null : (
         <>
-          <div className="eg-grid eg-grid-auto">
+          <div className="eg-grid eg-grid-kpi">
             <Metric label="请求数" value={fmtInt(data.totals.requests)} hint={`成功 ${fmtInt(data.totals.success)}`} />
             <Metric label="成功率" value={successRate == null ? '—' : `${successRate.toFixed(1)}%`} hint="2xx / 3xx" />
             <Metric label="Token" value={fmtInt(data.totals.tokens_in + data.totals.tokens_out)} hint={`输入 ${fmtInt(data.totals.tokens_in)} · 输出 ${fmtInt(data.totals.tokens_out)}`} />
@@ -113,7 +113,7 @@ export default function Usage() {
             <PriceCard />
           </div>
 
-          <div className="eg-grid eg-grid-auto-wide">
+          <div className="eg-grid eg-grid-triple">
             <TopCard title="Top 渠道" rows={data.top_channels} />
             <TopCard title="Top 模型" rows={data.top_models} />
             <TopCard title="Top 令牌" rows={data.top_tokens} />

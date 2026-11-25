@@ -13,7 +13,7 @@
   --eg-control-gap: clamp(8px, 0.7vw, 14px);
   --eg-cell-x: clamp(8px, 0.7vw, 16px);
   --eg-cell-y: clamp(8px, 0.55vw, 12px);
-  --eg-sidebar-width: clamp(72px, calc(72px + (100vw - 1200px) * 0.25), 224px);
+  --eg-sidebar-width: 72px;
 
   --eg-surface: #ffffff;
   --eg-surface-soft: #f8fafc;
@@ -138,6 +138,8 @@
 }
 
 html, body, #root { height: 100%; }
+/* 应用壳层只允许 main 滚动，锁住文档层，避免滚动链把整页（含侧栏）滚出视口；登录 / 设置页不在壳层内，保持自然滚动。 */
+html:has(.eg-shell) { overflow: hidden; }
 body {
   @apply text-foreground antialiased;
   background:
@@ -154,19 +156,29 @@ body {
   width: var(--eg-sidebar-width);
   container-type: inline-size;
 }
+/* 两态：≥1200px 展开为 224px 并显示文字；更窄一律 72px 仅图标，不存在"变宽但不显示文字"的区间。 */
+@media (min-width: 1200px) {
+  :root { --eg-sidebar-width: 224px; }
+}
 
 .eg-sidebar-brand { justify-content: center; }
 .eg-sidebar-brand-logo { width: 3rem; justify-content: center; }
 .eg-nav-link { justify-content: center; }
 .eg-sidebar-label,
 .eg-sidebar-meta { display: none; }
+/* 收起态三个按钮竖向堆叠（72px 放不下三个 32px 横排）；展开态横排，退出按钮占满剩余宽度。 */
+.eg-sidebar-actions { display: flex; flex-direction: column; gap: 4px; }
+.eg-icon-btn { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 0.5rem; }
+.eg-sidebar-logout { width: 2rem; }
 
-@container (min-width: 168px) {
+@container (min-width: 200px) {
   .eg-sidebar-brand { justify-content: flex-start; }
   .eg-sidebar-brand-logo { width: auto; justify-content: flex-start; padding-left: 0.75rem; }
   .eg-nav-link { justify-content: flex-start; }
   .eg-sidebar-label { display: inline; }
   .eg-sidebar-meta { display: block; }
+  .eg-sidebar-actions { flex-direction: row; }
+  .eg-sidebar-logout { width: auto; flex: 1 1 auto; padding: 0 0.75rem; white-space: nowrap; }
 }
 
 .eg-page {
@@ -178,6 +190,11 @@ body {
 .eg-grid { display: grid; gap: var(--eg-grid-gap); }
 .eg-grid-auto { grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
 .eg-grid-auto-wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+/* 四张 KPI 卡：窄屏 2×2、≥1100px 单行四列，避免第 4 张落单；三张并列卡（Top 榜）窄屏单列、≥1024px 三列。 */
+.eg-grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1100px) { .eg-grid-kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.eg-grid-triple { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1024px) { .eg-grid-triple { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .eg-page-header { gap: var(--eg-control-gap); }
 .eg-control-row { gap: var(--eg-control-gap); }
 .eg-card-fluid { padding: var(--eg-card-pad); }
@@ -187,6 +204,17 @@ body {
 .eg-cell-y { padding-top: var(--eg-cell-y); padding-bottom: var(--eg-cell-y); }
 .eg-skeleton {
   @apply animate-pulse rounded-md bg-surface-strong;
+}
+
+/* 弹窗 / 抽屉：遮罩淡入，面板轻弹入，抽屉右侧滑入；尊重减少动态偏好。 */
+@keyframes eg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes eg-pop-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes eg-slide-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+.eg-overlay { animation: eg-fade-in 150ms ease-out; }
+.eg-dialog-panel { animation: eg-pop-in 180ms ease-out; }
+.eg-drawer-panel { animation: eg-slide-in 200ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .eg-overlay, .eg-dialog-panel, .eg-drawer-panel { animation: none; }
 }
 
 @media (max-width: 1023px) {

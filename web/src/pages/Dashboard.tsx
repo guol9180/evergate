@@ -168,7 +168,7 @@ export default function Dashboard() {
       </div>
 
       {/* 今日卡片 */}
-      <div className="eg-grid eg-grid-auto">
+      <div className="eg-grid eg-grid-kpi">
         {[
           { label: '今日请求', value: fmtInt(s?.total), icon: Activity },
           { label: '成功率', value: s?.success_rate != null ? `${s.success_rate.toFixed(1)}%` : '—', icon: Zap },

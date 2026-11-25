@@ -36,7 +36,7 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
   return (
     <div className={`w-full ${className}`}>
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={rows} margin={{ top: 10, right: 0, bottom: 0, left: -20 }} accessibilityLayer>
+        <ComposedChart data={rows} margin={{ top: 10, right: 0, bottom: 0, left: 0 }} accessibilityLayer>
           <CartesianGrid vertical={false} stroke="#eef2f7" strokeDasharray="3 3" />
           <XAxis
             dataKey="label"
@@ -48,7 +48,7 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
           />
           <YAxis
             yAxisId="requests"
-            width={40}
+            width={44}
             allowDecimals={false}
             tickLine={false}
             axisLine={false}
