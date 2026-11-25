@@ -251,32 +251,33 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
             </div>
             <Textarea id={modelsId} rows={4} value={modelsText} onChange={(e) => setModelsText(e.target.value)} placeholder={'gpt-4o\nglm-4.7'} />
             <div className="text-xs text-subtle">留空表示允许全部模型；手动输入时须为对外模型名。</div>
-            {showModelPicker && (
-              <ModelPicker
-                title="对外模型目录"
-                options={(catalog.data?.items ?? []).map((item) => ({
-                  publicModel: item.model,
-                  upstreamModel: item.channels[0]?.upstream_model ?? item.model,
-                  context: item.channels.length > 0
-                    ? item.channels.map((channel) => `${channel.channel_name}: ${channel.upstream_model}`).join('；')
-                    : undefined,
-                }))}
-                initialModels={splitLines(modelsText)}
-                loading={catalog.isPending}
-                error={catalog.isError ? (catalog.error as Error).message : undefined}
-                onCancel={() => setShowModelPicker(false)}
-                onApply={(selected, mode) => {
-                  const next = applyModelSelection(splitLines(modelsText), selected, mode)
-                  setModelsText(next.join('\n'))
-                  setShowModelPicker(false)
-                }}
-              />
-            )}
           </div>
           <Field label="允许 IP（每行一个）" hint="支持精确 IP 与 CIDR；留空允许全部 IP">
             <Textarea rows={4} value={ipsText} onChange={(e) => setIpsText(e.target.value)} placeholder={'127.0.0.1\n192.168.0.0/16'} />
           </Field>
         </div>
+        {/* 目录选择器横跨弹窗全宽：挤在左半栏时每行长说明折成三行、还要在弹窗里再套一层内滚动 */}
+        {showModelPicker && (
+          <ModelPicker
+            title="对外模型目录"
+            options={(catalog.data?.items ?? []).map((item) => ({
+              publicModel: item.model,
+              upstreamModel: item.channels[0]?.upstream_model ?? item.model,
+              context: item.channels.length > 0
+                ? item.channels.map((channel) => `${channel.channel_name}: ${channel.upstream_model}`).join('；')
+                : undefined,
+            }))}
+            initialModels={splitLines(modelsText)}
+            loading={catalog.isPending}
+            error={catalog.isError ? (catalog.error as Error).message : undefined}
+            onCancel={() => setShowModelPicker(false)}
+            onApply={(selected, mode) => {
+              const next = applyModelSelection(splitLines(modelsText), selected, mode)
+              setModelsText(next.join('\n'))
+              setShowModelPicker(false)
+            }}
+          />
+        )}
         <ErrorText>{create.isError ? (create.error as Error).message : update.isError ? (update.error as Error).message : null}</ErrorText>
       </form>
     </Dialog>

@@ -2,6 +2,7 @@ package usage
 
 import (
 	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -45,14 +46,18 @@ type DailyPoint struct {
 }
 
 type DimensionRow struct {
-	ID         int64   `json:"id"`
-	Name       string  `json:"name"`
-	Requests   int64   `json:"requests"`
-	Success    int64   `json:"success"`
-	TokensIn   int64   `json:"tokens_in"`
-	TokensOut  int64   `json:"tokens_out"`
-	CostMicros int64   `json:"cost_micros"`
-	Cost       float64 `json:"cost"`
+	ID                  int64   `json:"id"`
+	Name                string  `json:"name"`
+	Requests            int64   `json:"requests"`
+	Success             int64   `json:"success"`
+	TokensIn            int64   `json:"tokens_in"`
+	TokensOut           int64   `json:"tokens_out"`
+	CostMicros          int64   `json:"cost_micros"`
+	Cost                float64 `json:"cost"`
+	PricedRequests      int64   `json:"priced_requests"`
+	UnpricedRequests    int64   `json:"unpriced_requests"`
+	NoUsageRequests     int64   `json:"no_usage_requests"`
+	UnknownCostRequests int64   `json:"unknown_cost_requests"`
 }
 
 type Report struct {
@@ -189,7 +194,11 @@ func dimensionRows(filter func(*gorm.DB) *gorm.DB, db *gorm.DB, column string) (
 			COALESCE(SUM(success), 0) AS success,
 			COALESCE(SUM(tokens_in), 0) AS tokens_in,
 			COALESCE(SUM(tokens_out), 0) AS tokens_out,
-			COALESCE(SUM(cost_micros), 0) AS cost_micros`).
+			COALESCE(SUM(cost_micros), 0) AS cost_micros,
+			COALESCE(SUM(priced_requests), 0) AS priced_requests,
+			COALESCE(SUM(unpriced_requests), 0) AS unpriced_requests,
+			COALESCE(SUM(no_usage_requests), 0) AS no_usage_requests,
+			COALESCE(SUM(unknown_cost_requests), 0) AS unknown_cost_requests`).
 		Group(column).
 		Order("requests DESC, cost_micros DESC").
 		Limit(10).
@@ -208,13 +217,22 @@ func dimensionRows(filter func(*gorm.DB) *gorm.DB, db *gorm.DB, column string) (
 		case "model":
 			name = row.Model
 		}
+		// id 为 0 表示请求未命中任何渠道 / 未携带令牌（如调试台），不展示裸内部编号。
 		if name == "" {
 			name = "#" + strconv.FormatInt(id, 10)
+			if id == 0 {
+				name = "未命中渠道"
+				if column == "token_id" {
+					name = "调试台（无令牌）"
+				}
+			}
 		}
 		rows = append(rows, DimensionRow{
 			ID: id, Name: name, Requests: row.Requests, Success: row.Success,
 			TokensIn: row.TokensIn, TokensOut: row.TokensOut,
 			CostMicros: row.CostMicros, Cost: float64(row.CostMicros) / 1_000_000,
+			PricedRequests: row.PricedRequests, UnpricedRequests: row.UnpricedRequests,
+			NoUsageRequests: row.NoUsageRequests, UnknownCostRequests: row.UnknownCostRequests,
 		})
 	}
 	return rows, nil
@@ -242,6 +260,8 @@ func fillDimensionNames(db *gorm.DB, rows []DimensionRow, model any) {
 	for i := range rows {
 		if name := byID[rows[i].ID]; name != "" {
 			rows[i].Name = name
+		} else if rows[i].ID > 0 && strings.HasPrefix(rows[i].Name, "#") {
+			rows[i].Name = "已删除 " + rows[i].Name
 		}
 	}
 }

@@ -1,5 +1,5 @@
 import type { RetryAttempt } from '../api/types'
-import { kindText } from '../lib/format'
+import { describeUpstreamError, kindText } from '../lib/format'
 import { Badge } from './ui'
 
 // 重试轨迹时间线：请求日志与 Playground 共用同一套命中链路展示。
@@ -12,6 +12,7 @@ export default function RetryTimeline({ attempts }: { attempts: RetryAttempt[] |
       {attempts.map((a, i) => {
         const ok = !a.error_type && !a.error_message
         const fallback = !!a.reason
+      const upstream = describeUpstreamError(a.error_message)
         return (
           <div key={i} className="flex gap-3">
             <div className="flex flex-col items-center">
@@ -32,7 +33,8 @@ export default function RetryTimeline({ attempts }: { attempts: RetryAttempt[] |
               ) : (
                 <div className="mt-0.5 text-xs">
                   <Badge tone={fallback ? 'warning' : 'danger'}>{kindText(a.error_type)}</Badge>
-                  <span className="ml-2 break-all text-muted">{a.error_message?.slice(0, 120)}</span>
+                  {upstream.code && <Badge tone="neutral">上游 {upstream.code}</Badge>}
+                  <span className="ml-2 break-all text-muted" title={a.error_message}>{upstream.text}</span>
                 </div>
               )}
             </div>

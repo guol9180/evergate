@@ -112,9 +112,9 @@ export function Field({ label, children, hint, className = '' }: { label: ReactN
   )
 }
 
-export function Badge({ tone = 'neutral', compact = false, className = '', children }: { tone?: Tone; compact?: boolean; className?: string; children: ReactNode }) {
+export function Badge({ tone = 'neutral', compact = false, className = '', title, children }: { tone?: Tone; compact?: boolean; className?: string; title?: string; children: ReactNode }) {
   const size = compact ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs'
-  return <span className={`inline-flex items-center whitespace-nowrap rounded-full font-medium ${size} ${toneClass[tone]} ${className}`}>{children}</span>
+  return <span title={title} className={`inline-flex items-center whitespace-nowrap rounded-full font-medium ${size} ${toneClass[tone]} ${className}`}>{children}</span>
 }
 
 /** 状态徽标：与 Badge 同源，语义化命名用于渠道/令牌/HTTP 状态展示。 */
@@ -127,9 +127,9 @@ const dotClass: Record<Tone, string> = {
   brand: 'bg-brand',
 }
 
-export function StatusBadge({ tone, className = '', children }: { tone: Tone; className?: string; children: ReactNode }) {
+export function StatusBadge({ tone, className = '', title, children }: { tone: Tone; className?: string; title?: string; children: ReactNode }) {
   return (
-    <Badge tone={tone} className={className}>
+    <Badge tone={tone} className={className} title={title}>
       <span aria-hidden="true" className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${dotClass[tone]}`} />
       {children}
     </Badge>
@@ -360,8 +360,8 @@ export function SuccessText({ children }: { children?: ReactNode }) {
   return <p role="status" className="text-xs text-success-text">{children}</p>
 }
 
-export function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
-  return <th scope="col" className={`eg-cell-x eg-cell-y whitespace-nowrap text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted ${className}`}>{children}</th>
+export function Th({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
+  return <th scope="col" title={title} className={`eg-cell-x eg-cell-y whitespace-nowrap text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted ${className}`}>{children}</th>
 }
 
 export function Td({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {

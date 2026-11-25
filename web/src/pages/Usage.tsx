@@ -187,7 +187,11 @@ function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) 
                 <tr key={`${row.id}-${row.name}`}>
                   <Td className="max-w-40 truncate font-medium" title={row.name}>{row.name}</Td>
                   <Td>{fmtInt(row.requests)}</Td>
-                  <Td className="text-xs">{fmtMoney(row.cost_micros)}</Td>
+                  <Td className="text-xs">
+                    {row.priced_requests === 0
+                      ? <span className="text-subtle" title="没有已计价的请求，不用 $0 冒充已知成本">—</span>
+                      : fmtMoney(row.cost_micros)}
+                  </Td>
                 </tr>
               ))}
             </tbody>
@@ -253,12 +257,14 @@ function PriceCard() {
       <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-line-strong p-3">
         <div className="text-xs font-medium text-muted">渠道 + 模型覆盖</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
-            {(channels.data?.items ?? []).map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-          </Select>
-          <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="上游模型名" />
-          <Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder="输入价格" />
-          <Input type="number" min={0} step="0.000001" value={overrideOut} onChange={(e) => setOverrideOut(e.target.value)} placeholder="输出价格" />
+          <Field label="渠道">
+            <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
+              {(channels.data?.items ?? []).map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="上游模型名"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="例如 glm-5.4" /></Field>
+          <Field label="输入价格"><Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder="留空用全局默认" /></Field>
+          <Field label="输出价格"><Input type="number" min={0} step="0.000001" value={overrideOut} onChange={(e) => setOverrideOut(e.target.value)} placeholder="留空用全局默认" /></Field>
         </div>
         <Button type="submit" size="sm" variant="outline" disabled={upsert.isPending || !model.trim()}><Plus size={13} /> 保存覆盖</Button>
       </form>

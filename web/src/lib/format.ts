@@ -42,11 +42,39 @@ export function cooldownRemaining(until: string | null | undefined): string | nu
   if (!until) return null
   const ms = new Date(until).getTime() - Date.now()
   if (ms <= 0) return null
-  const sec = Math.ceil(ms / 1000)
+  return formatRemainingSeconds(ms / 1000)
+}
+
+/** 把剩余秒数格式化为 12s / 3m05s / 1h20m；≤0 返回 null（表示不在冷却）。 */
+export function formatRemainingSeconds(totalSec: number): string | null {
+  if (!totalSec || totalSec <= 0) return null
+  const sec = Math.ceil(totalSec)
   if (sec < 60) return `${sec}s`
   const min = Math.floor(sec / 60)
   if (min < 60) return `${min}m${sec % 60}s`
   return `${Math.floor(min / 60)}h${min % 60}m`
+}
+
+/**
+ * 解析上游 / 网关错误文本：识别 `all upstream channels exhausted: {"error":{"code":"1305","message":"…"}}`
+ * 与 OpenAI 风格 `{"error":{"message":"…"}}`，提取上游错误码与可读信息；无法解析时原样返回。
+ */
+export function describeUpstreamError(message: string | null | undefined): { code: string | null; text: string } {
+  const raw = (message ?? '').trim()
+  const start = raw.indexOf('{')
+  if (start < 0) return { code: null, text: raw }
+  const candidate = raw.slice(start)
+  const lastBrace = candidate.lastIndexOf('}')
+  const jsonText = lastBrace > 0 ? candidate.slice(0, lastBrace + 1) : candidate
+  try {
+    const parsed = JSON.parse(jsonText) as { error?: { code?: string | number; message?: string }; message?: string }
+    const text = parsed.error?.message ?? parsed.message
+    if (!text) return { code: null, text: raw }
+    const prefix = raw.slice(0, start).replace(/:\s*$/, '').trim()
+    return { code: parsed.error?.code != null ? String(parsed.error.code) : null, text: prefix ? `${prefix}：${text}` : text }
+  } catch {
+    return { code: null, text: raw }
+  }
 }
 
 // 状态 → 语义色调（Tone 枚举唯一来源在 components/ui.tsx；此处只做业务状态到色调的映射）

@@ -69,17 +69,19 @@ export default function ModelPicker({
         </div>
       </div>
 
-      <div className="relative mt-3">
-        <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="pl-8"
-          placeholder="搜索模型或映射"
-          aria-label={`搜索${title}`}
-          disabled={loading}
-        />
-      </div>
+      {options.length > 0 && (
+        <div className="relative mt-3">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-subtle" />
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="pl-8"
+            placeholder="搜索模型或映射"
+            aria-label={`搜索${title}`}
+            disabled={loading}
+          />
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted"><Spinner /> 拉取中…</div>
@@ -136,7 +138,8 @@ export default function ModelPicker({
           </label>
         </div>
         <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
+          {/* 内联选择器嵌在表单里，叫"取消"会和弹窗自己的取消按钮同名；它只是收起，不丢弃已填内容 */}
+          <Button type="button" variant="outline" onClick={onCancel}>收起</Button>
           <Button type="button" disabled={selected.size === 0 || loading || Boolean(error)} onClick={() => onApply([...selected].sort(), mode)}>
             确认写入
           </Button>

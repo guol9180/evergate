@@ -5,7 +5,7 @@ import { Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, In
 import ModelPicker from '../components/ModelPicker'
 import type { Channel } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset } from '../lib/channelPresets'
-import { channelStateTone, cooldownRemaining, fmtMs, fmtTime, stateLabel, statusRank } from '../lib/format'
+import { channelStateTone, fmtMs, fmtTime, formatRemainingSeconds, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
@@ -135,6 +135,8 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
   const toggle = useToggleChannel()
   const test = useTestChannel()
   const result = test.data && test.variables === c.id ? test.data : null
+  // 从未探测过的新渠道不能显示"正常"：状态列只反映健康度，探测前如实标注"未探测"
+  const untested = !c.last_probe_at && c.status === 'active'
 
   return (
     <>
@@ -146,8 +148,8 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
         </Td>
         <Td className="max-w-[170px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
         <Td>
-          <StatusBadge tone={channelStateTone(c.status)}>
-            <span title={c.last_probe_error || undefined}>{stateLabel[c.status] || c.status}</span>
+          <StatusBadge tone={untested ? 'neutral' : channelStateTone(c.status)}>
+            <span title={c.last_probe_error || undefined}>{untested ? '未探测' : stateLabel[c.status] || c.status}</span>
           </StatusBadge>
         </Td>
         <Td className="hidden min-[1120px]:table-cell">
@@ -184,8 +186,12 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
           {test.isPending && test.variables === c.id ? (
             <Spinner />
           ) : result ? (
-            <Badge tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'}>
-              {result.result === 'success' ? `✓ ${result.latency_ms}ms` : result.result === 'inconclusive' ? `? ${result.status_code ?? 0}` : `✗ ${result.status_code ?? 'err'}`}
+            <Badge
+              tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'}
+              className="cursor-help"
+              title={result.error || result.error_type || undefined}
+            >
+              {result.result === 'success' ? `✓ ${result.latency_ms}ms` : result.result === 'inconclusive' ? '? 无法判定' : '✗ 失败'}
             </Badge>
           ) : (
             <Button size="sm" variant="outline" aria-label={`测试渠道 ${c.name}`} title="测试连通性" onClick={() => test.mutate(c.id)}>
@@ -231,17 +237,19 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
           </thead>
           <tbody className="divide-y divide-line-soft">
             {detail.data.keys.map((k, i) => {
-              const remain = cooldownRemaining(k.cooldown_until)
+              // 冷却到期后状态要等下次调度才切回，这里按实时剩余时间判断：已到期就按"正常"展示
+              const cooling = k.state === 'cooldown' && k.cooldown_remaining_sec > 0
+              const shownState = k.state === 'cooldown' && !cooling ? 'active' : k.state
               return (
                 <tr key={k.id}>
                   <Td className="text-subtle">{i + 1}</Td>
                   <Td>
-                    <StatusBadge tone={channelStateTone(k.state)}>{stateLabel[k.state] || k.state}</StatusBadge>
+                    <StatusBadge tone={channelStateTone(shownState)}>{stateLabel[shownState] || shownState}</StatusBadge>
                   </Td>
                   <Td>{k.weight}</Td>
                   <Td className={k.consecutive_fails > 0 ? 'text-warning-text font-medium' : ''}>{k.consecutive_fails}</Td>
                   <Td className="hidden min-[1180px]:table-cell">L{k.level}</Td>
-                  <Td>{remain ? <span className="text-warning-text">{remain}</span> : '—'}</Td>
+                  <Td>{cooling ? <span className="text-warning-text">{formatRemainingSeconds(k.cooldown_remaining_sec)}</span> : '—'}</Td>
                   <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
                   <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1280px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
@@ -450,6 +458,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               size="sm"
               variant="outline"
               disabled={!channel || channel.key_count === 0 || preview.isPending}
+              title={!channel ? '保存渠道后可用' : channel.key_count === 0 ? '请先导入至少一把 key' : undefined}
               onClick={() => {
                 if (!channel) return
                 setShowModelPicker(false)
@@ -461,10 +470,10 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               {preview.isPending ? '拉取中…' : '从上游拉取'}
             </Button>
           </div>
-          <Textarea id={modelsId} rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} required />
+          <Textarea id={modelsId} rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} />
           <div className="text-xs text-subtle">
             {!channel
-              ? '新建渠道保存并导入 key 后，可从上游拉取模型目录。'
+              ? '可留空：保存并导入 key 后，再「从上游拉取」模型目录；也可直接手填。'
               : channel.key_count === 0
                 ? '请先在渠道行展开并导入至少一把启用 key。'
                 : '候选映射按当前已保存的模型映射生成；确认后会写入本表单，仍需点击保存。'}
@@ -492,8 +501,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               }}
             />
           )}
-          {showModelPicker && preview.isError && !preview.data && (
-            <ErrorText>{(preview.error as Error).message}</ErrorText>
+          {preview.isError && !preview.data && (
+            <ErrorText>拉取失败：{(preview.error as Error).message}</ErrorText>
           )}
         </div>
         <ModelMappingEditor value={mapping} onChange={setMapping} />

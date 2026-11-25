@@ -129,8 +129,45 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 	if len(report.TopChannels) != 2 || report.TopChannels[0].Name != "channel-a" {
 		t.Fatalf("top channels = %#v", report.TopChannels)
 	}
+	if row := report.TopChannels[0]; row.PricedRequests+row.UnpricedRequests+row.NoUsageRequests+row.UnknownCostRequests != 4 {
+		t.Fatalf("top channel cost status counts = %#v", row)
+	}
 	if len(report.TopTokens) != 2 || report.TopTokens[0].Name != "token-a" {
 		t.Fatalf("top tokens = %#v", report.TopTokens)
+	}
+
+	for _, extra := range []struct {
+		channelID int64
+		tokenID   int64
+	}{
+		{0, 0},     // 未命中渠道 / 调试台无令牌
+		{999, 888}, // 已删除的渠道 / 令牌
+	} {
+		if err := db.Create(&store.UsageDaily{Date: day, ChannelID: extra.channelID, Model: "m", TokenID: extra.tokenID, Requests: 1, Success: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	named, err := BuildReport(db, ReportQuery{Start: day, End: day})
+	if err != nil {
+		t.Fatal(err)
+	}
+	channelNames := map[string]bool{}
+	for _, row := range named.TopChannels {
+		channelNames[row.Name] = true
+	}
+	tokenNames := map[string]bool{}
+	for _, row := range named.TopTokens {
+		tokenNames[row.Name] = true
+	}
+	for _, want := range []string{"未命中渠道", "已删除 #999"} {
+		if !channelNames[want] {
+			t.Fatalf("top channels missing %q: %#v", want, named.TopChannels)
+		}
+	}
+	for _, want := range []string{"调试台（无令牌）", "已删除 #888"} {
+		if !tokenNames[want] {
+			t.Fatalf("top tokens missing %q: %#v", want, named.TopTokens)
+		}
 	}
 
 	filtered, err := BuildReport(db, ReportQuery{Start: day, End: day, ChannelID: ch1.ID, Model: "m", TokenID: tok1.ID})

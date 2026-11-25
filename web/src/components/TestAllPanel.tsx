@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { TestAllItem } from '../api/types'
 import { useChannelsTestAll } from '../api/hooks'
@@ -11,6 +11,13 @@ type SortKey = 'latency' | 'name' | 'result'
 export default function TestAllPanel() {
   const testAll = useChannelsTestAll()
   const [sortKey, setSortKey] = useState<SortKey>('latency')
+  // 面板打开即开始探测：此前首屏是另一个同名「测试全部」按钮，用户点两次才知道要再点一次
+  const started = useRef(false)
+  useEffect(() => {
+    if (started.current) return
+    started.current = true
+    if (!testAll.data && !testAll.isPending) testAll.mutate()
+  }, [testAll])
 
   const items = useMemo(() => {
     const list = [...(testAll.data?.items ?? [])]

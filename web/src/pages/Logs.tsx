@@ -4,7 +4,7 @@ import { buildLogQuery, downloadAdminFile, useChannels, useLogs, useTokens } fro
 import { Badge, Button, Card, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, Td, Th } from '../components/ui'
 import RetryTimeline from '../components/RetryTimeline'
 import type { RequestLog } from '../api/types'
-import { fmtInt, fmtMs, fmtRequestCost, fmtTime, kindText, statusTone } from '../lib/format'
+import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, fmtTime, kindText, statusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
 
@@ -131,7 +131,7 @@ export default function Logs() {
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
                   <Th>时间</Th><Th>模型</Th><Th className="hidden min-[1120px]:table-cell">渠道</Th><Th>状态</Th>
-                  <Th>首 token</Th><Th>总耗时</Th><Th>tokens</Th><Th>成本</Th>
+          <Th>首 token</Th><Th>总耗时</Th><Th title="输入 / 输出">tokens 入/出</Th><Th>成本</Th>
                   <Th className="hidden min-[1180px]:table-cell">令牌</Th><Th className="hidden min-[1240px]:table-cell">重试</Th>
                 </tr>
               </thead>
@@ -147,7 +147,7 @@ export default function Logs() {
                       {l.source === 'playground' && <Badge tone="brand" className="ml-2">Playground</Badge>}
                     </Td>
                     <Td className="hidden text-muted min-[1120px]:table-cell">{l.channel_name || '—'}</Td>
-                    <Td className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</Td>
+        <Td><span className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</span></Td>
                     <Td>{fmtMs(l.first_token_ms || undefined)}</Td>
                     <Td>{fmtMs(l.total_ms || undefined)}</Td>
                     <Td className="text-xs text-muted">{l.prompt_tokens}/{l.completion_tokens}</Td>
@@ -211,8 +211,11 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
 
           {log.error_message && (
             <div className="rounded-lg bg-danger-subtle p-3">
-              <div className="text-xs font-semibold text-danger-text">{kindText(log.error_type)}</div>
-              <div className="mt-1 break-all text-xs text-danger-text">{log.error_message}</div>
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-danger-text">
+                <span>{kindText(log.error_type)}</span>
+                {describeUpstreamError(log.error_message).code && <Badge tone="neutral">上游 {describeUpstreamError(log.error_message).code}</Badge>}
+              </div>
+              <div className="mt-1 break-words text-xs text-danger-text">{describeUpstreamError(log.error_message).text}</div>
             </div>
           )}
 

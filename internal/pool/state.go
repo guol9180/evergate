@@ -122,6 +122,22 @@ func (sm *StateMachine) State(keyID int64) string {
 	return sm.get(keyID).state
 }
 
+// CooldownRemaining 返回 key 剩余冷却时长；不在冷却或已到期返回 0（观测用，管理台展示"冷却剩余"）。
+// 冷却到期后状态要等下一次调度才切回 half_open，因此不能仅凭 State() 判断是否仍在冷却。
+func (sm *StateMachine) CooldownRemaining(keyID int64) time.Duration {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	s := sm.get(keyID)
+	if s.state != store.KeyStateCooldown || s.cooldownUntil.IsZero() {
+		return 0
+	}
+	remaining := s.cooldownUntil.Sub(sm.now())
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 // OnSuccess 成功：任何状态回到 active，计数与档位清零（含 half_open 探测成功）。
 func (sm *StateMachine) OnSuccess(keyID int64) {
 	sm.mu.Lock()

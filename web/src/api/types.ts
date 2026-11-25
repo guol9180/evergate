@@ -141,6 +141,7 @@ export interface ChannelKey {
   fail_count: number
   last_error: string
   cooldown_until: string | null
+  cooldown_remaining_sec: number
   rpm_limit: number
   last_used_at: string | null
 }
@@ -291,6 +292,10 @@ export interface UsageDimensionRow {
   tokens_out: number
   cost_micros: number
   cost: number
+  priced_requests: number
+  unpriced_requests: number
+  no_usage_requests: number
+  unknown_cost_requests: number
 }
 
 export interface UsageReport {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { Button, ErrorText, Textarea } from './ui'
 
 type Mapping = Record<string, string>
@@ -120,7 +120,7 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
                       </td>
                       <td className="eg-cell-x eg-cell-y text-right">
                         {isNew ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-subtle"><Plus size={12} aria-hidden="true" />新增</span>
+                          <span className="inline-block whitespace-nowrap text-xs text-subtle" title="直接输入即可新增一行映射">输入即新增</span>
                         ) : (
                           <button type="button" onClick={() => removeRow(i)} aria-label={`删除第 ${i + 1} 行映射`} title="删除" className="rounded p-1 text-subtle hover:bg-danger-subtle hover:text-danger-text">
                             <Trash2 size={13} aria-hidden="true" />

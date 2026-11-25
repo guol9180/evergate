@@ -612,13 +612,16 @@ func (a *API) getChannel(c *gin.Context) {
 		return
 	}
 	keyItems := make([]gin.H, 0, len(keys))
+	stateFn := a.opt.Pool.StateMachine().State
 	for _, k := range keys {
+		remaining := a.opt.Pool.StateMachine().CooldownRemaining(k.ID)
 		keyItems = append(keyItems, gin.H{
-			"id": k.ID, "enabled": k.Enabled, "weight": k.Weight, "state": k.State,
+			"id": k.ID, "enabled": k.Enabled, "weight": k.Weight, "state": stateFn(k.ID),
 			"consecutive_fails": k.ConsecutiveFails, "level": k.Level,
 			"success_count": k.SuccessCount, "fail_count": k.FailCount,
 			"last_error": k.LastError, "cooldown_until": k.CooldownUntil,
-			"rpm_limit": k.RPMLimit, "last_used_at": k.LastUsedAt,
+			"cooldown_remaining_sec": int64(remaining / time.Second),
+			"rpm_limit":              k.RPMLimit, "last_used_at": k.LastUsedAt,
 			// 红线：绝不返回 key_cipher / 任何明文（验收 #9）
 		})
 	}

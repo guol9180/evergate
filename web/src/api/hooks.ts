@@ -75,9 +75,13 @@ export function useUpdateSystemSettings() {
   return useMutation({
     mutationFn: (data: SystemSettingsValues) =>
       api<{ settings: SystemSettings }>('/admin/api/system/settings', { method: 'PUT', body: JSON.stringify(data) }),
-    onSuccess: (data) => qc.setQueryData<SystemSettingsResponse>(['system-settings'], (current) =>
-      current ? { ...current, settings: data.settings } : current,
-    ),
+    onSuccess: (data) => {
+      qc.setQueryData<SystemSettingsResponse>(['system-settings'], (current) =>
+        current ? { ...current, settings: data.settings } : current,
+      )
+      // 设置页底部的审计日志与保存结果同页，必须一起刷新，否则要 reload 才能看到"修改系统设置"
+      void qc.invalidateQueries({ queryKey: ['audit-logs'] })
+    },
   })
 }
 
@@ -161,8 +165,11 @@ export function useToggleChannel() {
 }
 
 export function useTestChannel() {
+  const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: number) => api<TestResult>(`/admin/api/channels/${id}/test`, { method: 'POST' }),
+    // 手动探测会写入 last_probe_*，渠道状态由它派生；不刷新列表就会出现"状态正常但测试 ✗"的矛盾
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ['channels'] }),
   })
 }
 

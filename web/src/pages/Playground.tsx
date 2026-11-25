@@ -4,7 +4,7 @@ import { useChannels } from '../api/hooks'
 import { runPlayground, type PlaygroundMeta } from '../api/playground'
 import RetryTimeline from '../components/RetryTimeline'
 import { Badge, Button, Card, Empty, PageHeader, Select, SettingRow, Spinner, Textarea } from '../components/ui'
-import { fmtInt, fmtMs, fmtRequestCost, httpStatusTone, kindText } from '../lib/format'
+import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, httpStatusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
 
@@ -198,7 +198,7 @@ export default function Playground() {
             )}
           </div>
 
-          <div ref={outputRef} aria-live="polite" className="max-h-[58vh] min-h-[300px] flex-1 overflow-auto" style={{ padding: 'var(--eg-card-pad)' }}>
+          <div ref={outputRef} aria-live="polite" className="max-h-[58vh] min-h-[120px] overflow-auto" style={{ padding: 'var(--eg-card-pad)' }}>
             {output ? (
               <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-foreground-soft">
                 {output}
@@ -213,7 +213,7 @@ export default function Playground() {
 
           {error && (
             <div className="border-t border-danger-border bg-danger-subtle text-xs leading-5 text-danger-text" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
-              <span className="break-all">{error}</span>
+              <span className="break-words" title={error}>{describeUpstreamError(error).text}</span>
             </div>
           )}
 
@@ -221,7 +221,7 @@ export default function Playground() {
             <div className="border-t border-line-soft bg-surface-soft" style={{ padding: 'var(--eg-card-pad)' }}>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">命中链路</h3>
-                <span className="text-[11px] text-subtle">已写入请求日志 · source=playground</span>
+                <span className="text-[11px] text-subtle">已写入请求日志 · 来源：调试台</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
                 <MetaItem label="渠道" value={meta.channel_name || '—'} hint={meta.channel_id ? `#${meta.channel_id}` : ''} />
@@ -236,19 +236,14 @@ export default function Playground() {
                     <UsageChip label="输出" value={fmtInt(meta.usage.completion_tokens)} />
                     <UsageChip label="合计" value={fmtInt(meta.usage.total_tokens)} />
                     <UsageChip label="成本" value={fmtRequestCost(meta.cost_micros, meta.cost_status)} />
-                    {meta.usage.cached_tokens > 0 && <UsageChip label="cached" value={fmtInt(meta.usage.cached_tokens)} />}
-                    {meta.usage.reasoning_tokens > 0 && <UsageChip label="reasoning" value={fmtInt(meta.usage.reasoning_tokens)} />}
+                    {meta.usage.cached_tokens > 0 && <UsageChip label="缓存" value={fmtInt(meta.usage.cached_tokens)} />}
+                    {meta.usage.reasoning_tokens > 0 && <UsageChip label="推理" value={fmtInt(meta.usage.reasoning_tokens)} />}
                   </>
                 ) : (
                   <span className="text-subtle">上游未返回 usage</span>
                 )}
               </div>
-              {meta.error_message && (
-                <div className="mt-3 rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-xs text-danger-text">
-                  {meta.error_type && <span className="mr-2 font-semibold">{kindText(meta.error_type)}</span>}
-                  <span className="break-all">{meta.error_message}</span>
-                </div>
-              )}
+              {/* 错误正文只在响应区底部的横幅展示一次；此处仅保留重试轨迹，避免同一段错误出现三遍 */}
               <div className="mt-4 border-t border-line pt-3">
                 <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">重试轨迹</h4>
                 <RetryTimeline attempts={meta.retry_trace} />

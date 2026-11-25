@@ -61,6 +61,27 @@ func TestActiveToFailsToCooldown(t *testing.T) {
 	if !sm.cooldownExpiredByID(1) {
 		t.Fatal("30s 时应到期")
 	}
+	if got := sm.CooldownRemaining(1); got != 0 {
+		t.Fatalf("到期后剩余 = %v, want 0", got)
+	}
+}
+
+func TestCooldownRemainingTracksLiveWindow(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(0, 0)}
+	sm := newSM(clock)
+	if got := sm.CooldownRemaining(1); got != 0 {
+		t.Fatalf("active 状态剩余 = %v, want 0", got)
+	}
+	sm.OnFailure(1)
+	sm.OnFailure(1)
+	sm.OnFailure(1)
+	if got := sm.CooldownRemaining(1); got != 30*time.Second {
+		t.Fatalf("刚进入冷却剩余 = %v, want 30s", got)
+	}
+	clock.Advance(12 * time.Second)
+	if got := sm.CooldownRemaining(1); got != 18*time.Second {
+		t.Fatalf("12s 后剩余 = %v, want 18s", got)
+	}
 }
 
 func TestCooldownExpiryToHalfOpenProbe(t *testing.T) {
