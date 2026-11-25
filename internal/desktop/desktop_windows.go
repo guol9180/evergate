@@ -133,9 +133,9 @@ var startDetachedCommand = func(name string, args ...string) error {
 	return cmd.Process.Release()
 }
 
-// AcquireSingleInstance 获取当前用户会话内的 EverGate 命名互斥。
-func AcquireSingleInstance() (func(), bool, error) {
-	return acquireSingleInstance(`Local\EverGate`)
+// AcquireSingleInstance 获取当前用户会话内、按数据目录区分的 EverGate 命名互斥。
+func AcquireSingleInstance(dataDir string) (func(), bool, error) {
+	return acquireSingleInstance(`Local\EverGate-` + singleInstanceKey(dataDir))
 }
 
 func acquireSingleInstance(name string) (func(), bool, error) {

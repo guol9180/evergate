@@ -2,7 +2,7 @@
 
 package desktop
 
-func AcquireSingleInstance() (func(), bool, error) { return func() {}, true, nil }
+func AcquireSingleInstance(string) (func(), bool, error) { return func() {}, true, nil }
 
 func ShowError(string, string) {}
 

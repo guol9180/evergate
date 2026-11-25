@@ -37,6 +37,28 @@ func TestNamedSingleInstance(t *testing.T) {
 	reacquiredRelease()
 }
 
+func TestAcquireSingleInstanceScopedByDataDir(t *testing.T) {
+	dirA, dirB := t.TempDir(), t.TempDir()
+	releaseA, acquiredA, err := AcquireSingleInstance(dirA)
+	if err != nil || !acquiredA {
+		t.Fatalf("first data dir: acquired=%v err=%v", acquiredA, err)
+	}
+	defer releaseA()
+	secondRelease, second, err := AcquireSingleInstance(dirA)
+	if err != nil {
+		t.Fatalf("same data dir second acquire: %v", err)
+	}
+	if second {
+		secondRelease()
+		t.Fatal("same data dir must be rejected while first instance holds the mutex")
+	}
+	releaseB, acquiredB, err := AcquireSingleInstance(dirB)
+	if err != nil || !acquiredB {
+		t.Fatalf("different data dir: acquired=%v err=%v", acquiredB, err)
+	}
+	releaseB()
+}
+
 func TestTrayCommandsInvokeActions(t *testing.T) {
 	var opens, logs, restarts, exits atomic.Int32
 	previous := trayActions

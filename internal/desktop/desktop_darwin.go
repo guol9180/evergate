@@ -104,8 +104,8 @@ var startDetachedCommand = func(name string, args ...string) error {
 	return cmd.Process.Release()
 }
 
-// AcquireSingleInstance 使用当前用户缓存目录中的文件锁限制为单实例。
-func AcquireSingleInstance() (func(), bool, error) {
+// AcquireSingleInstance 使用当前用户缓存目录中按数据目录命名的文件锁限制为单实例。
+func AcquireSingleInstance(dataDir string) (func(), bool, error) {
 	root, err := os.UserCacheDir()
 	if err != nil {
 		root = os.TempDir()
@@ -114,7 +114,7 @@ func AcquireSingleInstance() (func(), bool, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, false, err
 	}
-	file, err := os.OpenFile(filepath.Join(dir, "instance.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	file, err := os.OpenFile(filepath.Join(dir, "instance-"+singleInstanceKey(dataDir)+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, false, err
 	}

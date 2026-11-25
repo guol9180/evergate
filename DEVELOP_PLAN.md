@@ -33,6 +33,7 @@
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
 | P3（已完成，4 卡待复验/延后） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布、T58 OpenCode Go 会话头/模型目录/日志刷新稳定性与 v0.5.1 发布、T60 JetBrains 空增量保活修复与 v0.5.2 发布、T62 JetBrains + ZAI reasoning 流兼容修复与 v0.5.3 发布、T63–T68 质量审查修复批次、T70–T72 成本统计修复与 v0.5.4/v0.5.5；实现完成待人工复验：T49 Windows 托盘 DPI 截图矩阵、T50 安装包更新真实升级冒烟、T52 托盘 Logo 多 DPI 截图矩阵；延后：T48 macOS 安装器（需 Apple Developer Program） | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、npm 五包与托盘 Logo 资源均已验证 |
 | P4（已完成） | 三视角审视改进批次：T73 流程治理与文档体系、T74 CI 门禁补齐、T75 后端补齐、T76 前端设计系统、T77 前端页面体验、T78 README 与用户文档、T79 i18n | 排除有支出项（Windows 代码签名、Apple 签名公证）；各卡按验收标准通过并整卡归档至 [P4](./docs/archive/P4.md)；`go test -race ./...`、`npm test`、`npm run build`、`make build` 证据已入卡 |
+| P5（进行中） | 内置浏览器体验审查修复与预设/价格/目录/首启：T96 单实例互斥按数据目录隔离、T88 全局布局与导航修复、T89 表单反馈与信息表达修复、T90 i18n 字典补全、T91 渠道预设/自定义分离与四协议、T92 预设模型价格、T93 下游模型目录接口、T94 首启管理员设置向导、T95 发布 v0.7.0 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint/test/build 通过；v0.7.0 按发版检查清单发布 |
 
 P0 功能完成定义（1–10 全部通过）：
 
@@ -56,6 +57,149 @@ P0 功能完成定义（1–10 全部通过）：
 ### 执行中
 
 ### 待执行（自上而下即执行顺序）
+
+> 来源：P5 体验审查与预设/价格/目录（2026-11-25 用户指令，内置浏览器真实环境审查 + 三条产品优化）。
+
+#### T88: 全局布局与导航修复（P1，UI 审查）
+
+- 目标：修复审查发现的全局布局缺陷：文档层双滚动条、侧栏宽度死区与底部按钮、路由切换滚动残留、趋势图刻度裁剪、KPI 卡落单、弹窗无过渡
+- 验收标准：
+  1. WHEN 在设置页把 `main` 滚到底并继续滚动 THEN 文档层不滚动（`document.scrollingElement.scrollTop` 恒为 0），侧栏与内容不滚出视口；仅 `main` 作为滚动容器
+  2. WHEN 视口宽度为 1000 / 1440 / 1600 / 1920 THEN 侧栏只有两态：72px 仅图标 或 ≥224px 带文字，不存在"变宽但不显示文字"的区间；底部语言/主题/退出按钮点击区 ≥32×32、svg 16px 不被压缩、不溢出侧栏边界；收起态每个按钮有 `title` tooltip；展开态「退出登录」单行显示
+  3. WHEN 从已滚动的页面切换路由 THEN 新页面 `main.scrollTop` 为 0
+  4. WHEN 用量页日趋势图出现三位数刻度（如 105/140） THEN 刻度文字完整显示，不被 SVG 视口裁剪
+  5. WHEN 概览页与用量页在 907px 宽度 THEN 4 张 KPI 卡为 2×2 或单行 4 列，无落单；用量页「Top 令牌」不落单
+  6. WHEN 打开/关闭弹窗与抽屉 THEN 有 ≥150ms 的淡入/滑入过渡，`transition` 属性不使用 `all`
+- 边界：不改业务逻辑与接口；不改配色与字体；不新增依赖
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡；来源：内置浏览器 UI 审查（907/1440/1600 三种宽度、浅色/深色）
+
+#### T89: 表单反馈与信息表达修复（P1/P2，UX 审查）
+
+- 目标：修复流程中的静默失败、歧义反馈与不一致表达：拉取模型静默失败、测试全部两步同名、测试结果无原因、冷却剩余为空、内联选择器排版、错误重复展示、状态码与成本语义、审计表不刷新、调试台响应框
+- 验收标准：
+  1. WHEN 编辑渠道点「从上游拉取」失败 THEN 按钮下方显示错误原因（修复 `Channels.tsx` 中 `showModelPicker && preview.isError` 条件）；成功时打开选择器
+  2. WHEN 新建渠道未保存 THEN 「支持的模型」不再必填（留空可保存后拉取），「从上游拉取」显示 tooltip「保存后可用」；不再出现"必填但拉取不可用"的死胡同
+  3. WHEN 点击「测试全部」 THEN 直接开始探测并显示进度与「N/M 成功」，不再出现第二个同名按钮
+  4. WHEN 单渠道测试失败 THEN 结果标签显示可读原因（tooltip + 展开详情），不再只显示「✗ 0」；新建未测试渠道状态为「未测试」而非「正常」；测试结果与状态不矛盾
+  5. WHEN key 处于冷却 THEN 「冷却剩余」显示剩余时间，不显示「—」；渠道行 0 可用时显示原因（如「key 冷却中」）
+  6. 模型映射「新增」改为 `<button>`（可聚焦）且单行不折行；令牌/渠道内联选择器横跨弹窗全宽，0 项时隐藏搜索框；内联选择器的「取消」改为「收起」，不与弹窗「取消」同名
+  7. 「渠道 + 模型覆盖」两个价格输入有可见标签「输入 / 输出」
+  8. 调试台与日志详情中同一错误只展示一次；上游 JSON 错误解析为「上游错误码 + message」，原始文本折叠可复制；重试轨迹不重复整段错误
+  9. 日志表 4xx/5xx 状态码使用警示色；TOKENS 列标注输入/输出
+  10. 用量页 Top 表成本与 KPI 一致：未计价显示「—」，不显示 `$0`；已删除渠道/令牌显示「已删除」，不显示 `#0`
+  11. 设置保存后同页审计日志立即刷新
+  12. 调试台响应框高度随内容自适应（最小 120px）；`source=playground`、`reasoning` 等界面文案统一为中文
+- 边界：不改 relay/调度；不新增 toast 框架（沿用内联反馈）；不处理 i18n（T90）
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡；来源：内置浏览器用户旅程体验
+
+#### T90: i18n 字典补全（P2，T79 剩余）
+
+- 目标：补全 T79 未完成的英文字典：7 个页面的筛选、卡片、表头、徽章、弹窗、校验文案全部走 `t()`；若本批次末仍未完成，则隐藏语言切换按钮直到字典完整，不得发布中英混排
+- 验收标准：
+  1. WHEN 切换 English THEN 7 个页面 `main` 内不含中文字符（品牌/专有名词除外）
+  2. `npm run lint`、`npm test`、`npm run build` 通过；新增测试覆盖字典缺键（`t()` 回退检查）
+  3. 语言偏好持久化，刷新后保持
+- 边界：只做英文；不改布局
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡；来源：英文模式审查（仅导航与标题已翻译）
+
+#### T91: 渠道预设/自定义分离与四协议（P2，用户决策）
+
+- 目标：新建/编辑渠道分为「供应商预设」与「自定义」两种模式：预设模式下用户只可修改**模型列表、API 地址（预填可改）、API 密钥**三项，名称/协议/优先级/权重/超时全部由预设决定且不显示；自定义模式选择上游协议，协议仅四种：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages、Gemini API
+- 已确认决策：
+  1. 协议在数据层仍映射到现有 `supports_responses / supports_anthropic / supports_gemini` 能力位，Chat Completions 为基础协议（网关始终以 CC 兜底）；自定义模式 UI 为多选，Chat Completions 固定勾选不可取消；移除 8 个技术性 `type` 选项（openai / openai-compatible / deepseek / vllm / anthropic / anthropic-compatible / gemini / gemini-compat）
+  2. 渠道新增 `preset_id` 列（AutoMigrate）：预设创建的渠道写入预设 id，自定义为空；`type` 字段保留并按协议派生写入，兼容配置导出/导入
+  3. 「DeepSeek（Anthropic 兼容）」「Kimi（Anthropic 兼容）」保留为独立预设（同厂商不同协议）
+  4. 预设模式名称自动生成（预设默认名，重名自动追加 `-2` / `-3`），不可见不可改；优先级 0、权重 1、超时留空跟随全局；这些字段只在「切换为自定义」后显示并可修改（2026-11-25 用户修正：预设后用户可改的只有模型列表、API 地址、API 密钥）
+- 验收标准：
+  1. WHEN 新建渠道选择预设 THEN 表单只有四项：供应商预设、模型列表、API 地址（预填）、API 密钥；不显示名称、类型、协议开关、优先级、权重、超时；保存后 `preset_id` 写入、名称自动生成
+  2. WHEN 同一预设重复创建 THEN 名称自动追加序号，不触发唯一索引冲突
+  3. WHEN 选择「自定义」 THEN 显示名称、「上游协议」四项多选（Chat Completions 固定勾选）、优先级/权重/超时，不再出现技术性 type 下拉；保存后能力位与选择一致
+  4. WHEN 编辑预设渠道 THEN 同样只显示模型列表、API 地址、API 密钥三项，并以只读标签展示协议（如「Chat Completions · Responses 原生」）；点「切换为自定义」后显示全部字段并可修改，`preset_id` 置空
+  5. 现有渠道（`preset_id` 为空）编辑时按自定义模式展示，能力位不变；配置导出/导入含 `preset_id`
+  6. `GET /admin/api/channels` 返回 `preset_id`；`go test -p 1 ./...`、前端 lint/test/build 通过
+- 边界：不改 relay 转发与桥接；不删除 `type` 列；不新增预设厂商
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡；来源：用户产品优化 #1
+  - 2026-11-25 修正 用户明确预设模式只保留模型列表、API 地址、API 密钥三项可改；名称自动生成、高级字段仅切换自定义后可见
+
+#### T92: 预设模型价格（P2，用户决策）
+
+- 目标：预设渠道自动获得模型价格：内置价格目录（按预设厂商，USD / 百万 token），计价按「渠道+模型覆盖 → 全局默认 → 预设目录」回退；管理台可查看、修改；上游返回 OpenRouter 风格价格字段时可在拉取时写入
+- 已确认决策：
+  1. 价格目录放后端 `internal/usage/catalog.json`（go:embed），条目含 `preset_id / upstream_model / input / output / currency / source_url / as_of`；不引入 LiteLLM 价格表（P4 已决策延后）
+  2. 计价回退链：`override(channel, upstream_model)` → `global default` → `catalog[preset_id][upstream_model]`；目录命中时 `cost_status=priced` 并在日志详情/用量页标注「预设价格」；未命中仍为 `unpriced`
+  3. 用量页「模型价格」新增「按预设查看」与「一键写入为该渠道覆盖」；渠道编辑弹窗预设模式下显示当前模型价格与来源
+  4. 「从上游拉取」响应含 `pricing.prompt/completion`（per token）时，选择器显示价格并勾选"写入价格"
+- 验收标准：
+  1. WHEN 预设渠道的模型在目录中且无手工价格 THEN 请求完成后 `cost_status=priced`、成本 = usage × 目录价；日志详情与用量 Top 表显示金额与「预设价格」来源
+  2. WHEN 存在渠道+模型覆盖或全局默认 THEN 以手工价格为准，目录不生效
+  3. WHEN 用量页点「一键写入」 THEN 为该渠道每个目录内模型创建覆盖记录（已存在则不覆盖），审计记录 `prices`
+  4. 目录首次覆盖 OpenAI / DeepSeek / 智谱 BigModel 常规与 Coding / Z.ai Coding / OpenCode Go / Kimi / Anthropic / Gemini 预设的 `modelsPlaceholder` 模型；每条含来源 URL 与日期
+  5. 单测覆盖回退链三种顺序、目录未命中、覆盖优先；`go test -p 1 ./...`、前端通过
+- 边界：不抓取外部网页；不做汇率换算（统一 USD）；不追溯重算历史；不改额度扣减
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡；来源：用户产品优化 #2
+
+#### T93: 下游模型目录接口（P2，用户决策）
+
+- 目标：让下游一键获取可用模型：完善现有 `GET /v1/models`（按令牌允许模型过滤），补 Gemini `GET /v1beta/models` 与 Anthropic 形态（携带 `anthropic-version` 时返回 Anthropic 结构），并在令牌创建结果与 README 展示调用示例
+- 验收标准：
+  1. WHEN 携带令牌请求 `GET /v1/models` THEN 只返回启用渠道对外模型 ∩ 令牌允许模型（未限制则全部），按名称排序去重；无令牌/无效令牌 401
+  2. WHEN 以 `x-goog-api-key` 请求 `GET /v1beta/models` THEN 返回 Gemini `models[]` 结构，名称为 `models/<对外模型>`
+  3. WHEN `GET /v1/models` 携带 `anthropic-version` THEN 返回 `{data:[{type:"model",id,display_name,created_at}],has_more:false}`
+  4. 令牌创建成功弹窗展示三种调用示例（curl）；README「接入客户端」补 `/v1/models`
+  5. 单测覆盖过滤、三协议形态、鉴权
+- 边界：不新增管理接口；不改上游目录拉取
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡；来源：用户产品优化 #3（现状：`/v1/models` 已存在但未按令牌过滤、未文档化）
+
+#### T94: 首启管理员设置向导（P2，用户决策）
+
+- 目标：首次启动不再随机生成密码打印到日志，而是进入与登录页同款的「初始化管理员账号」界面，强制设置用户名与密码；设置成功后进入登录页，登录后才进入主页。替代 T75 第 6 条的随机密码流程
+- 已确认决策：
+  1. 启动时 admins 为空且未设置 `EVERGATE_INITIAL_ADMIN_PASSWORD` → 不创建管理员，日志提示"请在管理台完成初始管理员设置"；设置了该环境变量则保留现有自动化路径（自动创建、首登强制改密），供容器 / 无界面部署使用
+  2. 新增 `GET /admin/api/auth/setup-status`（返回 `setup_required`）与 `POST /admin/api/auth/setup`（`username` + `password`）；setup 接口仅在 admins 为空时可调用，且**始终仅限 loopback**（不受 `server.admin_loopback_only` 影响），已存在管理员时返回 403；并发调用只允许一个成功
+  3. 校验在服务端强制：用户名 3–32 位 `[A-Za-z0-9_.-]`（预填 `admin`），密码沿用现有改密策略（≥8 位、至少三类字符）；创建后 `must_change_password=false`，写审计 `setup_admin`
+  4. 设置成功后跳转 `/login` 并预填用户名，由用户登录进入主页（不自动登录）
+  5. `/login` 检测到 `setup_required` 自动跳 `/setup`；`/setup` 在已完成设置时跳回 `/login`；桌面版 `open_browser` 打开根路径同样落到 `/setup`
+  6. 已有安装（admins 非空）升级后行为不变
+- 验收标准：
+  1. WHEN 全新数据目录启动且未设环境变量 THEN 控制台与日志不再出现密码；`/` 重定向到 `/setup`，页面与登录页同款（Logo、品牌、卡片），含用户名、密码、确认密码
+  2. WHEN 提交弱密码 / 非法用户名 / 两次密码不一致 THEN 表单内联提示，不发请求或服务端 400
+  3. WHEN 设置成功 THEN 跳转 `/login` 且用户名已预填；用该账号登录后进入 `/`；审计日志出现 `setup_admin`
+  4. WHEN 已存在管理员 THEN `POST /auth/setup` 返回 403；WHEN 非回环地址请求 setup THEN 403
+  5. WHEN 启动前设置 `EVERGATE_INITIAL_ADMIN_PASSWORD` THEN 保持旧行为（自动创建 + 首登强制改密），`web/scripts` 布局审计脚本不受影响
+  6. README「快速开始」第 2 步、「安全模型」、运维配置「初始管理员密码」小节、FAQ 同步为新流程；Go 单测覆盖空表 / 非空表 / 非回环 / 校验 / 并发；前端测试覆盖设置页渲染、校验、跳转
+- 边界：不做多管理员、不做邮箱/找回密码；不改 session 机制；不自动登录
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡；来源：用户产品优化 #4（替换随机初始密码流程）
+
+#### T95: 发布 v0.7.0（P2）
+
+- 目标：T88–T94 验收后按发版检查清单发布 v0.7.0（新增功能 → MINOR）
+- 验收标准：CHANGELOG `## v0.7.0` 与 tag 精确对应且在 main 历史；CI 全绿；真实旧→新升级一次并回写证据
+- 边界：不包含 macOS 安装器
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：planned
+- 进度：
+  - 2026-11-25 计划 建卡
 
 > 来源：P3 待复验任务（由 T73 拆分）。
 
@@ -221,3 +365,4 @@ P0 功能完成定义（1–10 全部通过）：
 
 - [P0 归档任务卡](./docs/archive/P0.md) · [P1](./docs/archive/P1.md) · [P2](./docs/archive/P2.md) · [P3](./docs/archive/P3.md)
 - [P4：T73–T80 三视角改进批次](./docs/archive/P4.md)（done）
+- [P5：T88–T96 体验审查修复与预设/价格/目录/首启](./docs/archive/P5.md)（进行中，done 卡逐张迁入）

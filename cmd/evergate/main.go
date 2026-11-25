@@ -85,7 +85,7 @@ func run() error {
 	slog.SetDefault(logger)
 	defer func() { _ = logCloser.Close() }()
 
-	releaseInstance, primary, err := desktop.AcquireSingleInstance()
+	releaseInstance, primary, err := desktop.AcquireSingleInstance(paths.DataDir)
 	if err != nil {
 		return fmt.Errorf("acquire single instance: %w", err)
 	}
