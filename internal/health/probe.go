@@ -173,7 +173,8 @@ func (p *Prober) doModelsProbe(ctx context.Context, ch *store.Channel, plainKey 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	snippet := summarizeBody(body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		message := fmt.Sprintf("上游模型目录探测失败（HTTP %d）", resp.StatusCode)
+		// 诊断文本随渠道存库并原样展示；用与日志一致的中性英文前缀，避免中英界面混排
+		message := fmt.Sprintf("models probe failed: HTTP %d", resp.StatusCode)
 		if snippet != "" {
 			message += ": " + snippet
 		}

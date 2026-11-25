@@ -61,7 +61,7 @@ export default function Channels() {
                 <tr>
           <Th className="w-8" /><Th>{t('table.name')}</Th><Th>{t('table.status')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.type')}</Th>
           <Th className="hidden min-[1180px]:table-cell">{t('table.priority')}</Th><Th className="hidden min-[1220px]:table-cell">{t('table.weight')}</Th>
-          <Th>{t('table.model')}</Th><Th>{t('table.keys')}</Th><Th className="hidden min-[1280px]:table-cell">{t('table.lastProbe')}</Th>
+          <Th>{t('table.model')}</Th><Th>{t('table.keys')}</Th><Th className="hidden min-[1360px]:table-cell">{t('table.lastProbe')}</Th>
           <Th>{t('table.enabled')}</Th><Th>{t('table.test')}</Th><Th className="w-24"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
                 </tr>
               </thead>
@@ -159,12 +159,12 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
           <span className="font-medium">{c.available_key_count}</span>
           <span className="text-subtle"> / {c.key_count}</span>
         </Td>
-        <Td className="hidden max-w-56 min-[1280px]:table-cell">
+        <Td className="hidden max-w-48 min-[1360px]:table-cell">
           <div className="text-xs text-muted">
           {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
           </div>
           {c.last_probe_error && (
-            <div className="truncate text-xs text-subtle" title={c.last_probe_error}>{c.last_probe_error}</div>
+            <div className="truncate text-xs text-subtle" title={c.last_probe_error} data-upstream="true">{c.last_probe_error}</div>
           )}
         </Td>
         <Td>
@@ -219,7 +219,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
             <tr>
               <Th>#</Th><Th>{t('table.status')}</Th><Th>{t('table.weight')}</Th><Th>{t('table.consecutiveFails')}</Th>
               <Th className="hidden min-[1180px]:table-cell">{t('table.backoffLevel')}</Th><Th>{t('table.cooldownRemaining')}</Th>
-              <Th className="hidden min-[1220px]:table-cell">{t('table.successFail')}</Th><Th className="hidden min-[1280px]:table-cell">{t('table.lastError')}</Th>
+              <Th className="hidden min-[1220px]:table-cell">{t('table.successFail')}</Th><Th className="hidden min-[1360px]:table-cell">{t('table.lastError')}</Th>
               <Th>{t('table.enabled')}</Th><Th className="w-16"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
             </tr>
           </thead>
@@ -239,7 +239,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                   <Td className="hidden min-[1180px]:table-cell">L{k.level}</Td>
                   <Td>{cooling ? <span className="text-warning-text">{formatRemainingSeconds(k.cooldown_remaining_sec)}</span> : '—'}</Td>
                   <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
-                  <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1280px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
+                  <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1360px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
                     <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
                   </Td>

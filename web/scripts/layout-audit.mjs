@@ -23,12 +23,17 @@ const baseURL = (args.get('--url') || 'http://127.0.0.1:8787').replace(/\/$/, ''
 const chrome = args.get('--chrome') || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const screenshotDir = args.get('--screenshots')
 const seed = args.has('--seed')
+const widthArg = args.get('--widths')
+const themeArg = args.get('--theme') || 'system'
+const localeArg = args.get('--locale') || 'zh'
 const username = process.env.EG_AUDIT_USER || 'admin'
 // 初始密码自 T75 起为随机生成：审计前请以 EVERGATE_INITIAL_ADMIN_PASSWORD 启动被测服务，或在此处指定 EG_AUDIT_PASSWORD。
 let password = process.env.EG_AUDIT_PASSWORD || 'admin123'
 const nextPassword = process.env.EG_AUDIT_NEW_PASSWORD
-const widths = [360, 390, 768, 1024, 1280, 1440, 1600, 1920, 2560]
-const screenshotWidths = new Set([390, 768, 1280, 1440, 1920])
+const widths = widthArg
+  ? widthArg.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value) && value > 0)
+  : [360, 390, 768, 1024, 1280, 1440, 1600, 1920, 2560]
+const screenshotWidths = new Set([390, 768, 907, 1280, 1440, 1920])
 const pages = ['/', '/channels', '/tokens', '/logs', '/playground', '/usage', '/settings']
 
 let mockServer
@@ -66,6 +71,10 @@ try {
     url: baseURL,
     path: '/',
   })
+  // 主题 / 语言存在 localStorage：在文档脚本执行前写入，保证首帧就是目标变体
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `try { localStorage.setItem('eg-theme', ${JSON.stringify(themeArg)}); localStorage.setItem('eg-locale', ${JSON.stringify(localeArg === 'en' ? 'en' : 'zh-CN')}) } catch (error) {}`,
+  })
 
   if (screenshotDir) await mkdir(screenshotDir, { recursive: true })
   const results = []
@@ -78,7 +87,13 @@ try {
       const loaded = cdp.waitEvent('Page.loadEventFired')
       await cdp.send('Page.navigate', { url: baseURL + route })
       await loaded
-      await new Promise((resolve) => setTimeout(resolve, 350))
+      // 懒加载路由（Usage）与数据请求需要时间：轮询 main 有内容后再测，避免把骨架屏当成通过
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const ready = await evaluate(`(() => { const main = document.querySelector('main'); return !!main && main.innerText.trim().length > 30 })()`)
+        if (ready) break
+        await new Promise((resolve) => setTimeout(resolve, 200))
+      }
+      await new Promise((resolve) => setTimeout(resolve, 300))
       const metrics = await evaluate(`(() => {
         const root = document.documentElement;
         const tables = [...document.querySelectorAll('table')].map((table) => {
@@ -90,12 +105,24 @@ try {
           };
         });
         const sidebar = document.querySelector('aside');
+        // 上游返回的原始错误文本按数据展示，不参与"英文界面无中文"判定
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        let bodyText = '';
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          if (node.parentElement?.closest('[data-upstream]')) continue;
+          bodyText += (node.nodeValue || '') + '\\n';
+        }
+        const cjk = (bodyText.match(/[\u4e00-\u9fff]/g) || []).length;
+        const cjkSamples = (bodyText.match(/.{0,10}[\u4e00-\u9fff]+.{0,10}/g) || []).slice(0, 4);
         return {
           innerWidth,
           docClientWidth: root.clientWidth,
           docScrollWidth: root.scrollWidth,
           bodyScrollWidth: document.body.scrollWidth,
           sidebarWidth: sidebar ? Math.round(sidebar.getBoundingClientRect().width * 10) / 10 : 0,
+          cjk,
+          cjkSamples,
           tables,
         };
       })()`)
@@ -104,12 +131,15 @@ try {
       if (row.docScrollWidth > row.docClientWidth + 1 || row.bodyScrollWidth > row.docClientWidth + 1) {
         failures.push(`${width}px ${route}: page horizontal overflow ${row.docScrollWidth}/${row.docClientWidth}`)
       }
-      if (width >= 1024 && row.tables.some((table) => table.containerOverflow > 1 || table.tableOverflow > 1)) {
+      if (width >= 900 && row.tables.some((table) => table.containerOverflow > 1 || table.tableOverflow > 1)) {
         failures.push(`${width}px ${route}: table overflow ${JSON.stringify(row.tables)}`)
+      }
+      if (localeArg === 'en' && row.cjk > 0) {
+        failures.push(`${width}px ${route}: ${row.cjk} CJK characters left in English mode ${JSON.stringify(row.cjkSamples)}`)
       }
       if (screenshotDir && screenshotWidths.has(width)) {
         const shot = await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true })
-        const name = `${width}-${route === '/' ? 'dashboard' : route.slice(1)}.png`
+        const name = `${width}-${route === '/' ? 'dashboard' : route.slice(1)}-${themeArg}-${localeArg}.png`
         await writeFile(path.join(screenshotDir, name), Buffer.from(shot.data, 'base64'))
       }
     }
@@ -294,6 +324,8 @@ async function evaluate(expression) {
     returnByValue: true,
     awaitPromise: true,
   })
-  if (result.exceptionDetails) throw new Error(result.exceptionDetails.text || 'page evaluation failed')
+  if (result.exceptionDetails) {
+    throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text || 'page evaluation failed')
+  }
   return result.result.value
 }

@@ -139,7 +139,7 @@ function Metric({ label, value, hint, warning }: { label: string; value: string;
 
 function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
   return (
-    <Card className="flex h-full flex-col">
+    <Card className="flex flex-col self-start">
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-brand-text" /> {t('usage.trend')}</h3>
         <div className="flex items-center gap-3 text-xs text-subtle">
@@ -148,8 +148,7 @@ function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
         </div>
       </div>
       {daily.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
-        // 右侧价格卡更高时，让图跟着卡片一起长，避免图下方留下大块空白
-        <div className="mt-4 min-h-56 flex-1 xl:min-h-72">
+        <div className="mt-4 h-[clamp(224px,32vw,360px)]">
           <TrendChart data={daily} className="h-full" />
         </div>
       )}

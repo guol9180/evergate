@@ -127,11 +127,11 @@ export default function Logs() {
           <Empty icon={<ScrollText size={36} />} title={t('empty.logs.title')} hint={t('empty.logs.hint')} />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px]">
+            <table className="w-full min-w-[720px]">
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
                   <Th>{t('table.time')}</Th><Th>{t('table.model')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.channel')}</Th><Th>{t('table.status')}</Th>
-          <Th>{t('table.firstToken')}</Th><Th>{t('table.totalMs')}</Th><Th title={t('table.tokensTitle')}>{t('table.tokens')}</Th><Th>{t('table.cost')}</Th>
+          <Th className="hidden min-[1080px]:table-cell">{t('table.firstToken')}</Th><Th>{t('table.totalMs')}</Th><Th title={t('table.tokensTitle')}>{t('table.tokens')}</Th><Th>{t('table.cost')}</Th>
                   <Th className="hidden min-[1180px]:table-cell">{t('table.token')}</Th><Th className="hidden min-[1240px]:table-cell">{t('table.retry')}</Th>
                 </tr>
               </thead>
@@ -148,7 +148,7 @@ export default function Logs() {
                     </Td>
                     <Td className="hidden text-muted min-[1120px]:table-cell">{l.channel_name || '—'}</Td>
         <Td><span className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</span></Td>
-                    <Td>{fmtMs(l.first_token_ms || undefined)}</Td>
+                    <Td className="hidden min-[1080px]:table-cell">{fmtMs(l.first_token_ms || undefined)}</Td>
                     <Td>{fmtMs(l.total_ms || undefined)}</Td>
                     <Td className="text-xs text-muted">{l.prompt_tokens}/{l.completion_tokens}</Td>
                     <Td className="whitespace-nowrap text-xs">{fmtRequestCost(l.cost_micros, l.cost_status)}</Td>
@@ -211,7 +211,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
           </div>
 
           {log.error_message && (
-            <div className="rounded-lg bg-danger-subtle p-3">
+            <div className="rounded-lg bg-danger-subtle p-3" data-upstream="true">
               <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-danger-text">
                 <span>{kindText(log.error_type)}</span>
                 {describeUpstreamError(log.error_message).code && <Badge tone="neutral">{tf('retry.upstreamCode', { code: describeUpstreamError(log.error_message).code ?? '' })}</Badge>}

@@ -227,7 +227,7 @@ export default function Dashboard() {
           {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
                     </Td>
                     <Td className="hidden max-w-56 min-[1180px]:table-cell">
-                      <div className="truncate text-xs text-subtle" title={c.last_probe_error || undefined}>
+                      <div className="truncate text-xs text-subtle" title={c.last_probe_error || undefined} data-upstream={c.last_probe_error ? 'true' : undefined}>
                         {c.last_probe_error || '—'}
                       </div>
                     </Td>

@@ -212,7 +212,7 @@ export default function Playground() {
           </div>
 
           {error && (
-            <div className="border-t border-danger-border bg-danger-subtle text-xs leading-5 text-danger-text" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
+            <div className="border-t border-danger-border bg-danger-subtle text-xs leading-5 text-danger-text" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }} data-upstream="true">
               <span className="break-words" title={error}>{describeUpstreamError(error).text}</span>
             </div>
           )}

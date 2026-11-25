@@ -38,14 +38,14 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
     <div className={`w-full ${className}`}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={rows} margin={{ top: 10, right: 0, bottom: 0, left: 0 }} accessibilityLayer>
-          <CartesianGrid vertical={false} stroke="#eef2f7" strokeDasharray="3 3" />
+          <CartesianGrid vertical={false} stroke="var(--color-line)" strokeDasharray="3 3" />
           <XAxis
             dataKey="label"
             tickLine={false}
             axisLine={false}
             tickMargin={8}
             minTickGap={20}
-            tick={{ fontSize: 11, fill: '#94a3b8' }}
+            tick={{ fontSize: 11, fill: 'var(--color-subtle)' }}
           />
           <YAxis
             yAxisId="requests"
@@ -53,7 +53,7 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
             allowDecimals={false}
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 11, fill: '#94a3b8' }}
+            tick={{ fontSize: 11, fill: 'var(--color-subtle)' }}
           />
           <YAxis
             yAxisId="rate"
@@ -64,7 +64,7 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
             tickFormatter={(value: number) => `${value}%`}
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 11, fill: '#94a3b8' }}
+            tick={{ fontSize: 11, fill: 'var(--color-subtle)' }}
           />
           <Tooltip
             content={ChartTooltip}
@@ -74,19 +74,19 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
             yAxisId="requests"
             dataKey="requests"
             name={t('chart.requests')}
-            fill="#6366f1"
+            fill="var(--color-brand-text)"
             radius={[4, 4, 0, 0]}
             maxBarSize={28}
-            activeBar={{ fill: '#4f46e5' }}
+            activeBar={{ fill: 'var(--color-brand-text)' }}
           />
           <Line
             yAxisId="rate"
             dataKey="successRate"
             name={t('chart.successRate')}
-            stroke="#10b981"
+            stroke="var(--color-success-solid)"
             strokeWidth={2}
             connectNulls={false}
-            dot={rows.length <= 14 ? { r: 2.5, fill: '#10b981', strokeWidth: 0 } : false}
+            dot={rows.length <= 14 ? { r: 2.5, fill: 'var(--color-success-solid)', strokeWidth: 0 } : false}
             activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }}
           />
         </ComposedChart>
