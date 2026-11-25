@@ -270,19 +270,72 @@ func filterChannels(channels []*store.Channel, model string, ids []int64) ([]*st
 	return out, nil
 }
 
-// HandleModels 处理 GET /v1/models：启用渠道模型去重合并。
-func (r *Relay) HandleModels(c *gin.Context) {
+// modelCatalog 返回启用渠道的对外模型，并按令牌允许模型过滤（令牌未限制或未鉴权时返回全部）。
+func (r *Relay) modelCatalog(c *gin.Context) ([]string, bool) {
 	var channels []*store.Channel
 	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
 		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
-		return
+		return nil, false
 	}
 	models := router.PublicModelCatalog(channels)
+	token := tokenSnapshotFromContext(c)
+	if token == nil || len(token.AllowedModels) == 0 {
+		return models, true
+	}
+	allowed := make(map[string]bool, len(token.AllowedModels))
+	for _, model := range token.AllowedModels {
+		allowed[model] = true
+	}
+	filtered := make([]string, 0, len(models))
+	for _, model := range models {
+		if allowed[model] {
+			filtered = append(filtered, model)
+		}
+	}
+	return filtered, true
+}
+
+// HandleModels 处理 GET /v1/models：启用渠道模型去重排序，按令牌允许模型过滤；
+// 携带 anthropic-version 时返回 Anthropic 模型列表结构，其余按 OpenAI 结构返回。
+func (r *Relay) HandleModels(c *gin.Context) {
+	models, ok := r.modelCatalog(c)
+	if !ok {
+		return
+	}
+	if c.GetHeader("anthropic-version") != "" {
+		// 网关不记录模型创建时间，用固定 epoch 占位，避免编造日期
+		data := make([]gin.H, 0, len(models))
+		for _, m := range models {
+			data = append(data, gin.H{"type": "model", "id": m, "display_name": m, "created_at": "1970-01-01T00:00:00Z"})
+		}
+		payload := gin.H{"data": data, "has_more": false}
+		if len(models) > 0 {
+			payload["first_id"], payload["last_id"] = models[0], models[len(models)-1]
+		}
+		c.JSON(http.StatusOK, payload)
+		return
+	}
 	data := make([]gin.H, 0, len(models))
 	for _, m := range models {
 		data = append(data, gin.H{"id": m, "object": "model", "created": 0, "owned_by": "evergate"})
 	}
 	c.JSON(http.StatusOK, gin.H{"object": "list", "data": data})
+}
+
+// HandleGeminiModels 处理 GET /v1beta/models：Gemini 风格模型列表，名称为 models/<对外模型>。
+func (r *Relay) HandleGeminiModels(c *gin.Context) {
+	models, ok := r.modelCatalog(c)
+	if !ok {
+		return
+	}
+	out := make([]gin.H, 0, len(models))
+	for _, m := range models {
+		out = append(out, gin.H{
+			"name": "models/" + m, "baseModelId": m, "version": "001", "displayName": m,
+			"supportedGenerationMethods": []string{"generateContent", "streamGenerateContent"},
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"models": out})
 }
 
 // finishRequest 统一处理额度结算与请求日志，Chat/Responses 两条入口不得各自分叉。

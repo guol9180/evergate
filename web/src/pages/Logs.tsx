@@ -71,13 +71,12 @@ export default function Logs() {
         description={t('page.logs.desc')}
         actions={(
           <>
-            <Button size="sm" variant="outline" disabled={exporting || total === 0} onClick={() => void exportCsv()} title={t('logs.exportTitle')}>
+            <Button variant="outline" disabled={exporting || total === 0} onClick={() => void exportCsv()} title={t('logs.exportTitle')}>
               <Download size={14} /> {exporting ? t('common.exporting') : t('common.export')}
             </Button>
             <Button
-              size="sm"
               variant="outline"
-              className="w-[78px]"
+              className="min-w-[92px]"
               disabled={logs.isFetching}
               aria-busy={logs.isFetching}
               onClick={() => void logs.refetch()}

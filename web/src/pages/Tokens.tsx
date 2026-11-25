@@ -6,7 +6,7 @@ import { Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, In
 import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime, tokenStatusLabel, tokenStatusTone } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
-import { clientEnvSnippet, copyText } from '../lib/clipboard'
+import { clientEnvSnippet, copyText, modelListSnippets } from '../lib/clipboard'
 import { currentBasePath } from '../lib/runtime'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
@@ -15,8 +15,10 @@ import { t, tf } from '../lib/i18n'
 function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () => void }) {
   const baseURL = `${window.location.origin}${currentBasePath() || ''}/v1`
   const snippet = clientEnvSnippet(apiKey, baseURL)
+  const modelsSnippet = modelListSnippets(baseURL)
   const [copiedKey, setCopiedKey] = useState<'' | 'ok' | 'fail'>('')
   const [copiedSnippet, setCopiedSnippet] = useState<'' | 'ok' | 'fail'>('')
+  const [copiedModels, setCopiedModels] = useState<'' | 'ok' | 'fail'>('')
 
   const copy = async (text: string, setter: (v: '' | 'ok' | 'fail') => void) => {
     const ok = await copyText(text)
@@ -43,9 +45,21 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
             <span className="font-normal text-subtle">{t('tokens.created.snippetHint')}</span>
           </div>
           <div className="relative rounded-lg border border-line bg-surface-soft p-3 pr-12">
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-5 text-foreground-soft">{snippet}</pre>
+            <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-5 text-foreground-soft">{snippet}</pre>
             <div className="absolute right-2 top-2">
               <CopyButton state={copiedSnippet} onCopy={() => void copy(snippet, setCopiedSnippet)} />
+            </div>
+          </div>
+        </div>
+        <div>
+          <div className="mb-1.5 flex items-center justify-between text-xs font-medium text-foreground-soft">
+            <span>{t('tokens.created.models')}</span>
+            <span className="font-normal text-subtle">{t('tokens.created.modelsHint')}</span>
+          </div>
+          <div className="relative rounded-lg border border-line bg-surface-soft p-3 pr-12">
+            <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-5 text-foreground-soft">{modelsSnippet}</pre>
+            <div className="absolute right-2 top-2">
+              <CopyButton state={copiedModels} onCopy={() => void copy(modelsSnippet, setCopiedModels)} />
             </div>
           </div>
         </div>

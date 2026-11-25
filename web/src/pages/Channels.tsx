@@ -41,7 +41,8 @@ export default function Channels() {
         description={t('page.channels.desc')}
         actions={(
           <>
-            <Button size="sm" variant={showTestAll ? 'default' : 'outline'} onClick={() => setShowTestAll((v) => !v)} aria-pressed={showTestAll}>
+            {/* 与「新建渠道」同尺寸：同一操作行里的按钮高度必须一致 */}
+            <Button variant={showTestAll ? 'default' : 'outline'} onClick={() => setShowTestAll((v) => !v)} aria-pressed={showTestAll}>
               <Plug size={14} /> {t('common.testAll')}
             </Button>
             <Button onClick={() => setEditing('new')}><Plus size={15} /> {t('page.channels.create')}</Button>

@@ -33,7 +33,7 @@
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
 | P3（已完成，4 卡待复验/延后） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布、T58 OpenCode Go 会话头/模型目录/日志刷新稳定性与 v0.5.1 发布、T60 JetBrains 空增量保活修复与 v0.5.2 发布、T62 JetBrains + ZAI reasoning 流兼容修复与 v0.5.3 发布、T63–T68 质量审查修复批次、T70–T72 成本统计修复与 v0.5.4/v0.5.5；实现完成待人工复验：T49 Windows 托盘 DPI 截图矩阵、T50 安装包更新真实升级冒烟、T52 托盘 Logo 多 DPI 截图矩阵；延后：T48 macOS 安装器（需 Apple Developer Program） | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、npm 五包与托盘 Logo 资源均已验证 |
 | P4（已完成） | 三视角审视改进批次：T73 流程治理与文档体系、T74 CI 门禁补齐、T75 后端补齐、T76 前端设计系统、T77 前端页面体验、T78 README 与用户文档、T79 i18n | 排除有支出项（Windows 代码签名、Apple 签名公证）；各卡按验收标准通过并整卡归档至 [P4](./docs/archive/P4.md)；`go test -race ./...`、`npm test`、`npm run build`、`make build` 证据已入卡 |
-| P5（进行中） | 内置浏览器体验审查修复与预设/价格/目录/首启：T96 单实例互斥按数据目录隔离、T88 全局布局与导航修复、T89 表单反馈与信息表达修复、T90 i18n 字典补全、T91 渠道预设/自定义分离与四协议、T92 预设模型价格、T93 下游模型目录接口、T94 首启管理员设置向导、T97 全页面 UI/UX 逐项验收、T95 发布 v0.7.0 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint/test/build 通过；T97 矩阵全绿后才进入发版；v0.7.0 按发版检查清单发布 |
+| P5（进行中） | 内置浏览器体验审查修复与预设/价格/目录/首启：T96 单实例互斥按数据目录隔离、T88 全局布局与导航修复、T89 表单反馈与信息表达修复、T90 i18n 字典补全、T91 渠道预设/自定义分离与四协议、T92 预设模型价格、T98 全局控件尺寸与对齐统一、T93 下游模型目录接口、T94 首启管理员设置向导、T97 全页面 UI/UX 逐项验收、T95 发布 v0.7.0 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint/test/build 通过；T97 矩阵全绿后才进入发版；v0.7.0 按发版检查清单发布 |
 
 P0 功能完成定义（1–10 全部通过）：
 
@@ -60,21 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 
 > 来源：P5 体验审查与预设/价格/目录（2026-11-25 用户指令，内置浏览器真实环境审查 + 三条产品优化）。
 
-
-#### T93: 下游模型目录接口（P2，用户决策）
-
-- 目标：让下游一键获取可用模型：完善现有 `GET /v1/models`（按令牌允许模型过滤），补 Gemini `GET /v1beta/models` 与 Anthropic 形态（携带 `anthropic-version` 时返回 Anthropic 结构），并在令牌创建结果与 README 展示调用示例
-- 验收标准：
-  1. WHEN 携带令牌请求 `GET /v1/models` THEN 只返回启用渠道对外模型 ∩ 令牌允许模型（未限制则全部），按名称排序去重；无令牌/无效令牌 401
-  2. WHEN 以 `x-goog-api-key` 请求 `GET /v1beta/models` THEN 返回 Gemini `models[]` 结构，名称为 `models/<对外模型>`
-  3. WHEN `GET /v1/models` 携带 `anthropic-version` THEN 返回 `{data:[{type:"model",id,display_name,created_at}],has_more:false}`
-  4. 令牌创建成功弹窗展示三种调用示例（curl）；README「接入客户端」补 `/v1/models`
-  5. 单测覆盖过滤、三协议形态、鉴权
-- 边界：不新增管理接口；不改上游目录拉取
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
-- 进度：
-  - 2026-11-25 计划 建卡；来源：用户产品优化 #3（现状：`/v1/models` 已存在但未按令牌过滤、未文档化）
 
 #### T94: 首启管理员设置向导（P2，用户决策）
 

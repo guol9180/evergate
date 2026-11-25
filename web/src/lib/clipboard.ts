@@ -37,3 +37,18 @@ export function clientEnvSnippet(key: string, baseURL: string): string {
     `export EVERGATE_BASE_URL="${baseURL}" EVERGATE_API_KEY="${key}"`,
   ].join('\n')
 }
+
+/** 三协议「一键获取模型列表」的 curl 示例；复用上面的 EVERGATE_* 变量，避免重复暴露明文 key。 */
+export function modelListSnippets(baseURL: string): string {
+  const root = baseURL.replace(/\/v1\/?$/, '')
+  return [
+    '# OpenAI / OpenAI-compatible',
+    'curl "$EVERGATE_BASE_URL/models" -H "Authorization: Bearer $EVERGATE_API_KEY"',
+    '',
+    '# Anthropic Messages',
+    'curl "$EVERGATE_BASE_URL/models" -H "x-api-key: $EVERGATE_API_KEY" -H "anthropic-version: 2023-06-01"',
+    '',
+    '# Gemini API',
+    `curl "${root}/v1beta/models" -H "x-goog-api-key: $EVERGATE_API_KEY"`,
+  ].join('\n')
+}

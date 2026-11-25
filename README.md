@@ -83,6 +83,14 @@ export ANTHROPIC_MODEL="<渠道中的模型名>"
 
 **OpenCode**：在 `opencode.json` 的 `provider` 中添加 `{"type":"openai","baseURL":"http://localhost:8787/v1","apiKey":"<令牌>"}`，模型写作 `provider/model`。
 
+**列出可用模型** — `GET /v1/models` 返回启用渠道的对外模型（去重排序），并按令牌的「允许模型」过滤；带 `anthropic-version` 时返回 Anthropic 结构，Gemini 客户端用 `GET /v1beta/models`：
+
+```bash
+curl http://localhost:8787/v1/models -H "Authorization: Bearer <令牌>"
+curl http://localhost:8787/v1/models -H "x-api-key: <令牌>" -H "anthropic-version: 2023-06-01"
+curl http://localhost:8787/v1beta/models -H "x-goog-api-key: <令牌>"
+```
+
 **curl**
 
 ```bash
