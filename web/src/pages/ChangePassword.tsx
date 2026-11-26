@@ -53,8 +53,8 @@ export default function ChangePassword() {
         <Field label={t('changePassword.confirm')} error={errors.confirm}>
           <Input type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErrors((current) => ({ ...current, confirm: undefined })) }} autoComplete="new-password" />
         </Field>
-        <Button type="submit" className="w-full" disabled={change.isPending}>
-          {change.isPending ? t('changePassword.submitting') : t('changePassword.submit')}
+        <Button type="submit" className="w-full" loading={change.isPending}>
+          {t('changePassword.submit')}
         </Button>
       </form>
     </AuthCard>

@@ -60,16 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
 
-#### T107: 全局交互动效体系（P1，用户补充）
-
-- 目标：补齐点击后的动态反馈与全站动效体系——按钮按压与进行中状态、弹层退出动画、列表与状态变化过渡、空状态表达，全部收敛到 ui.tsx 与 index.css 的统一出处
-- 验收标准：① Button / IconButton 新增 loading（Spinner + aria-busy + 宽度不跳变 + 阻止重复提交）与按压反馈，全站触发 mutation 的按钮逐一接入，不存在点了没反应的按钮；② Dialog / Drawer / Select / Tooltip 具备与入场对称的退出动画，时长与缓动走统一动效令牌；③ 表格行 hover、行展开收起、Switch、分段控件选中态、状态徽标变化有平滑过渡，骨架屏到内容交叉淡入且无布局跳动；④ 空状态组件统一（图标容器 + 标题 + 说明 + 主行动），区分初始为空与筛选无结果（后者给清除筛选），全站空状态逐一核对；⑤ prefers-reduced-motion 下关闭位移与缩放，仅保留不透明度；⑥ audit:layout 在 907 / 1440 × 全页 × 浅深通过，18787 内置浏览器逐页复验，单测覆盖 loading 与空状态
-- 边界：用 CSS 过渡 + Radix 状态实现，不引入动画库；不改业务逻辑与信息架构
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
-- 进度：
-  - 2026-11-26 计划 建卡；来源：用户补充优化（按钮动态反馈与全站交互动画、空状态）
-
 #### T108: 请求日志详情信息表达优化（P1，用户补充）
 
 - 目标：日志详情从 19 个字段平铺的键值表改为有层级、可操作的信息表达，让人 3 秒内判断成败、渠道、耗时与成本
@@ -281,6 +271,21 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-26 执行 漏洞修复：go.mod go 1.25.0 → 1.27.4（标准库 net/http 修复），golang.org/x/net v0.51.0 → v0.60.0、x/text v0.34.0 → v0.42.0、x/crypto v0.48.0 → v0.57.0、x/sys v0.41.0 → v0.48.0、quic-go v0.59.0 → v0.59.1
   - 2026-11-26 执行 补测：npmregistry Default / Normalize / Host；用量报表新增按渠道 / 模型 / 令牌筛选、跨日 daily 分桶与 TopModels 名称 / 成本断言
   - 2026-11-26 验证 make gofmt-check / staticcheck / govulncheck / audit-web 全部通过（govulncheck 0 个代码可达漏洞，npm audit 0）；ESLint + tsc 零告警；go test -p 1 ./... 全 ok、go vet 干净、调度 93.0%、relay 81.1%、make build 通过；actionlint 通过；18787 用 Go 1.27.4 构建重启后 healthz / settings / 新 bundle 均 200
+
+#### T107: 全局交互动效体系（P1，用户补充）
+
+- 目标：补齐点击后的动态反馈与全站动效体系——按钮按压与进行中状态、弹层退出动画、列表与状态变化过渡、空状态表达，全部收敛到 ui.tsx 与 index.css 的统一出处
+- 验收标准：① Button / IconButton 新增 loading（Spinner + aria-busy + 宽度不跳变 + 阻止重复提交）与按压反馈，全站触发 mutation 的按钮逐一接入，不存在点了没反应的按钮；② Dialog / Drawer / Select / Tooltip 具备与入场对称的退出动画，时长与缓动走统一动效令牌；③ 表格行 hover、行展开收起、Switch、分段控件选中态、状态徽标变化有平滑过渡，骨架屏到内容交叉淡入且无布局跳动；④ 空状态组件统一（图标容器 + 标题 + 说明 + 主行动），区分初始为空与筛选无结果（后者给清除筛选），全站空状态逐一核对；⑤ prefers-reduced-motion 下关闭位移与缩放，仅保留不透明度；⑥ audit:layout 在 907 / 1440 × 全页 × 浅深通过，18787 内置浏览器逐页复验，单测覆盖 loading 与空状态
+- 边界：用 CSS 过渡 + Radix 状态实现，不引入动画库；不改业务逻辑与信息架构
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：done
+- 进度：
+  - 2026-11-26 计划 建卡；来源：用户补充优化（按钮动态反馈与全站交互动画、空状态）
+  - 2026-11-26 执行 开工；先建立动效令牌与 Radix data-state 退场动画，再统一 Button/IconButton loading 与空状态
+  - 2026-11-26 执行 index.css 新增 dur-fast/base/slow 与 standard/emphasized 令牌并覆盖 Tailwind 默认过渡；Dialog/Drawer/Select/Tooltip 按 data-state 补齐与入场对称的退场动画；prefers-reduced-motion 下所有进出场退化为纯透明度、关闭按压缩放与 Switch 位移；新增 eg-press 按压、tbody 行 hover、eg-expand-in、ContentSwap 骨架淡出层
+  - 2026-11-26 执行 Button / IconButton 新增 loading：内容层保留布局只降透明度、Spinner 绝对居中、aria-busy、自动 disabled 阻止重复提交；全站 mutation 按钮接入（登录/首启/改密、渠道保存与测试/导入/拉取/重试、令牌保存、设置保存、降级链保存、用量默认价/覆盖价/一键预设/删除、配置导入导出、更新取消/开始、调试台发送、测试全部、退出登录），Switch 在对应 mutation 进行中禁用
+  - 2026-11-26 执行 Empty 统一为图标容器 + 标题 + 说明 + 主行动，新增 filtered 中性色变体；渠道 / 令牌 / 仪表盘空状态补主行动，日志区分为「暂无日志」与「没有匹配的请求日志 + 清除筛选」（i18n 中英同步）；Channels/Tokens/Logs/Dashboard/AuditLogCard 用 ContentSwap 实现骨架到内容交叉淡入
+  - 2026-11-26 验证 ui.test 新增 Button loading（aria-busy / 阻止点击 / 保持标签）、Empty 两种变体、ContentSwap 骨架淡出，ConfirmDialog loading 断言改为 busy；前端 lint 0 告警、tsc 干净、unit 13 + ui 51、build 通过；audit:layout 在 907/1440 × 浅/深 × 中/英四组全绿；18787 内置浏览器复验渠道展开、弹窗开合无遮罩残留、日志筛选空状态与清除筛选、主题/语言切换，控制台 0 错误
 
 ## 归档索引
 

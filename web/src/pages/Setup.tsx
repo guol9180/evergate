@@ -73,8 +73,8 @@ export default function Setup() {
         <Field label={t('setup.confirm')} error={errors.confirm}>
           <Input type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErrors((current) => ({ ...current, confirm: undefined })) }} autoComplete="new-password" />
         </Field>
-        <Button type="submit" className="w-full" disabled={setup.isPending}>
-          {setup.isPending ? t('setup.submitting') : t('setup.submit')}
+        <Button type="submit" className="w-full" loading={setup.isPending}>
+          {t('setup.submit')}
         </Button>
       </form>
     </AuthCard>

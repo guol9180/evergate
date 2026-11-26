@@ -1,7 +1,7 @@
 import { type FormEvent, useId, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
-import { Alert, Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, focusFirstInvalid } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, focusFirstInvalid } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel, EffectivePrice } from '../api/types'
@@ -25,14 +25,6 @@ export default function Channels() {
   const [deleteKeyTarget, setDeleteKeyTarget] = useState<{ id: number; channelId: number; label: string } | null>(null)
   const [showTestAll, setShowTestAll] = useState(false)
 
-  if (channels.isPending) {
-    return (
-      <div className="eg-page-stack">
-        <PageHeader title={t('page.channels.title')} description={t('page.channels.desc')} />
-        <Card><SkeletonRows rows={4} className="eg-card-fluid" /></Card>
-      </div>
-    )
-  }
   const items = [...(channels.data?.items ?? [])].sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.priority - b.priority || a.id - b.id)
 
   return (
@@ -53,10 +45,16 @@ export default function Channels() {
       {showTestAll && <TestAllPanel />}
 
       <Card>
-        {channels.data?.items.length === 0 ? (
-          <Empty icon={<Plug size={36} />} title={t('empty.channels.title')} hint={t('empty.channels.hint')} />
-        ) : (
-          <div className="overflow-x-auto">
+        <ContentSwap loading={channels.isPending} skeleton={<SkeletonRows rows={4} className="eg-card-fluid" />}>
+          {channels.data?.items.length === 0 ? (
+            <Empty
+              icon={<Plug size={36} />}
+              title={t('empty.channels.title')}
+              hint={t('empty.channels.hint')}
+              action={<Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> {t('page.channels.create')}</Button>}
+            />
+          ) : (
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[720px] lg:min-w-0">
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
@@ -79,8 +77,9 @@ export default function Channels() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
+            </div>
+          )}
+        </ContentSwap>
       </Card>
 
       {expanded != null && (
@@ -177,11 +176,13 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
           )}
         </Td>
         <Td>
-          <Switch checked={c.enabled} onChange={(enabled) => toggle.mutate({ id: c.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableAria', { name: c.name })} />
+          <Switch checked={c.enabled} disabled={toggle.isPending && toggle.variables?.id === c.id} onChange={(enabled) => toggle.mutate({ id: c.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableAria', { name: c.name })} />
         </Td>
         <Td>
           {test.isPending && test.variables === c.id ? (
-            <Spinner />
+            <IconButton variant="outline" loading label={tf('channels.testAria', { name: c.name })}>
+              <Plug size={13} />
+            </IconButton>
           ) : result ? (
             <Badge
               tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'}
@@ -218,7 +219,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
   if (detail.isError) return <Card className="p-4"><ErrorText>{(detail.error as Error).message}</ErrorText></Card>
 
   return (
-    <Card>
+    <Card className="eg-expand-in">
       <h3 className="mb-3 text-sm font-semibold">{tf('channels.keys.title', { name: detail.data.channel.name })}</h3>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[700px] lg:min-w-0">
@@ -248,7 +249,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                   <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
                   <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1360px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
-                    <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
+                  <Switch checked={k.enabled} disabled={updateKey.isPending && updateKey.variables?.id === k.id} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
                   </Td>
                   <Td>
                     <div className="flex justify-end">
@@ -267,7 +268,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
         <div className="mb-2 text-xs font-medium text-muted">{t('channels.import.title')}</div>
         <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-xxxxxxx\nsk-yyyyyyy'} />
         <div className="mt-2 flex items-center gap-3">
-          <Button size="sm" disabled={!keysText.trim() || addKeys.isPending} onClick={() => addKeys.mutate(
+          <Button size="sm" loading={addKeys.isPending} disabled={!keysText.trim()} onClick={() => addKeys.mutate(
             { channelId, keys: keysText },
             {
               onSuccess: (resp) => {
@@ -278,7 +279,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
               onError: (err) => notify.error(err),
             },
           )}>
-            {addKeys.isPending ? t('channels.importing') : t('channels.import.button')}
+            {t('channels.import.button')}
           </Button>
         </div>
       </div>
@@ -439,7 +440,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       footer={
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button type="submit" form={formID} disabled={save.isPending || createdChannelID != null}>{save.isPending ? t('common.saving') : t('common.save')}</Button>
+          <Button type="submit" form={formID} loading={save.isPending} disabled={createdChannelID != null}>{t('common.save')}</Button>
         </div>
       }
     >
@@ -452,7 +453,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               <Alert
                 tone="danger"
                 action={createdChannelID != null
-                  ? <Button size="sm" variant="outline" disabled={addKeys.isPending} onClick={() => importKeys(createdChannelID)}>{t('channels.form.retryImport')}</Button>
+                  ? <Button size="sm" variant="outline" loading={addKeys.isPending} onClick={() => importKeys(createdChannelID)}>{t('channels.form.retryImport')}</Button>
                   : undefined}
               >
                 {tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message })}
@@ -568,7 +569,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               type="button"
               size="sm"
               variant="outline"
-              disabled={!channel || channel.key_count === 0 || preview.isPending}
+              loading={preview.isPending}
+              disabled={!channel || channel.key_count === 0}
               title={!channel ? t('channels.form.fetchUnavailable') : channel.key_count === 0 ? t('channels.form.fetchNeedKey') : undefined}
               onClick={() => {
                 if (!channel) return
@@ -577,8 +579,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
                 preview.mutate(channel.id, { onSuccess: () => setShowModelPicker(true) })
               }}
             >
-              <RefreshCw size={13} className={preview.isPending ? 'animate-spin' : ''} />
-              {preview.isPending ? t('channels.form.fetching') : t('channels.form.fetch')}
+              <RefreshCw size={13} />
+              {t('channels.form.fetch')}
             </Button>
           </div>
           <Textarea id={modelsId} rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} />

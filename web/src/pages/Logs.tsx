@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Download, RefreshCw, Search, ScrollText } from 'lucide-react'
 import { buildLogQuery, downloadAdminFile, useChannels, useLogs, useTokens } from '../api/hooks'
-import { Alert, Badge, Button, Card, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, Td, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ContentSwap, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import RetryTimeline from '../components/RetryTimeline'
 import type { RequestLog } from '../api/types'
@@ -51,6 +51,10 @@ export default function Logs() {
   const total = logs.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const resetPage = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setPage(1) }
+  const hasFilters = Boolean(model || status || channelId || tokenId || startDate || endDate)
+  const clearFilters = () => {
+    setModel(''); setStatus(''); setChannelId(''); setTokenId(''); setStartDate(''); setEndDate(''); setPage(1)
+  }
 
   const exportCsv = async () => {
     setExporting(true)
@@ -70,17 +74,16 @@ export default function Logs() {
         description={t('page.logs.desc')}
         actions={(
           <>
-            <Button variant="outline" disabled={exporting || total === 0} onClick={() => void exportCsv()} title={t('logs.exportTitle')}>
-              <Download size={14} /> {exporting ? t('common.exporting') : t('common.export')}
+            <Button variant="outline" loading={exporting} disabled={total === 0} onClick={() => void exportCsv()} title={t('logs.exportTitle')}>
+              <Download size={14} /> {t('common.export')}
             </Button>
             <Button
               variant="outline"
               className="min-w-[92px]"
-              disabled={logs.isFetching}
-              aria-busy={logs.isFetching}
+              loading={logs.isFetching}
               onClick={() => void logs.refetch()}
             >
-              <RefreshCw size={14} className={logs.isFetching ? 'animate-spin' : ''} />
+              <RefreshCw size={14} />
               {t('common.refresh')}
             </Button>
           </>
@@ -133,12 +136,17 @@ export default function Logs() {
       </Card>
 
       <Card>
-        {logs.isPending ? (
-          <SkeletonRows rows={8} className="eg-card-fluid" />
-        ) : logs.data?.items.length === 0 ? (
-          <Empty icon={<ScrollText size={36} />} title={t('empty.logs.title')} hint={t('empty.logs.hint')} />
-        ) : (
-          <div className="overflow-x-auto">
+        <ContentSwap loading={logs.isPending} skeleton={<SkeletonRows rows={8} className="eg-card-fluid" />}>
+          {logs.data?.items.length === 0 ? (
+            <Empty
+              icon={<ScrollText size={36} />}
+              filtered={hasFilters}
+              title={t(hasFilters ? 'empty.filtered.logs.title' : 'empty.logs.title')}
+              hint={t(hasFilters ? 'empty.filtered.logs.hint' : 'empty.logs.hint')}
+              action={hasFilters ? <Button size="sm" variant="outline" onClick={clearFilters}>{t('common.clearFilters')}</Button> : undefined}
+            />
+          ) : (
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[720px]">
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
@@ -170,8 +178,9 @@ export default function Logs() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
+            </div>
+          )}
+        </ContentSwap>
         <Pagination
           page={page}
           totalPages={totalPages}

@@ -15,6 +15,13 @@
   --eg-cell-y: clamp(8px, 0.55vw, 12px);
   --eg-sidebar-width: 72px;
 
+  /* 动效令牌：全站入场 / 退场 / 按压共用，不在组件里散写时长与缓动。 */
+  --eg-dur-fast: 120ms;
+  --eg-dur-base: 180ms;
+  --eg-dur-slow: 240ms;
+  --eg-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --eg-ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+
   --eg-surface: #ffffff;
   --eg-surface-soft: #f8fafc;
   --eg-surface-strong: #f1f5f9;
@@ -99,6 +106,9 @@
 }
 
 @theme inline {
+  --default-transition-duration: var(--eg-dur-fast);
+  --default-transition-timing-function: var(--eg-ease-standard);
+
   --color-surface: var(--eg-surface);
   --color-surface-soft: var(--eg-surface-soft);
   --color-surface-strong: var(--eg-surface-strong);
@@ -207,24 +217,95 @@ body {
   @apply animate-pulse rounded-md bg-surface-strong;
 }
 
-/* 弹窗 / 抽屉：遮罩淡入，面板轻弹入，抽屉右侧滑入；尊重减少动态偏好。 */
+/* 按压反馈：位移只在按下瞬间，松开即回弹；减少动态偏好时关闭缩放。 */
+.eg-press {
+  transition:
+    transform var(--eg-dur-fast) var(--eg-ease-standard),
+    background-color var(--eg-dur-fast) var(--eg-ease-standard),
+    border-color var(--eg-dur-fast) var(--eg-ease-standard),
+    color var(--eg-dur-fast) var(--eg-ease-standard),
+    box-shadow var(--eg-dur-fast) var(--eg-ease-standard),
+    opacity var(--eg-dur-fast) var(--eg-ease-standard);
+}
+.eg-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* 骨架到内容的交叉淡入：旧骨架作为绝对层淡出，不参与布局，内容高度不再被拉动。 */
+.eg-skeleton-overlay {
+  animation: eg-fade-only-out var(--eg-dur-base) var(--eg-ease-standard) forwards;
+}
+.eg-content-in {
+  animation: eg-fade-only-in var(--eg-dur-base) var(--eg-ease-standard);
+}
+
+/* 表格行 hover 走统一时长；展开内容（key 面板等）从上方轻落。 */
+tbody tr {
+  transition: background-color var(--eg-dur-fast) var(--eg-ease-standard);
+}
+.eg-expand-in {
+  animation: eg-rise-in var(--eg-dur-base) var(--eg-ease-standard);
+}
+
+/* 弹窗 / 抽屉：入场与退场对称（Radix 依据 data-state 保持挂载到动画结束）。 */
 @keyframes eg-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes eg-fade-out { from { opacity: 1; } to { opacity: 0; } }
 @keyframes eg-pop-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes eg-pop-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(4px) scale(0.98); } }
 @keyframes eg-slide-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes eg-slide-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(24px); } }
 @keyframes eg-rise-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @keyframes eg-page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 @keyframes eg-fade-only-in { from { opacity: 0; } to { opacity: 1; } }
-.eg-overlay { animation: eg-fade-in 150ms ease-out; }
-.eg-dialog-panel { animation: eg-pop-in 180ms ease-out; }
-.eg-drawer-panel { animation: eg-slide-in 200ms ease-out; }
+@keyframes eg-fade-only-out { from { opacity: 1; } to { opacity: 0; } }
+.eg-overlay[data-state='open'] { animation: eg-fade-in var(--eg-dur-base) var(--eg-ease-standard); }
+.eg-overlay[data-state='closed'] { animation: eg-fade-out var(--eg-dur-fast) var(--eg-ease-standard); }
+.eg-dialog-panel[data-state='open'] { animation: eg-pop-in var(--eg-dur-base) var(--eg-ease-emphasized); }
+.eg-dialog-panel[data-state='closed'] { animation: eg-pop-out var(--eg-dur-fast) var(--eg-ease-standard); }
+.eg-drawer-panel[data-state='open'] { animation: eg-slide-in var(--eg-dur-slow) var(--eg-ease-emphasized); }
+.eg-drawer-panel[data-state='closed'] { animation: eg-slide-out var(--eg-dur-base) var(--eg-ease-standard); }
 /* Alert 出现时从上方 4px 轻落，读起来像"提示在表单顶部展开"而不是突然弹出一块色块 */
-.eg-alert-in { animation: eg-rise-in 180ms ease-out; }
+.eg-alert-in { animation: eg-rise-in var(--eg-dur-base) var(--eg-ease-standard); }
 /* 路由切换：内容区 160ms 淡入上浮，替代硬切；不引入动画库 */
-.eg-page-in { animation: eg-page-in 160ms ease-out; }
-.eg-tooltip-in { animation: eg-fade-only-in 120ms ease-out; }
-.eg-select-pop-in { animation: eg-pop-in 140ms ease-out; }
+.eg-page-in { animation: eg-page-in var(--eg-dur-base) var(--eg-ease-standard); }
+.eg-tooltip[data-state='delayed-open'],
+.eg-tooltip[data-state='instant-open'],
+.eg-tooltip-in { animation: eg-fade-only-in var(--eg-dur-fast) var(--eg-ease-standard); }
+.eg-tooltip[data-state='closed'] { animation: eg-fade-only-out var(--eg-dur-fast) var(--eg-ease-standard); }
+.eg-select-content[data-state='open'],
+.eg-select-pop-in { animation: eg-pop-in var(--eg-dur-fast) var(--eg-ease-emphasized); }
+.eg-select-content[data-state='closed'] { animation: eg-pop-out var(--eg-dur-fast) var(--eg-ease-standard); }
+
+/* 减少动态偏好：只保留不透明度变化，关闭位移、缩放与滑动。 */
 @media (prefers-reduced-motion: reduce) {
-  .eg-overlay, .eg-dialog-panel, .eg-drawer-panel, .eg-alert-in, .eg-page-in, .eg-tooltip-in, .eg-select-pop-in { animation: none; }
+  .eg-overlay[data-state='open'],
+  .eg-dialog-panel[data-state='open'],
+  .eg-drawer-panel[data-state='open'],
+  .eg-select-content[data-state='open'],
+  .eg-tooltip[data-state='delayed-open'],
+  .eg-tooltip[data-state='instant-open'],
+  .eg-tooltip-in,
+  .eg-alert-in,
+  .eg-page-in {
+    animation-name: eg-fade-only-in;
+  }
+  .eg-overlay[data-state='closed'],
+  .eg-dialog-panel[data-state='closed'],
+  .eg-drawer-panel[data-state='closed'],
+  .eg-select-content[data-state='closed'],
+  .eg-tooltip[data-state='closed'],
+  .eg-skeleton-overlay {
+    animation-name: eg-fade-only-out;
+  }
+  .eg-press:active:not(:disabled) {
+    transform: none;
+  }
+  .eg-switch-thumb {
+    transition: none;
+  }
+  .eg-expand-in {
+    animation-name: eg-fade-only-in;
+  }
 }
 
 /* Tooltip（Radix）：反转色小卡片，浮在弹窗（z-50）之上；箭头与气泡同色。 */

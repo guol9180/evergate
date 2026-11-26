@@ -49,8 +49,8 @@ export default function TestAllPanel() {
   }
   if (!testAll.data) {
     return (
-      <Button size="sm" variant="outline" onClick={() => testAll.mutate()} disabled={testAll.isPending}>
-        <RefreshCw size={14} className={testAll.isPending ? 'animate-spin' : ''} /> {t('common.testAll')}
+      <Button size="sm" variant="outline" onClick={() => testAll.mutate()} loading={testAll.isPending}>
+        <RefreshCw size={14} /> {t('common.testAll')}
       </Button>
     )
   }
@@ -74,8 +74,8 @@ export default function TestAllPanel() {
             { value: 'result', label: t('testAll.sort.result') },
           ]}
         />
-        <Button size="sm" variant="outline" onClick={() => testAll.mutate()} disabled={testAll.isPending}>
-          <RefreshCw size={14} className={testAll.isPending ? 'animate-spin' : ''} /> {t('testAll.retry')}
+        <Button size="sm" variant="outline" onClick={() => testAll.mutate()} loading={testAll.isPending}>
+          <RefreshCw size={14} /> {t('testAll.retry')}
         </Button>
       </div>
     </div>

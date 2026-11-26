@@ -128,8 +128,8 @@ export default function Settings() {
         </Card>
 
         <div className="flex justify-end">
-          <Button type="submit" disabled={save.isPending}>
-            <Save size={15} /> {save.isPending ? t('common.saving') : t('settings.save')}
+          <Button type="submit" loading={save.isPending}>
+            <Save size={15} /> {t('settings.save')}
           </Button>
         </div>
       </form>

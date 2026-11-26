@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical, UserRound, Sun, Moon, Monitor, Languages } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
-import { PageSkeleton, Tooltip } from './ui'
+import { PageSkeleton, Spinner, Tooltip } from './ui'
 import { withBasePath } from '../lib/runtime'
 import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
 import { getLocale, setLocale, t, tf, useLocale, type MessageKey } from '../lib/i18n'
@@ -72,7 +72,7 @@ export default function Layout() {
   const otherLocaleName = localeEn ? 'locale.zh' : 'locale.en'
   // 底部操作行两态共用：收起态是 32px 图标按钮，展开态是整行「图标 + 文字 + 当前值」
   const actionRowClass =
-    'eg-nav-link eg-icon-btn eg-sidebar-action-row gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+    'eg-press eg-nav-link eg-icon-btn eg-sidebar-action-row gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
 
   return (
     <div className="eg-shell flex h-full min-w-0">
@@ -146,9 +146,12 @@ export default function Layout() {
                 type="button"
                 onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
                 aria-label={t('nav.logout')}
+                aria-busy={logout.isPending || undefined}
+                disabled={logout.isPending}
                 className={actionRowClass}
               >
-                <LogOut size={16} className="shrink-0" aria-hidden="true" /> <span className="eg-sidebar-label">{t('nav.logout')}</span>
+                {logout.isPending ? <Spinner size="sm" tone="current" className="shrink-0" /> : <LogOut size={16} className="shrink-0" aria-hidden="true" />}
+                <span className="eg-sidebar-label">{t('nav.logout')}</span>
               </button>
             </Tooltip>
           </div>

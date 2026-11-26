@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { Button, ConfirmDialog, Dialog, Drawer, Field, Input, Pagination, StatusBadge } from '../../src/components/ui'
+import { Button, ConfirmDialog, ContentSwap, Dialog, Drawer, Empty, Field, Input, Pagination, StatusBadge } from '../../src/components/ui'
 
 function Harness({ open, onClose }: { open: boolean; onClose: () => void }) {
   return (
@@ -85,12 +85,66 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledTimes(1)
   })
 
-  it('disables buttons while loading', () => {
+  it('marks the confirm button busy and disables both actions while loading', () => {
     render(
       <ConfirmDialog open title="删除" message="x" confirmText="删除" loading onConfirm={() => {}} onCancel={() => {}} />,
     )
-    expect((screen.getByRole('button', { name: '处理中…' }) as HTMLButtonElement).disabled).toBe(true)
+    const confirm = screen.getByRole('button', { name: '删除' }) as HTMLButtonElement
+    expect(confirm.disabled).toBe(true)
+    expect(confirm.getAttribute('aria-busy')).toBe('true')
+    expect(confirm.querySelector('.animate-spin')).toBeTruthy()
     expect((screen.getByRole('button', { name: '取消' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('Button loading', () => {
+  it('keeps the label in layout, blocks repeat clicks and shows an aria-busy spinner', () => {
+    const onClick = vi.fn()
+    render(<Button loading onClick={onClick}>保存</Button>)
+    const button = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement
+    expect(button.getAttribute('aria-busy')).toBe('true')
+    expect(button.disabled).toBe(true)
+    expect(button.querySelector('.opacity-0')).toBeTruthy()
+    expect(button.querySelector('.animate-spin')).toBeTruthy()
+    fireEvent.click(button)
+    expect(onClick).not.toHaveBeenCalled()
+  })
+
+  it('leaves the button interactive when not loading', () => {
+    const onClick = vi.fn()
+    render(<Button onClick={onClick}>保存</Button>)
+    const button = screen.getByRole('button', { name: '保存' }) as HTMLButtonElement
+    expect(button.getAttribute('aria-busy')).toBeNull()
+    expect(button.disabled).toBe(false)
+    fireEvent.click(button)
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Empty', () => {
+  it('renders an icon container, title, hint and primary action', () => {
+    render(<Empty title="还没有渠道" hint="新建一个渠道" action={<button type="button">新建渠道</button>} />)
+    expect(screen.getByText('还没有渠道')).toBeTruthy()
+    expect(screen.getByText('新建一个渠道')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '新建渠道' })).toBeTruthy()
+    expect(document.querySelector('.rounded-full.bg-brand-subtle')).toBeTruthy()
+  })
+
+  it('uses the neutral container and clear action for filtered results', () => {
+    render(<Empty filtered title="没有匹配的日志" action={<button type="button">清除筛选</button>} />)
+    expect(document.querySelector('.rounded-full.bg-surface-strong')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '清除筛选' })).toBeTruthy()
+  })
+})
+
+describe('ContentSwap', () => {
+  it('keeps the skeleton while loading and fades it over the loaded content', async () => {
+    const { rerender } = render(<ContentSwap loading skeleton={<div>骨架</div>}><div>内容</div></ContentSwap>)
+    expect(screen.getByText('骨架')).toBeTruthy()
+    expect(screen.queryByText('内容')).toBeNull()
+    rerender(<ContentSwap loading={false} skeleton={<div>骨架</div>}><div>内容</div></ContentSwap>)
+    await waitFor(() => expect(screen.getByText('内容')).toBeTruthy())
+    expect(screen.getByText('骨架').parentElement?.className).toContain('eg-skeleton-overlay')
   })
 })
 

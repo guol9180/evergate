@@ -2,7 +2,7 @@ import { type FormEvent, useId, useState } from 'react'
 import { Check, Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken } from '../api/hooks'
 import type { Token } from '../api/types'
-import { Alert, Badge, Button, Card, ConfirmDialog, Dialog, Empty, Field, IconButton, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, Field, IconButton, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime, tokenStatusLabel, tokenStatusTone } from '../lib/format'
@@ -86,15 +86,6 @@ export default function Tokens() {
   const update = useUpdateToken()
   const [editing, setEditing] = useState<Token | 'new' | null>(null)
 
-  if (tokens.isPending) {
-    return (
-      <div className="eg-page-stack">
-        <PageHeader title={t('page.tokens.title')} description={t('page.tokens.desc')} />
-        <Card><SkeletonRows rows={4} /></Card>
-      </div>
-    )
-  }
-
   return (
     <div className="eg-page-stack">
       <PageHeader
@@ -103,10 +94,16 @@ export default function Tokens() {
         actions={<Button onClick={() => setEditing('new')}><Plus size={15} /> {t('page.tokens.create')}</Button>}
       />
       <Card>
-        {tokens.data?.items.length === 0 ? (
-          <Empty icon={<KeyRound size={36} />} title={t('empty.tokens.title')} hint={t('empty.tokens.hint')} />
-        ) : (
-          <div className="overflow-x-auto">
+        <ContentSwap loading={tokens.isPending} skeleton={<SkeletonRows rows={4} />}>
+          {tokens.data?.items.length === 0 ? (
+            <Empty
+              icon={<KeyRound size={36} />}
+              title={t('empty.tokens.title')}
+              hint={t('empty.tokens.hint')}
+              action={<Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> {t('page.tokens.create')}</Button>}
+            />
+          ) : (
+            <div className="overflow-x-auto">
             <table className="w-full min-w-[700px] lg:min-w-0">
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
@@ -146,7 +143,7 @@ export default function Tokens() {
                     <Td className="text-xs">{fmtTime(tok.expired_at)}</Td>
                     <Td className="hidden text-xs text-subtle min-[1240px]:table-cell">{fmtTime(tok.created_at)}</Td>
                     <Td>
-                      <Switch checked={tok.enabled} onChange={(enabled) => update.mutate({ id: tok.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('tokens.enableAria', { name: tok.name })} />
+            <Switch checked={tok.enabled} disabled={update.isPending && update.variables?.id === tok.id} onChange={(enabled) => update.mutate({ id: tok.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('tokens.enableAria', { name: tok.name })} />
                     </Td>
                     <Td>
                       <div className="flex justify-end gap-1">
@@ -158,8 +155,9 @@ export default function Tokens() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
+            </div>
+          )}
+        </ContentSwap>
       </Card>
       {editing && <TokenDialog token={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
       <ConfirmDialog
@@ -231,8 +229,8 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
       footer={
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button type="submit" form={formID} disabled={create.isPending || update.isPending}>
-            {create.isPending || update.isPending ? t('common.saving') : t('common.save')}
+          <Button type="submit" form={formID} loading={create.isPending || update.isPending}>
+            {t('common.save')}
           </Button>
         </div>
       }

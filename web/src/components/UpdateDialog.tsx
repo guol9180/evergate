@@ -98,12 +98,12 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
           </span>
           <div className="flex items-center gap-2">
             {job?.cancelable && (
-              <Button variant="outline" onClick={() => cancel.mutate()} disabled={cancel.isPending}>
-                {cancel.isPending ? t('update.cancelling') : t('update.cancel')}
+              <Button variant="outline" onClick={() => cancel.mutate()} loading={cancel.isPending}>
+                {t('update.cancel')}
               </Button>
             )}
             <Button variant="outline" onClick={close} disabled={busy || restarting}>{t('common.close')}</Button>
-            <Button onClick={begin} disabled={busy || restarting || !status?.latest_version || capability?.available === false || !status?.update_available}>
+            <Button onClick={begin} loading={apply.isPending} disabled={busy || restarting || !status?.latest_version || capability?.available === false || !status?.update_available}>
               <Download size={14} /> {t('update.now')}
             </Button>
           </div>

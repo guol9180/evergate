@@ -5,15 +5,17 @@ import {
   type ReactNode,
   cloneElement,
   isValidElement,
+  useEffect,
   useId,
   useRef,
+  useState,
 } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
-import { Check, CircleAlert, CircleCheck, ChevronDown, ChevronUp, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import { Check, CircleAlert, CircleCheck, ChevronDown, ChevronUp, Inbox, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
 
@@ -28,8 +30,8 @@ export const toneClass: Record<Tone, string> = {
   brand: 'bg-brand-subtle text-brand-text',
 }
 
-export function Button({ variant = 'default', size = 'md', className = '', ...props }: React.ComponentProps<'button'> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'icon' }) {
-  const base = 'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:pointer-events-none'
+export function Button({ variant = 'default', size = 'md', loading = false, className = '', children, disabled, ...props }: React.ComponentProps<'button'> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'icon'; loading?: boolean }) {
+  const base = 'eg-press relative inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:pointer-events-none'
   const variants = {
     default: 'bg-brand text-white hover:bg-brand-strong',
     outline: 'border border-line-strong bg-surface text-foreground-soft hover:bg-surface-soft',
@@ -37,7 +39,23 @@ export function Button({ variant = 'default', size = 'md', className = '', ...pr
     danger: 'bg-danger-solid text-white hover:opacity-90',
   }
   const sizes = { sm: 'h-7 px-2.5 text-xs', md: 'h-9 px-4 text-sm', icon: 'h-7 w-7 px-0' }
-  return <button type={props.type ?? 'button'} className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props} />
+  return (
+    <button
+      type={props.type ?? 'button'}
+      aria-busy={loading || undefined}
+      disabled={disabled || loading}
+      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+      {...props}
+    >
+      {/* 保留原标签参与布局，加载时只降到透明：按钮宽度不跳变，读屏仍能读到名称。 */}
+      <span className={`inline-flex items-center justify-center gap-1.5 ${loading ? 'opacity-0' : ''}`}>{children}</span>
+      {loading && (
+        <span className="absolute inset-0 flex items-center justify-center">
+          <Spinner size="sm" tone="current" />
+        </span>
+      )}
+    </button>
+  )
 }
 
 // 控件带 aria-invalid 时由 Field 置为出错态：红边 + 红色聚焦环，错误文字紧贴其下。
@@ -170,10 +188,10 @@ export function Tooltip({ content, side = 'top', children, className = '' }: { c
 }
 
 /** 图标按钮：Button + Tooltip + aria-label 只在这里组合；表格行操作 / 分页箭头 / 侧栏共用。 */
-export function IconButton({ label, danger = false, side, variant = 'ghost', className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: 'default' | 'outline' | 'ghost' | 'danger' }) {
+export function IconButton({ label, danger = false, side, variant = 'ghost', loading = false, className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: 'default' | 'outline' | 'ghost' | 'danger'; loading?: boolean }) {
   return (
     <Tooltip content={label} side={side}>
-      <Button size="icon" variant={variant} aria-label={label} className={`${danger ? 'text-danger-text hover:bg-danger-subtle' : ''} ${className}`} {...props}>
+      <Button size="icon" variant={variant} aria-label={label} loading={loading} className={`${danger ? 'text-danger-text hover:bg-danger-subtle' : ''} ${className}`} {...props}>
         {children}
       </Button>
     </Tooltip>
@@ -192,7 +210,7 @@ export function Switch({ checked, onChange, disabled, label, id }: { checked: bo
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 ${checked ? 'bg-brand' : 'bg-line-strong'}`}
     >
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-surface shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
+      <span className={`eg-switch-thumb inline-block h-4 w-4 transform rounded-full bg-surface shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
     </button>
   )
 }
@@ -244,7 +262,7 @@ export function focusFirstInvalid(root: ParentNode | null) {
 
 export function Badge({ tone = 'neutral', compact = false, className = '', title, children }: { tone?: Tone; compact?: boolean; className?: string; title?: string; children: ReactNode }) {
   const size = compact ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs'
-  return <span title={title} className={`inline-flex items-center whitespace-nowrap rounded-full font-medium ${size} ${toneClass[tone]} ${className}`}>{children}</span>
+  return <span title={title} className={`inline-flex items-center whitespace-nowrap rounded-full font-medium transition-colors ${size} ${toneClass[tone]} ${className}`}>{children}</span>
 }
 
 /** 状态徽标：与 Badge 同源，语义化命名用于渠道/令牌/HTTP 状态展示。 */
@@ -282,8 +300,10 @@ export function PageHeader({ title, description, actions }: { title: ReactNode; 
   )
 }
 
-export function Spinner({ className = '' }: { className?: string }) {
-  return <span aria-hidden="true" className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-line-strong border-t-brand ${className}`} />
+export function Spinner({ size = 'md', tone = 'brand', className = '' }: { size?: 'sm' | 'md'; tone?: 'brand' | 'current'; className?: string }) {
+  const dims = size === 'sm' ? 'h-3.5 w-3.5 border-[1.5px]' : 'h-4 w-4 border-2'
+  const colors = tone === 'current' ? 'border-current border-t-transparent' : 'border-line-strong border-t-brand'
+  return <span aria-hidden="true" className={`inline-block animate-spin rounded-full ${dims} ${colors} ${className}`} />
 }
 
 type AlertTone = 'info' | 'success' | 'warning' | 'danger' | 'neutral'
@@ -476,8 +496,8 @@ export function ConfirmDialog({ open, title, message, confirmText, cancelText, d
       footer={(
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel} disabled={loading}>{cancelText ?? t('common.cancel')}</Button>
-          <Button variant={danger ? 'danger' : 'default'} onClick={onConfirm} disabled={loading} autoFocus>
-            {loading ? t('common.processing') : confirmText ?? t('common.confirm')}
+          <Button variant={danger ? 'danger' : 'default'} onClick={onConfirm} loading={loading} autoFocus>
+            {confirmText ?? t('common.confirm')}
           </Button>
         </div>
       )}
@@ -544,7 +564,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
         <RadioGroupPrimitive.Item
           key={option.value}
           value={option.value}
-          className={`flex items-center justify-center rounded-md font-medium text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand data-[state=checked]:bg-surface data-[state=checked]:text-foreground data-[state=checked]:shadow-sm disabled:opacity-50 ${
+          className={`flex items-center justify-center rounded-md font-medium text-muted outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand data-[state=checked]:bg-surface data-[state=checked]:text-foreground data-[state=checked]:shadow-sm disabled:opacity-50 ${
             size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-3 text-sm'
           }`}
         >
@@ -565,13 +585,49 @@ export function Progress({ value, tone = 'brand', className = '' }: { value: num
   )
 }
 
-export function Empty({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: ReactNode; action?: ReactNode }) {
+/**
+ * 空状态唯一出处：图标容器 + 标题 + 说明 + 主行动。
+ * filtered=true 表示"有数据但被筛选条件排空"，用中性色容器，调用方应提供清除筛选的主行动；
+ * 初始为空用品牌色容器，主行动指向创建/接入。
+ */
+export function Empty({ icon, title, hint, action, filtered = false, className = '' }: { icon?: ReactNode; title: string; hint?: ReactNode; action?: ReactNode; filtered?: boolean; className?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
-      {icon && <div className="text-subtle">{icon}</div>}
+    <div className={`flex flex-col items-center justify-center gap-2 px-4 py-14 text-center ${className}`}>
+      <div className={`mb-1 flex h-12 w-12 items-center justify-center rounded-full ${filtered ? 'bg-surface-strong text-muted' : 'bg-brand-subtle text-brand-text'} [&>svg]:h-5 [&>svg]:w-5`}>
+        {icon ?? <Inbox aria-hidden="true" />}
+      </div>
       <p className="text-sm font-medium text-foreground-soft">{title}</p>
       {hint && <p className="max-w-sm text-xs text-muted">{hint}</p>}
       {action && <div className="mt-2">{action}</div>}
+    </div>
+  )
+}
+
+/** 骨架到内容的交叉淡入：骨架在加载期占位，内容到位后作为绝对层淡出，不参与布局。 */
+export function ContentSwap({ loading, skeleton, children, className = '' }: { loading: boolean; skeleton: ReactNode; children: ReactNode; className?: string }) {
+  const [fading, setFading] = useState(false)
+  const wasLoading = useRef(loading)
+  useEffect(() => {
+    if (loading) {
+      wasLoading.current = true
+      setFading(false)
+      return
+    }
+    if (!wasLoading.current) return
+    wasLoading.current = false
+    setFading(true)
+    const timer = window.setTimeout(() => setFading(false), 200)
+    return () => window.clearTimeout(timer)
+  }, [loading])
+  if (loading) return <div className={className}>{skeleton}</div>
+  return (
+    <div className={`relative ${className}`}>
+      <div className="eg-content-in">{children}</div>
+      {fading && (
+        <div aria-hidden="true" className="eg-skeleton-overlay pointer-events-none absolute inset-0 z-10">
+          {skeleton}
+        </div>
+      )}
     </div>
   )
 }

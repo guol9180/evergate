@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, AlertTriangle, ArrowRight, Download, KeyRound, Plug, Timer, TowerControl, Waypoints, Zap } from 'lucide-react'
 import { useChannels, useLogsStats, useTokens, useUpdateStatus } from '../api/hooks'
-import { Alert, Button, Card, Empty, PageHeader, PageSkeleton, StatusBadge, Td, Th } from '../components/ui'
+import { Alert, Button, Card, ContentSwap, Empty, PageHeader, PageSkeleton, StatusBadge, Td, Th } from '../components/ui'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { channelStateTone, fmtInt, fmtMs, fmtTime, stateLabel, statusRank } from '../lib/format'
 import { currentBasePath } from '../lib/runtime'
@@ -64,10 +64,6 @@ export default function Dashboard() {
     </Alert>
   ) : null
 
-  if (channels.isPending) {
-    return <PageSkeleton />
-  }
-
   const pageHeader = (
     <PageHeader
       title={t('page.dashboard.title')}
@@ -83,7 +79,12 @@ export default function Dashboard() {
   // 引导状态机：零渠道 → 有渠道零 key → 零令牌 → 零请求；每一步保留上下文直到第一次成功请求。
   const onboarding = chs.length === 0 ? (
     <Card className="p-10">
-      <Empty icon={<TowerControl size={40} />} title={t('dashboard.welcome.title')} hint={t('dashboard.welcome.hint')} />
+      <Empty
+        icon={<TowerControl size={40} />}
+        title={t('dashboard.welcome.title')}
+        hint={t('dashboard.welcome.hint')}
+        action={<Link to="/channels" className="inline-flex items-center gap-1 text-sm font-medium text-brand-text hover:underline">{t('dashboard.openChannels')} <ArrowRight size={12} aria-hidden="true" /></Link>}
+      />
       <ol className="mx-auto max-w-md space-y-3 text-sm">
         {[
           { n: 1, text: t('dashboard.onboarding.step1'), to: '/channels' },
@@ -144,10 +145,12 @@ export default function Dashboard() {
   return (
     <div className="eg-page-stack">
       {pageHeader}
-      {/* 横幅紧跟页头：先知道"这是哪一页"，再读"这一页有什么要注意的" */}
-      {updateBanner}
-      {quotaBanner}
-      {onboarding}
+      <ContentSwap loading={channels.isPending} skeleton={<PageSkeleton />}>
+        <div className="eg-page-stack">
+          {/* 横幅紧跟页头：先知道"这是哪一页"，再读"这一页有什么要注意的" */}
+          {updateBanner}
+          {quotaBanner}
+          {onboarding}
 
       {/* 事实条：列数与下方 KPI 网格同步，分段线落在卡片间隙上；1px 网格间隙透出容器底色即分隔线 */}
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line min-[1100px]:grid-cols-4">
@@ -231,6 +234,8 @@ export default function Dashboard() {
           </div>
         </Card>
       )}
+        </div>
+      </ContentSwap>
       <UpdateDialog open={updateOpen} onClose={() => setUpdateOpen(false)} status={update.data} />
     </div>
   )

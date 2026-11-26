@@ -163,9 +163,9 @@ export default function Playground() {
             />
 
             <div className="flex gap-2 pt-0.5">
-              <Button onClick={send} disabled={running || !model || !prompt.trim()} className="flex-1">
-                {running ? <Spinner className="h-3.5 w-3.5 border-white/40 border-t-white" /> : <Play size={14} />}
-                {running ? t('common.sending') : t('common.send')}
+              <Button onClick={send} loading={running} disabled={!model || !prompt.trim()} className="flex-1">
+                <Play size={14} />
+                {t('common.send')}
               </Button>
               <Button variant="outline" onClick={stop} disabled={!running} aria-label={t('playground.stopAria')}>
                 <Square size={13} /> {t('common.stop')}

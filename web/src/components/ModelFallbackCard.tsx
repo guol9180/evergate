@@ -89,8 +89,8 @@ export default function ModelFallbackCard() {
 
       <div className="mt-4 border-t border-line-soft pt-4">
         <div className="flex justify-end">
-          <Button type="button" onClick={submit} disabled={save.isPending}>
-            <Save size={15} /> {save.isPending ? t('common.saving') : t('fallback.save')}
+        <Button type="button" onClick={submit} loading={save.isPending}>
+          <Save size={15} /> {t('fallback.save')}
           </Button>
         </div>
       </div>

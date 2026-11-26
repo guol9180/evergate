@@ -56,8 +56,8 @@ export default function Login() {
         <Field label={t('login.password')} error={errors.password}>
           <Input ref={passwordRef} type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErrors((current) => ({ ...current, password: undefined })) }} placeholder="••••••••" autoComplete="current-password" />
         </Field>
-        <Button type="submit" className="w-full" disabled={login.isPending}>
-          {login.isPending ? t('login.submitting') : t('login.submit')}
+        <Button type="submit" className="w-full" loading={login.isPending}>
+          {t('login.submit')}
         </Button>
       </form>
     </AuthCard>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ScrollText } from 'lucide-react'
 import { useAuditLogs } from '../api/hooks'
-import { Card, Empty, Pagination, SkeletonRows, Td, Th } from './ui'
+import { Card, ContentSwap, Empty, Pagination, SkeletonRows, Td, Th } from './ui'
 import { fmtTime } from '../lib/format'
 import { t, type MessageKey } from '../lib/i18n'
 
@@ -42,12 +42,11 @@ export default function AuditLogCard() {
     <Card>
       <h2 className="mb-1 text-sm font-semibold text-foreground">{t('audit.title')}</h2>
       <p className="mb-3 text-xs text-muted">{t('audit.desc')}</p>
-      {logs.isPending ? (
-        <SkeletonRows rows={3} />
-      ) : items.length === 0 ? (
-        <Empty icon={<ScrollText size={32} />} title={t('empty.audit.title')} hint={t('empty.audit.hint')} />
-      ) : (
-        <div className="overflow-x-auto">
+      <ContentSwap loading={logs.isPending} skeleton={<SkeletonRows rows={3} />}>
+        {items.length === 0 ? (
+          <Empty icon={<ScrollText size={32} />} title={t('empty.audit.title')} hint={t('empty.audit.hint')} />
+        ) : (
+          <div className="overflow-x-auto">
           <table className="w-full min-w-[680px]">
             <thead className="border-b border-line-soft bg-surface-soft">
               <tr>
@@ -67,8 +66,9 @@ export default function AuditLogCard() {
               ))}
             </tbody>
           </table>
-        </div>
-      )}
+          </div>
+        )}
+      </ContentSwap>
       {items.length > 0 && (
         <Pagination
           page={page}

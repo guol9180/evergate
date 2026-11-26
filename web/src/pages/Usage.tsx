@@ -54,8 +54,8 @@ export default function Usage() {
         title={t('page.usage.title')}
         description={t('page.usage.desc')}
         actions={
-          <Button variant="outline" onClick={() => report.refetch()} disabled={report.isFetching}>
-            <RefreshCw size={14} className={report.isFetching ? 'animate-spin' : ''} /> {t('common.refresh')}
+          <Button variant="outline" onClick={() => report.refetch()} loading={report.isFetching}>
+            <RefreshCw size={14} /> {t('common.refresh')}
           </Button>
         }
       />
@@ -297,7 +297,7 @@ function PriceCard() {
           <Field label={t('usage.price.cacheWrite')}><Input type="number" min={0} step="0.000001" value={defaultCacheWrite} onChange={(e) => setDefaultCacheWrite(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
         </div>
         <p className="mb-2 text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
-        <Button type="submit" size="sm" className="mt-2" disabled={setDefault.isPending}>{t('usage.price.saveDefault')}</Button>
+        <Button type="submit" size="sm" className="mt-2" loading={setDefault.isPending}>{t('usage.price.saveDefault')}</Button>
       </form>
 
       <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-line-strong p-3">
@@ -317,7 +317,7 @@ function PriceCard() {
           <Field label={t('usage.price.cacheWrite')}><Input type="number" min={0} step="0.000001" value={overrideCacheWrite} onChange={(e) => setOverrideCacheWrite(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
         </div>
         <p className="text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
-        <Button type="submit" size="sm" variant="outline" disabled={upsert.isPending || !model.trim()}><Plus size={13} /> {t('usage.price.saveOverride')}</Button>
+        <Button type="submit" size="sm" variant="outline" loading={upsert.isPending} disabled={!model.trim()}><Plus size={13} /> {t('usage.price.saveOverride')}</Button>
       </form>
       <div className="mt-3 max-h-44 space-y-1 overflow-auto">
         {(prices.data?.overrides ?? []).map((price) => (
@@ -325,7 +325,7 @@ function PriceCard() {
             <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
             <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
             <span className="text-muted">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}{cacheSummary(price)}</span>
-            <IconButton danger label={t('usage.price.deleteOverride')} onClick={() => remove.mutate(price.id, { onSuccess: () => notify.success(t('toast.price.deleted')), onError: (err) => notify.error(err) })}>
+            <IconButton danger label={t('usage.price.deleteOverride')} loading={remove.isPending && remove.variables === price.id} onClick={() => remove.mutate(price.id, { onSuccess: () => notify.success(t('toast.price.deleted')), onError: (err) => notify.error(err) })}>
               <Trash2 size={13} />
             </IconButton>
           </div>
@@ -355,7 +355,8 @@ function PriceCard() {
                 type="button"
                 size="sm"
                 variant="outline"
-                disabled={applyPreset.isPending || !presetChannelID}
+                loading={applyPreset.isPending}
+                disabled={!presetChannelID}
                 onClick={() => applyPreset.mutate(Number(presetChannelID), {
                   onSuccess: (resp) => {
                     if (resp.created > 0) notify.success(tf('usage.price.applyDone', { n: resp.created }))
@@ -364,7 +365,7 @@ function PriceCard() {
                   onError: (err) => notify.error(err),
                 })}
               >
-                {applyPreset.isPending ? t('common.saving') : t('usage.price.applyPreset')}
+                {t('usage.price.applyPreset')}
               </Button>
             </div>
             {prices.data?.catalog && (
