@@ -6,7 +6,7 @@ import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel, EffectivePrice } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset, uniquePresetName } from '../lib/channelPresets'
-import { channelStateTone, fmtMs, fmtTime, formatRemainingSeconds, stateLabel, statusRank } from '../lib/format'
+import { channelStateTone, fmtMs, fmtTime, formatRemainingSeconds, keyImportMessage, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
@@ -271,7 +271,8 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
             { channelId, keys: keysText },
             {
               onSuccess: (resp) => {
-                notify.success(tf('channels.import.done', { n: resp.added }))
+                const result = keyImportMessage(resp)
+                notify[result.tone](result.text)
                 setKeysText('')
               },
               onError: (err) => notify.error(err),
@@ -311,6 +312,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [timeoutErrors, setTimeoutErrors] = useState<{ connect?: string; firstToken?: string; overall?: string }>({})
   // 新建时可内联导入 key：省去"保存 → 回列表 → 展开 → 粘贴 key → 再编辑"的四次往返（T77）。
   const [keysText, setKeysText] = useState('')
+  // 渠道已创建但内联导入 key 失败时记下 id：保持弹窗可重试，避免再次保存变成重名创建。
+  const [createdChannelID, setCreatedChannelID] = useState<number | null>(null)
   const addKeys = useBatchAddKeys()
   const [connectSec, setConnectSec] = useState(channel?.timeout_config?.connect_sec?.toString() ?? '')
   const [firstTokenSec, setFirstTokenSec] = useState(channel?.timeout_config?.first_token_sec?.toString() ?? '')
@@ -359,6 +362,21 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const derivedType = supportsGemini ? 'gemini' : supportsAnthropic ? 'anthropic' : 'openai-compatible'
   const type = presetMode ? preset.type : derivedType
 
+  const importKeys = (channelID: number) => {
+    const keys = keysText.trim()
+    if (!keys) {
+      onClose()
+      return
+    }
+    addKeys.mutate({ channelId: channelID, keys }, {
+      onSuccess: (resp) => {
+        const result = keyImportMessage(resp)
+        notify[result.tone](result.text)
+        onClose()
+      },
+    })
+  }
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     const timeouts: Record<string, number> = {}
@@ -401,9 +419,9 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       {
         onSuccess: (saved) => {
           notify.success(t('toast.channel.saved'))
-          const keys = keysText.trim()
-          if (!channel && keys) {
-            addKeys.mutate({ channelId: saved.id, keys }, { onSuccess: onClose, onError: () => onClose() })
+          if (!channel && keysText.trim()) {
+            setCreatedChannelID(saved.id)
+            importKeys(saved.id)
             return
           }
           onClose()
@@ -421,7 +439,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       footer={
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-          <Button type="submit" form={formID} disabled={save.isPending}>{save.isPending ? t('common.saving') : t('common.save')}</Button>
+          <Button type="submit" form={formID} disabled={save.isPending || createdChannelID != null}>{save.isPending ? t('common.saving') : t('common.save')}</Button>
         </div>
       }
     >
@@ -430,7 +448,16 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         {save.isError
           ? <Alert tone="danger">{(save.error as Error).message}</Alert>
           : addKeys.isError
-            ? <Alert tone="danger">{tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message })}</Alert>
+            ? (
+              <Alert
+                tone="danger"
+                action={createdChannelID != null
+                  ? <Button size="sm" variant="outline" disabled={addKeys.isPending} onClick={() => importKeys(createdChannelID)}>{t('channels.form.retryImport')}</Button>
+                  : undefined}
+              >
+                {tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message })}
+              </Alert>
+            )
             : null}
         <div className="space-y-2">
           <Field label={t('channels.form.preset')} hint={t('channels.form.presetHint')}>

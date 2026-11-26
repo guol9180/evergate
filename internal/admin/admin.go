@@ -1016,7 +1016,15 @@ func (a *API) loadChannel(c *gin.Context) (*store.Channel, bool) {
 
 // ---------- 凭据 ----------
 
-// batchAddKeys 批量导入 key：多行纯文本，每行一把（任务书：支持多行批量粘贴）。
+const (
+	// maxKeyBatch 单次导入上限：超过就让用户分批，避免一次请求长时间占用写事务。
+	maxKeyBatch = 1000
+	// maxKeyChars 单把 key 的长度上限；超长行计入非法，不进入加密与入库。
+	maxKeyChars = 4096
+)
+
+// batchAddKeys 批量导入 key：多行纯文本，每行一把；批内与渠道存量都去重，
+// 单事务批量写入，返回新增 / 重复 / 非法计数（不回显任何明文）。
 func (a *API) batchAddKeys(c *gin.Context) {
 	ch, found := a.loadChannel(c)
 	if !found {
@@ -1030,30 +1038,76 @@ func (a *API) batchAddKeys(c *gin.Context) {
 		return
 	}
 	lines := strings.Split(strings.ReplaceAll(req.Keys, "\r\n", "\n"), "\n")
-	added := 0
-	var lastErr error
+	seen := make(map[string]bool, len(lines))
+	plaintexts := make([]string, 0, len(lines))
+	duplicates, invalid := 0, 0
 	for _, line := range lines {
 		key := strings.TrimSpace(line)
 		if key == "" {
 			continue
 		}
-		cipher, err := store.Encrypt(key, a.opt.MasterKey)
-		if err != nil {
-			lastErr = err
+		if len(key) > maxKeyChars {
+			invalid++
 			continue
 		}
-		ck := &store.ChannelKey{ChannelID: ch.ID, KeyCipher: cipher, Enabled: true, Weight: 1, State: store.KeyStateActive}
-		if err := a.opt.DB.Create(ck).Error; err != nil {
-			lastErr = err
+		if seen[key] {
+			duplicates++
 			continue
 		}
-		added++
+		seen[key] = true
+		plaintexts = append(plaintexts, key)
 	}
-	if added == 0 && lastErr != nil {
-		fail(c, http.StatusInternalServerError, "导入失败："+lastErr.Error())
+	if len(plaintexts) > maxKeyBatch {
+		fail(c, http.StatusBadRequest, fmt.Sprintf("单次最多导入 %d 把 key，请分批粘贴", maxKeyBatch))
 		return
 	}
-	ok(c, gin.H{"added": added}) // 红线：不回显任何明文（验收 #9）
+	// 与渠道存量 key 去重：同一把上游 key 重复入库会变成双倍权重，只能解密比对。
+	if len(plaintexts) > 0 {
+		var existingKeys []*store.ChannelKey
+		if err := a.opt.DB.Where("channel_id = ?", ch.ID).Find(&existingKeys).Error; err != nil {
+			fail(c, http.StatusInternalServerError, "查询已有 key 失败")
+			return
+		}
+		existing := make(map[string]bool, len(existingKeys))
+		for _, k := range existingKeys {
+			if plain, derr := store.Decrypt(k.KeyCipher, a.opt.MasterKey); derr == nil {
+				existing[plain] = true
+			}
+		}
+		kept := plaintexts[:0]
+		for _, key := range plaintexts {
+			if existing[key] {
+				duplicates++
+				continue
+			}
+			kept = append(kept, key)
+		}
+		plaintexts = kept
+	}
+	items := make([]*store.ChannelKey, 0, len(plaintexts))
+	for _, key := range plaintexts {
+		cipher, err := store.Encrypt(key, a.opt.MasterKey)
+		if err != nil {
+			if a.opt.Logger != nil {
+				a.opt.Logger.Warn("encrypt channel key failed", slog.Any("error", err))
+			}
+			fail(c, http.StatusInternalServerError, "加密 key 失败")
+			return
+		}
+		items = append(items, &store.ChannelKey{ChannelID: ch.ID, KeyCipher: cipher, Enabled: true, Weight: 1, State: store.KeyStateActive})
+	}
+	if len(items) > 0 {
+		if err := a.opt.DB.Transaction(func(tx *gorm.DB) error {
+			return tx.CreateInBatches(items, 100).Error
+		}); err != nil {
+			if a.opt.Logger != nil {
+				a.opt.Logger.Warn("batch add channel keys failed", slog.Any("error", err))
+			}
+			fail(c, http.StatusInternalServerError, "导入失败，已回滚")
+			return
+		}
+	}
+	ok(c, gin.H{"added": len(items), "duplicates": duplicates, "invalid": invalid})
 }
 
 func (a *API) updateKey(c *gin.Context) {

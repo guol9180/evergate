@@ -213,7 +213,7 @@ export function useBatchAddKeys() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { channelId: number; keys: string }) =>
-      api<{ added: number }>(`/admin/api/channels/${data.channelId}/keys`, jsonBody({ keys: data.keys })),
+      api<{ added: number; duplicates?: number; invalid?: number }>(`/admin/api/channels/${data.channelId}/keys`, jsonBody({ keys: data.keys })),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['channels'] })
       qc.invalidateQueries({ queryKey: ['channel', vars.channelId] })

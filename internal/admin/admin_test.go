@@ -862,3 +862,44 @@ func TestSessionTamper(t *testing.T) {
 		t.Fatal("过期应失效")
 	}
 }
+
+func TestBatchKeyImportDedupesAndLimits(t *testing.T) {
+	env := newEnv(t)
+	cookie, _ := login(t, env, "admin", "admin123")
+	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	if code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
+		`{"name":"dedupe-ch","type":"openai-compatible","base_url":"https://api.example.com/v1","models":["m"]}`); code != 200 {
+		t.Fatalf("create channel: %d %s", code, body)
+	}
+	// 批内重复：三行 sk-a 只入库一次，后两行计重复
+	code, body, _ := env.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-a\nsk-a\n sk-b \n\nsk-a"}`)
+	if code != 200 || !strings.Contains(body, `"added":2`) || !strings.Contains(body, `"duplicates":2`) {
+		t.Fatalf("batch import: %d %s", code, body)
+	}
+	// 与存量重复：解密比对后跳过已有 key
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, `{"keys":"sk-a\nsk-c"}`)
+	if code != 200 || !strings.Contains(body, `"added":1`) || !strings.Contains(body, `"duplicates":1`) {
+		t.Fatalf("import existing duplicate: %d %s", code, body)
+	}
+	// 超长行计入非法，不进入加密与入库
+	longKey := strings.Repeat("k", maxKeyChars+1)
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, fmt.Sprintf(`{"keys":%q}`, longKey))
+	if code != 200 || !strings.Contains(body, `"added":0`) || !strings.Contains(body, `"invalid":1`) {
+		t.Fatalf("invalid key: %d %s", code, body)
+	}
+	// 超过单次上限整体拒绝
+	keys := make([]string, 0, maxKeyBatch+1)
+	for i := 0; i <= maxKeyBatch; i++ {
+		keys = append(keys, fmt.Sprintf("sk-%d", i))
+	}
+	payload, _ := json.Marshal(map[string]string{"keys": strings.Join(keys, "\n")})
+	code, body, _ = env.req(t, "POST", "/admin/api/channels/1/keys", cookie, string(payload))
+	if code != http.StatusBadRequest {
+		t.Fatalf("over limit should be rejected: %d %s", code, body)
+	}
+	// 库内只留 2 + 1 把：非法行与超限批次都没有写入
+	var count int64
+	if err := env.db.Model(&store.ChannelKey{}).Where("channel_id = ?", 1).Count(&count).Error; err != nil || count != 3 {
+		t.Fatalf("stored keys = %d %v, want 3", count, err)
+	}
+}

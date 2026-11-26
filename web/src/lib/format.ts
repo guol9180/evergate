@@ -2,7 +2,7 @@
 // 错误类别人话映射参照 gpt-load credential-failure-presenter 模式
 import type { Tone } from './tone'
 // 带 .ts 后缀：node --experimental-strip-types 跑单测时不做扩展名解析
-import { t, type MessageKey } from './i18n.ts'
+import { t, tf, type MessageKey } from './i18n.ts'
 
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -38,6 +38,22 @@ export function fmtRequestCost(micros: number | null | undefined, status: string
     default:
       return t('cost.unknown')
   }
+}
+
+/**
+ * key 导入结果的统一文案（渠道 key 面板与新建渠道内联导入共用）：
+ * 有新增走成功提示并附跳过数，全被跳过时明确告知没有新增，避免误以为导入成功。
+ */
+export function keyImportMessage(result: { added: number; duplicates?: number; invalid?: number }): { tone: 'success' | 'info'; text: string } {
+  const duplicates = result.duplicates ?? 0
+  const invalid = result.invalid ?? 0
+  if (result.added === 0) {
+    return { tone: 'info', text: tf('channels.import.nothingNew', { duplicates, invalid }) }
+  }
+  const skipped: string[] = []
+  if (duplicates > 0) skipped.push(tf('channels.import.duplicates', { n: duplicates }))
+  if (invalid > 0) skipped.push(tf('channels.import.invalid', { n: invalid }))
+  return { tone: 'success', text: tf('channels.import.done', { n: result.added }) + (skipped.length ? ` · ${skipped.join(' · ')}` : '') }
 }
 
 export function cooldownRemaining(until: string | null | undefined): string | null {
