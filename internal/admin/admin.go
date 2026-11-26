@@ -167,7 +167,7 @@ func (a *API) login(c *gin.Context) {
 		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误")
+		fail(c, http.StatusBadRequest, "请输入用户名和密码")
 		return
 	}
 	admin, err := store.GetAdminByUsername(a.opt.DB, req.Username)

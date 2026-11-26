@@ -25,6 +25,22 @@ vi.mock('../../src/api/hooks', () => ({
 }))
 
 describe('Login', () => {
+  it('validates empty credentials inline without calling the API', () => {
+    loginMutation.mutate.mockClear()
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <Login />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '登录' }))
+    expect(screen.getByText('请输入用户名')).toBeTruthy()
+    expect(screen.getByText('请输入密码')).toBeTruthy()
+    expect(screen.getByLabelText('用户名').getAttribute('aria-invalid')).toBe('true')
+    expect(screen.getByLabelText('密码').getAttribute('aria-invalid')).toBe('true')
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(loginMutation.mutate).not.toHaveBeenCalled()
+  })
+
   it('submits credentials and routes to forced password change', async () => {
     render(
       <MemoryRouter initialEntries={['/login']}>

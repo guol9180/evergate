@@ -126,6 +126,14 @@ func login(t *testing.T, e *testEnv, user, pass string) (string, string) {
 	return value, body
 }
 
+func TestLoginRejectsEmptyCredentialsWithReadableMessage(t *testing.T) {
+	env := newEnv(t)
+	code, body, _ := env.req(t, "POST", "/admin/api/auth/login", "", `{"username":"","password":""}`)
+	if code != http.StatusBadRequest || !strings.Contains(body, "请输入用户名和密码") {
+		t.Fatalf("empty credentials: %d %s", code, body)
+	}
+}
+
 func TestAuthFlowAndForcedPasswordChange(t *testing.T) {
 	env := newEnv(t)
 	// 错误密码
