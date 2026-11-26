@@ -33,7 +33,7 @@
 | P2（已完成） | T28 渠道预设供应商模板（done）；T36 按预算自动模型降级（done）；T37 Anthropic 原生协议打通（吸收 T13，done）；T38 Gemini 原生协议打通（done）；插件钩子（暂定，有需要再建卡） | 已建卡项按任务卡验收；多用户与语义缓存已移除出计划（2026-11-16 用户决策）；T36 → T37 → T38 已全部交付 |
 | P3（已完成，4 卡待复验/延后） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布、T58 OpenCode Go 会话头/模型目录/日志刷新稳定性与 v0.5.1 发布、T60 JetBrains 空增量保活修复与 v0.5.2 发布、T62 JetBrains + ZAI reasoning 流兼容修复与 v0.5.3 发布、T63–T68 质量审查修复批次、T70–T72 成本统计修复与 v0.5.4/v0.5.5；实现完成待人工复验：T49 Windows 托盘 DPI 截图矩阵、T50 安装包更新真实升级冒烟、T52 托盘 Logo 多 DPI 截图矩阵；延后：T48 macOS 安装器（需 Apple Developer Program） | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、npm 五包与托盘 Logo 资源均已验证 |
 | P4（已完成） | 三视角审视改进批次：T73 流程治理与文档体系、T74 CI 门禁补齐、T75 后端补齐、T76 前端设计系统、T77 前端页面体验、T78 README 与用户文档、T79 i18n | 排除有支出项（Windows 代码签名、Apple 签名公证）；各卡按验收标准通过并整卡归档至 [P4](./docs/archive/P4.md)；`go test -race ./...`、`npm test`、`npm run build`、`make build` 证据已入卡 |
-| P5（进行中） | 内置浏览器体验审查修复与预设/价格/目录/首启：T96 单实例互斥按数据目录隔离、T88 全局布局与导航修复、T89 表单反馈与信息表达修复、T90 i18n 字典补全、T91 渠道预设/自定义分离与四协议、T92 预设模型价格、T98 全局控件尺寸与对齐统一、T93 下游模型目录接口、T94 首启管理员设置向导、T97 全页面 UI/UX 逐项验收、T99 统一反馈体系与三方原语替换、T100 登录空表单校验与提示文案、T101 概览事实条与侧栏底栏重排、T102 分段控件与下拉选择重做、T95 发布 v0.7.0 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint/test/build 通过；T97 矩阵全绿后才进入发版；v0.7.0 按发版检查清单发布 |
+| P5（已完成） | 内置浏览器体验审查修复与预设/价格/目录/首启：T96 单实例互斥按数据目录隔离、T88 全局布局与导航修复、T89 表单反馈与信息表达修复、T90 i18n 字典补全、T91 渠道预设/自定义分离与四协议、T92 预设模型价格、T98 全局控件尺寸与对齐统一、T93 下游模型目录接口、T94 首启管理员设置向导、T97 全页面 UI/UX 逐项验收、T99 统一反馈体系与三方原语替换、T100 登录空表单校验与提示文案、T101 概览事实条与侧栏底栏重排、T102 分段控件与下拉选择重做、T95 发布 v0.7.0 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint/test/build 通过；T97 矩阵全绿后才进入发版；v0.7.0 按发版检查清单发布 |
 
 P0 功能完成定义（1–10 全部通过）：
 
@@ -53,24 +53,6 @@ P0 功能完成定义（1–10 全部通过）：
 （技术背景见 [README.md](./README.md)，改码规则见 [AGENTS.md](./AGENTS.md)，勿在此重复）
 
 ## 任务清单
-
-### 执行中
-
-> 来源：P5 体验审查与预设/价格/目录（2026-11-25 用户指令，内置浏览器真实环境审查 + 三条产品优化）。
-
-#### T95: 发布 v0.7.0（P2）
-
-- 目标：T88–T94、T97 验收后按发版检查清单发布 v0.7.0（新增功能 → MINOR）
-- 验收标准：CHANGELOG `## v0.7.0` 与 tag 精确对应且在 main 历史；CI 全绿；真实旧→新升级一次并回写证据
-- 边界：不包含 macOS 安装器
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：in-progress
-- 进度：
-  - 2026-11-25 计划 建卡
-  - 2026-11-25 准备 全部前置卡（T88–T94、T96–T98）已 done；CHANGELOG `## v0.7.0` 与 `openapi.yaml` 0.7.0 已就绪，`make build` 通过。剩余动作需要用户确认：合并 `feat/p5-ux-presets-pricing-catalog` 到 main → 打 tag `v0.7.0` → 推送触发 CI/发布 → 真实旧版本升级一次并回写证据
-  - 2026-11-26 进度 T99–T101（反馈体系与三方原语、登录校验、概览事实条与侧栏底栏）已 done，随本版发布；CHANGELOG `## v0.7.0` 已补入对应条目
-  - 2026-11-26 进度 T102（分段控件与下拉选择重做）已 done，随本版发布；新增前端依赖 `@radix-ui/react-radio-group`，CHANGELOG 已补
-  - 2026-11-26 执行 用户确认发版；按发版检查清单执行：本地门禁 → 合并 `main` 并推送等 CI 全绿 → annotated tag `v0.7.0` → Release workflow → 资产与 npm 核验
 
 ### 待执行（自上而下即执行顺序）
 
@@ -105,6 +87,7 @@ P0 功能完成定义（1–10 全部通过）：
 - 状态：planned
 - 进度：
   - 2026-11-24 计划 由 T50 拆出，并入 docs/发版检查清单.md
+  - 2026-11-26 进度 v0.7.0 已发布（T95 关闭）；用户确认已手动验收 T95（含真实旧→新升级项），本卡是否据此关闭待用户指示
 
 #### T52v: 复验 Windows 托盘 Logo 多 DPI 矩阵（P3，待人工复验）
 
@@ -156,86 +139,10 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 最近完成 / 已取消
 
-#### T84: 改为直接正式版发布并发布 v0.6.0（P0，用户指令）
-
-- 目标：移除标准流程中的预发布环节，后续默认直接发布正式版，并立即将当前候选功能集发布为 `v0.6.0`
-- 版本判断：`v0.5.5 → v0.6.0`。P4 新增功能按 0.x 语义提升 MINOR；用户明确取消 RC / 24 小时前置门槛
-- 验收标准：
-  1. AGENTS 与发版检查清单不再要求 MINOR 先发 `-rc.1`，默认直接发布正式 tag
-  2. `CHANGELOG.md` 含唯一非空 `## v0.6.0` 段，正式 tag 指向 `main` 提交
-  3. 本地 Go、前端、覆盖率、脚本、构建、actionlint 与文档门禁通过
-  4. `main` CI Quality / Security 全绿；macOS cgo 按仓库变量如实跳过或通过
-  5. annotated tag `v0.6.0` 指向 `main`；Release workflow 的 quality / release / windows-installer / verify-release 全绿，macOS 安装器按签名开关跳过
-  6. GitHub Release 为正式 Latest，资产为 Windows setup、Linux tar.gz 与 checksums；npm 五包 `latest` 均为 `0.6.0`
-  7. 下载资产重算 SHA256，并回写 Action URL、资产大小 / 哈希、npm dist-tags 与 npmmirror 证据
-- 边界：不发布未签名 DMG、裸二进制或第二个候选 tag；不改写历史 tag；真实旧→新升级仍由 T50v 人工复验
-- 状态：done
-- 进度（只追加新行，不修改旧行）：
-  - 2026-11-25 计划 用户明确取消预发布环节并要求直接发布正式版；建立 T84，开始更新发布规范与正式版门禁
-  - 2026-11-25 验证 AGENTS 与发版清单已改为默认直接正式版；本地 Go/vet、前端 11+19、lint/build、脚本 10 项、scheduler 93.5%、relay 81%、actionlint、`make build`、`make build-all`、Markdown/OpenAPI 门禁通过
-  - 2026-11-25 验证 main CI [45524001137](https://github.com/guol9180/evergate/actions/runs/45524001137) Quality/Security 成功，macOS cgo 按变量跳过；annotated tag `v0.6.0` 指向 `9e6cc0f` 并推送
-  - 2026-11-25 交付 Release [45525049079](https://github.com/guol9180/evergate/actions/runs/45525049079)：首次 verify-release 因 updates 包 registry 元数据等待超时失败，但五包已实际发布；同一 tag 重放失败 job 后 attempt 2 全成功，macOS-installer 按开关跳过
-  - 2026-11-25 验证 GitHub Release 为正式 Latest，资产 Windows setup 9,841,266B（SHA256 `da20e2c7427609a281ee44a7ed77bab7c12fb0c987019b04939f9d0d22ad9ccf`）、Linux tar.gz 10,883,933B（SHA256 `1f0087a31b10f1a59c7351ffa7869ab991f94c6619446d05b0b1f35a5111e240`）、checksums 205B；独立下载重算一致
-  - 2026-11-25 验证 npm 官方与 npmmirror 五包均 `latest=0.6.0` 且版本存在；npmmirror 主包通过公开同步任务 `6b064029a8442cc48b9fca64` 刷新成功；历史 `next=0.6.0-rc.1` 仅为旧记录，后续标准流程不再产生候选通道
-
-#### T83: 发布 v0.6.0-rc.1（P0，用户指令）
-
-- 目标：将 P4 三视角改进批次与新版文档分层按 MINOR 预发布通道发布为 `v0.6.0-rc.1`，验证 GitHub prerelease、Windows/Linux 资产、npm 五包 `next` 标签与发布门禁
-- 版本判断：`v0.5.5 → v0.6.0-rc.1`。本批次新增管理台能力、后端统计/配置/审计接口与安全/可靠性改进，按 0.x 语义提升 MINOR；先发布候选版，正式 `v0.6.0` 待候选验证后再发
-- 验收标准：
-  1. `CHANGELOG.md` 含唯一非空 `## v0.6.0-rc.1` 段，发版提交位于 `main` 历史
-  2. 本地 Go、前端、覆盖率、脚本、构建、actionlint 与文档门禁通过
-  3. `main` 推送后的 CI Quality / Security 全绿；macOS cgo job 按仓库变量如实跳过或通过
-  4. annotated tag `v0.6.0-rc.1` 指向 `main` 提交；Release workflow 的 quality / release / windows-installer / verify-release 全绿，macOS 安装器按签名开关跳过
-  5. GitHub Release 为 prerelease，仅含 Windows setup、Linux tar.gz 与 checksums，不含裸二进制或未签名 DMG
-  6. npm 主包、三个平台子包与 updates 包均为 `0.6.0-rc.1`，`next` 指向该版本，`latest` 保持 `0.5.5`
-  7. 回写 Action URL、资产大小与 SHA256、npm dist-tags；真实旧→新升级继续由 T50v 在正式版发布后复验
-- 边界：不发布正式 `v0.6.0`、不移动 `latest`、不发布未签名 DMG 或裸二进制；不夹带业务代码；不改写历史 tag
-- 状态：done
-- 进度（只追加新行，不修改旧行）：
-  - 2026-11-24 计划 用户确认推送并发布；按 MINOR 预发布规则确定 `v0.6.0-rc.1`，建立发版卡并开始本地门禁
-  - 2026-11-24 验证 本地 `go test -p 1 ./...`、vet、前端 11+19 测试、lint/build、发布脚本 10 项、scheduler 93.5%、relay 81%、actionlint、`make build`、`make build-all` 与文档门禁通过；main CI [45366058083](https://github.com/guol9180/evergate/actions/runs/45366058083) Quality/Security 成功，macOS cgo 按变量跳过
-  - 2026-11-24 交付 annotated tag `v0.6.0-rc.1` 指向 `98b35c4` 并推送；Release [45367176889](https://github.com/guol9180/evergate/actions/runs/45367176889) 的 quality/release/windows-installer/verify-release 全成功，macOS-installer 按开关跳过
-  - 2026-11-24 验证 Release 为 prerelease，资产为 Windows setup 9,840,014B（SHA256 `7f8eea3b2e9e9e87db4090ce435bac0509022c0c456270ee5ccea2e5ef22e044`）、Linux tar.gz 10,884,033B（SHA256 `4eed8b59f10ae697a11e4f894e021f482c8f292af64be5ab7c7171a5464d869f`）、checksums 215B；独立下载重算一致，无裸二进制或 DMG，GitHub Latest 仍为 v0.5.5
-  - 2026-11-24 验证 npm 官方与 npmmirror 五个包均为 `next=0.6.0-rc.1`、`latest=0.5.5`；真实旧→新升级按边界继续由 T50v 在正式版发布后复验
-
-#### T82: 按新版 init-project-docs 补齐调研与设计分层（P1，用户指令）
-
-- 目标：按新版 `init-project-docs` 复审文档目录与内容归属，移除 `docs/` 根目录散文件，将已结题调研 / 审计 / 历史需求原文归档，并确保结论只由 README、AGENTS、现行 `docs/agents/` 文档与任务卡承载
-- 验收标准：
-  1. `docs/` 根目录只保留子目录；文档索引迁入 `docs/agents/README.md`，仓库内所有入口链接同步更新
-  2. 已结题的参考评审、管理台设计调研、协议生态调研、Responses 审计、三项 P2 调研与最初任务书迁入 `docs/archive/`；只搬不改，索引明确标注 `concluded`、日期与权威结论入口
-  3. `docs/agents/` 只保留现行领域规范、用户 / 运维文档、风险评估与 API 契约；不创建空的 `research/`、`design/` 或 `adr/`，同一决策不同时写 design 与 ADR
-  4. README、AGENTS、DEVELOP_PLAN 的引用单向且准确：当前事实不依赖旧调研，历史原文只作为追溯材料；无旧路径残留
-  5. 七条自检通过：五条规范完整、内容归属唯一、无重复正文、进度只追加、预算内、分区与状态一致、调研 / 设计状态与结案去向明确；全部 Markdown 链接与锚点可解析
-- 边界：只调整文档索引、目录与引用；不改写结题原文和历史任务卡，不重新论证已有技术结论，不改业务代码、版本号或发布产物
-- 状态：done
-- 进度（只追加新行，不修改旧行）：
-  - 2026-11-24 计划 新版 skill 复审确认 `docs/README.md` 为根目录散文件、7 份结题调研 / 审计仍混在 agents、最初任务书被误作现时权威入口；建立本卡并开始整理
-  - 2026-11-24 验证 文档索引迁入 `docs/agents/README.md`；`docs/` 根目录无散文件，仅保留非空 `agents/`、`archive/`；7 份结题调研 / 审计与最初任务书逐字迁入归档，并在索引记录 `concluded`、日期和权威结论入口
-  - 2026-11-24 验证 新版七项自检通过：README 134 行、AGENTS 57 行、DEVELOP_PLAN 179 行；36 个 Markdown 文件链接与锚点可解析；现行文档无重复长正文；`docs/agents/openapi.yaml` 解析通过；`git diff --check` 通过
-  - 2026-11-24 修正 行数按实际内容行为 README 133、AGENTS 56、DEVELOP_PLAN 179；前一行 134 / 57 为脚本包含尾随空元素的计数，三份文档均低于预算
-  - 2026-11-24 交付 调研 / 设计分层与单向引用已补齐；未创建空的 research/design/adr，未改业务代码、版本号或发布产物
-
-#### T81: 按 init-project-docs 复审并整理项目文档（P1，用户指令）
-
-- 目标：按 `init-project-docs` 的既有项目维护流程复审 README、AGENTS、DEVELOP_PLAN 及 `docs/` 索引，修正内容归属、目录命名、生命周期分区、归档和交叉引用
-- 验收标准：
-  1. AGENTS.md 原样保留 skill 规定的必建五条标准条目，专题规范只留摘要与链接，全文 ≤150 行
-  2. 专题文档归入 `docs/agents/`，已结束任务卡归入 `docs/archive/`；迁移只改位置和链接，不改写历史进度
-  3. DEVELOP_PLAN.md 按执行中 / 待执行 / 受阻或延后 / 最近完成分区；P4 done 卡整卡迁入 `docs/archive/P4.md` 并保留归档索引，主文件 ≤300 行
-  4. README.md ≤300 行，继续回答“这是什么 / 能干什么 / 怎么跑”，详细接入与排障通过文档索引定位且无正文复制
-  5. 七条自检全部通过：五条规范完整、内容归属唯一、无重复副本、进度只追加、预算内、分区与状态一致、双视角可检索；全部 Markdown 相对链接可解析
-- 边界：只调整文档、索引与文档链接；不改业务代码、测试、版本号或发布产物，不改写任何历史进度行，不顺手润色既有正文
-- 状态：done
-- 进度（只追加新行，不修改旧行）：
-  - 2026-11-24 计划 用户指定使用 init-project-docs 重新审核；只读审计确认 AGENTS 标准条目漂移、专题/历史目录命名不符、计划分区缺失且 P4 done 卡未归档，建立本卡并开始整理
-  - 2026-11-24 验证 五条标准与 skill 原文逐字一致；README 133 行、AGENTS 56 行（单节最多 9 行）、DEVELOP_PLAN 161 行；36 个 Markdown 文件相对链接与标题锚点全部可解析；31 个活动文档无重复长正文
-  - 2026-11-24 验证 P0–P4 归档与迁移前原文逐字一致，P4 的 T73–T80 整卡迁入 `docs/archive/P4.md`；docs 仅保留 `agents/`、`archive/` 两个子目录；`git diff --check` 通过
-  - 2026-11-24 交付 文档职责、目录、索引、生命周期分区和归档链已按 init-project-docs 七项自检完成；无业务代码、版本号或发布产物变更
+> 当前为空：done 卡保留一个批次周期后按阶段归档；上一批见 [P5 归档](./docs/archive/P5.md)。
 
 ## 归档索引
 
 - [P0 归档任务卡](./docs/archive/P0.md) · [P1](./docs/archive/P1.md) · [P2](./docs/archive/P2.md) · [P3](./docs/archive/P3.md)
-- [P4：T73–T80 三视角改进批次](./docs/archive/P4.md)（done）
-- [P5：T88–T102 体验审查修复与预设/价格/目录/首启](./docs/archive/P5.md)（进行中，done 卡逐张迁入）
+- [P4：T73–T80 三视角改进批次](./docs/archive/P4.md)与 [T81–T84 文档分层复审 / v0.6.0 发布收尾](./docs/archive/P4.md)（done）
+- [P5：T88–T102 体验审查修复与预设/价格/目录/首启，含 T95 发布 v0.7.0](./docs/archive/P5.md)（done）

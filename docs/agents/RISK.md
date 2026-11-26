@@ -4,9 +4,9 @@
 
 | # | 风险 | 可能性 | 影响 | 缓解措施 | 复查日期 |
 |---|---|---|---|---|---|
-| 1 | `NPM_TOKEN`（2026-11-13 创建，30 天有效）约 2026-12-13 到期；publish 失败会连带 Release job 失败、GitHub Release 不创建 | 高（确定日期） | 高 | 2026-11-24 发版前检查尚未过期；2026-12-01 前轮换，或在 npmjs.com 为五个包配置 Trusted Publishing 并设仓库变量 `NPM_TRUSTED_PUBLISHING=true`（workflow 已支持 OIDC） | 2026-12-01 |
+| 1 | `NPM_TOKEN`（2026-11-13 创建，30 天有效）约 2026-12-13 到期；publish 失败会连带 Release job 失败、GitHub Release 不创建 | 高（确定日期） | 高 | 2026-11-24 发版前检查尚未过期；2026-12-01 前轮换，或在 npmjs.com 为五个包配置 Trusted Publishing 并设仓库变量 `NPM_TRUSTED_PUBLISHING=true`（workflow 已支持 OIDC）；2026-11-26 v0.7.0 发布前确认未过期，五包发布成功 | 2026-12-01 |
 | 2 | main 分支此前无 CI，第 38 版才进 quality job | 高→已缓解 | 中 | `ci.yml` 已覆盖 main push / PR：`go test -race`、vet、前端 lint/test/build、覆盖率门禁、gitleaks、actionlint、macOS cgo 编译 | 2026-12-15 |
-| 3 | 应用内自更新从未在真实历史版本上端到端成功一次 | 中 | 高 | 发版检查清单新增"真实旧→新升级一次"；T50v 跟踪 | 下次发版 |
+| 3 | 应用内自更新从未在真实历史版本上端到端成功一次 | 中 | 高 | 发版检查清单新增"真实旧→新升级一次"；T50v 跟踪；2026-11-26 用户手动验收 v0.7.0 发布并关闭 T95（含真实旧→新升级项） | 下次发版 |
 | 4 | SQLite 单文件，AutoMigrate 不可逆，此前无备份 | 中 | 高 | 升级前自动备份到 `data/backups/`（保留 5 份）；回滚步骤见 [回滚与备份](./回滚与备份.md) | 2026-12-15 |
 | 5 | 单人 bus factor：GitHub / npm / 域名与签名密钥全在一人 | 中 | 高 | 加协作者或备用管理员；把发布流程写进 [发版检查清单](./发版检查清单.md) 使他人可执行 | 2027-01-15 |
 | 6 | 并发 AI 会话互相覆盖 DEVELOP_PLAN（历史上出现过决策先于建卡） | 高 | 中 | 并发规则写入 AGENTS.md；主文件 ≤300 行、done 卡归档降低冲突面 | 2026-12-15 |
