@@ -33,7 +33,7 @@ export default function Layout() {
   const location = useLocation()
   const [theme, setThemeState] = useState<Theme>(() => getTheme())
   const mainRef = useRef<HTMLElement>(null)
-  // 与 index.css 的侧栏断点一致：≥1200px 显示文字标签，此时退出按钮不需要 tooltip
+  // 与 index.css 的侧栏断点一致：≥1200px 显示文字标签，此时底部操作行自带文字，不需要 tooltip
   const sidebarExpanded = useMediaQuery('(min-width: 1200px)')
   // 订阅语言：setLocale 后本组件与所有调用 useLocale 的页面一起重渲染
   useLocale()
@@ -67,6 +67,12 @@ export default function Layout() {
 
   const dark = resolvedTheme(theme) === 'dark'
   const ThemeIcon = themeIcon(theme, dark)
+  const localeEn = getLocale() === 'en'
+  const localeName = localeEn ? 'locale.en' : 'locale.zh'
+  const otherLocaleName = localeEn ? 'locale.zh' : 'locale.en'
+  // 底部操作行两态共用：收起态是 32px 图标按钮，展开态是整行「图标 + 文字 + 当前值」
+  const actionRowClass =
+    'eg-nav-link eg-icon-btn eg-sidebar-action-row gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
 
   return (
     <div className="eg-shell flex h-full min-w-0">
@@ -80,7 +86,7 @@ export default function Layout() {
             <div className="text-[10px] text-subtle">{t('app.tagline')}</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 px-3" aria-label={t('nav.main')}>
+        <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3" aria-label={t('nav.main')}>
           {nav.map((item) => (
             <NavLink
               key={item.to}
@@ -98,18 +104,12 @@ export default function Layout() {
         </nav>
         <div className="space-y-3 border-t border-line-soft p-3">
           {/* 与导航项同缩进：px-3 + 16px 图标，保证图标中心与文字左缘都和菜单对齐 */}
-          <div className="eg-sidebar-meta flex items-center gap-2.5 px-3 text-xs text-muted">
-            <UserRound size={16} aria-hidden="true" className="shrink-0" />
-            <span className="truncate">{me.data?.username}</span>
-          </div>
           <div className="eg-sidebar-meta px-3 text-[11px] leading-4 text-subtle">
-            {update.isPending
-              ? t('update.checking')
-              : update.isError
-                ? t('update.failed')
-                : update.data?.development
-                  ? t('update.dev')
-                  : tf('update.current', { version: String(update.data?.current_version ?? t('common.unknown')) })}
+            {/* 版本号只在运行概览页头展示，这里不重复；仅在有新版本时给出升级入口 */}
+            <div className="flex min-w-0 items-center gap-2.5 text-xs text-muted">
+              <UserRound size={16} aria-hidden="true" className="shrink-0" />
+              <span className="truncate">{me.data?.username}</span>
+            </div>
             {update.data?.update_available && (
               <a href={update.data.release_url} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-1 font-medium text-brand-text hover:underline">
                 {tf('update.get', { version: String(update.data.latest_version) })} <ExternalLink size={11} aria-hidden="true" />
@@ -117,31 +117,36 @@ export default function Layout() {
             )}
           </div>
           <div className="eg-sidebar-actions">
-            <Tooltip content={t('locale.switch')} side="right">
+            <Tooltip content={sidebarExpanded ? undefined : t('locale.switch')} side="right">
               <button
                 type="button"
                 onClick={() => setLocale(getLocale() === 'en' ? 'zh-CN' : 'en')}
-                aria-label={t('locale.switch')}
-                className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                aria-label={tf('locale.aria', { current: t(localeName), next: t(otherLocaleName) })}
+                className={actionRowClass}
               >
                 <Languages size={16} className="shrink-0" aria-hidden="true" />
+                <span className="eg-sidebar-label">{t('locale.label')}</span>
+                <span className="eg-sidebar-label ml-auto text-subtle">{t(localeName)}</span>
               </button>
             </Tooltip>
-            <Tooltip content={tf('theme.title', { current: t(themeLabelKey[theme]) })} side="right">
+            <Tooltip content={sidebarExpanded ? undefined : tf('theme.title', { current: t(themeLabelKey[theme]) })} side="right">
               <button
                 type="button"
                 onClick={() => setThemeState(cycleTheme(theme))}
                 aria-label={tf('theme.aria', { current: t(themeLabelKey[theme]), next: t(themeLabelKey[nextTheme[theme]]) })}
-                className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                className={actionRowClass}
               >
                 <ThemeIcon size={16} className="shrink-0" aria-hidden="true" />
+                <span className="eg-sidebar-label">{t('nav.theme')}</span>
+                <span className="eg-sidebar-label ml-auto text-subtle">{t(themeLabelKey[theme])}</span>
               </button>
             </Tooltip>
             <Tooltip content={sidebarExpanded ? undefined : t('nav.logout')} side="right">
               <button
                 type="button"
                 onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
-                className="eg-nav-link eg-icon-btn eg-sidebar-logout gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                aria-label={t('nav.logout')}
+                className={actionRowClass}
               >
                 <LogOut size={16} className="shrink-0" aria-hidden="true" /> <span className="eg-sidebar-label">{t('nav.logout')}</span>
               </button>

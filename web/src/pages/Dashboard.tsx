@@ -149,17 +149,17 @@ export default function Dashboard() {
       {quotaBanner}
       {onboarding}
 
-      {/* 事实行（gpt-load HomeSummary 模式） */}
-      <div className="flex flex-wrap gap-x-8 gap-y-3">
+      {/* 事实条：列数与下方 KPI 网格同步，分段线落在卡片间隙上；1px 网格间隙透出容器底色即分隔线 */}
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line min-[1100px]:grid-cols-4">
         {[
-    { value: facts.channels, label: t('dashboard.fact.channels') },
-    { value: facts.models, label: t('dashboard.fact.models') },
-    { value: facts.keys, label: t('dashboard.fact.keys') },
-    { value: tokenItems.length, label: t('dashboard.fact.tokens') },
+          { value: facts.channels, label: t('dashboard.fact.channels') },
+          { value: facts.models, label: t('dashboard.fact.models') },
+          { value: facts.keys, label: t('dashboard.fact.keys') },
+          { value: tokenItems.length, label: t('dashboard.fact.tokens') },
         ].map((item) => (
-          <div key={item.label} className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold tabular-nums text-foreground">{item.value}</span>
-            <span className="text-sm text-muted">{item.label}</span>
+          <div key={item.label} className="flex min-w-0 items-baseline gap-2 bg-surface-soft px-4 py-3">
+            <span className="text-lg font-semibold tabular-nums text-foreground">{item.value}</span>
+            <span className="truncate text-sm text-muted">{item.label}</span>
           </div>
         ))}
       </div>

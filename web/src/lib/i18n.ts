@@ -25,6 +25,10 @@ export const dict = {
     'theme.aria': '切换主题：当前{current}，点击切换为{next}',
     'theme.title': '主题：{current}',
     'locale.switch': 'Switch to English',
+'locale.label': '语言',
+'locale.zh': '中文',
+'locale.en': 'English',
+'locale.aria': '语言：当前{current}，点击切换为 {next}',
     'common.loading': '加载中…',
     'common.create': '新建',
     'common.save': '保存',
@@ -128,10 +132,6 @@ export const dict = {
     'table.lastProbe': '最近探测',
     'table.errorSummary': '异常摘要',
     'table.updatedAt': '更新时间',
-    'update.checking': '正在检查更新…',
-    'update.failed': '更新检查失败，可稍后重试',
-    'update.dev': '开发版本，更新检查已跳过',
-    'update.current': '当前 {version}',
     'update.get': '获取 {version}',
     'dashboard.update.available': 'EverGate {version} 可更新',
     'dashboard.update.desc': '下载并校验当前平台安装包，优雅退出后进入标准安装流程；数据目录保持不变。',
@@ -667,6 +667,10 @@ export const dict = {
     'theme.aria': 'Toggle theme: currently {current}, click to switch to {next}',
     'theme.title': 'Theme: {current}',
     'locale.switch': '切换到中文',
+'locale.label': 'Language',
+'locale.zh': '中文',
+'locale.en': 'English',
+'locale.aria': 'Language: currently {current}, click to switch to {next}',
     'common.loading': 'Loading…',
     'common.create': 'New',
     'common.save': 'Save',
@@ -770,10 +774,6 @@ export const dict = {
     'table.lastProbe': 'Last probe',
     'table.errorSummary': 'Error',
     'table.updatedAt': 'Updated',
-    'update.checking': 'Checking for updates…',
-    'update.failed': 'Update check failed; try again later',
-    'update.dev': 'Development build; update check skipped',
-    'update.current': 'Current {version}',
     'update.get': 'Get {version}',
     'dashboard.update.available': 'EverGate {version} available',
     'dashboard.update.desc': 'Download and verify the installer for this platform, exit gracefully and run the standard installer; the data directory is preserved.',
@@ -1331,7 +1331,7 @@ export function t(key: MessageKey): string {
   return dict[current][key] ?? dict['zh-CN'][key]
 }
 
-/** 带插值的翻译：`tf('update.current', { version })` 替换 `{version}` 占位符；缺失参数原样保留占位符。 */
+/** 带插值的翻译：`tf('update.get', { version })` 替换 `{version}` 占位符；缺失参数原样保留占位符。 */
 export function tf(key: MessageKey, params: Record<string, string | number>): string {
   return t(key).replace(/\{(\w+)\}/g, (match, name: string) => (name in params ? String(params[name]) : match))
 }

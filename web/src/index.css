@@ -166,11 +166,11 @@ body {
 .eg-nav-link { justify-content: center; }
 .eg-sidebar-label,
 .eg-sidebar-meta { display: none; }
-/* 收起态三个按钮竖向堆叠（72px 放不下三个 32px 横排）；展开态横排，退出按钮占满剩余宽度。
+/* 底部三个操作两态都竖向排列：收起态是 32px 图标按钮，展开态拉开为整行「图标 + 文字 + 当前值」。
    收起态必须与导航图标同轴：导航项 48px 居中于 48px 内容区，32px 按钮也要居中，否则会偏左 8px。 */
 .eg-sidebar-actions { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .eg-icon-btn { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 0.5rem; }
-.eg-sidebar-logout { width: 2rem; }
+.eg-sidebar-action-row { width: 2rem; }
 
 @container (min-width: 200px) {
   .eg-sidebar-brand { justify-content: flex-start; }
@@ -178,8 +178,8 @@ body {
   .eg-nav-link { justify-content: flex-start; }
   .eg-sidebar-label { display: inline; }
   .eg-sidebar-meta { display: block; }
-  .eg-sidebar-actions { flex-direction: row; align-items: stretch; }
-  .eg-sidebar-logout { width: auto; flex: 1 1 auto; padding: 0 0.75rem; white-space: nowrap; }
+  .eg-sidebar-actions { align-items: stretch; }
+  .eg-sidebar-action-row { width: auto; padding: 0 0.75rem; white-space: nowrap; }
 }
 
 .eg-page {
