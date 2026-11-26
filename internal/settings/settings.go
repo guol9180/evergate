@@ -172,6 +172,53 @@ func (m *Manager) UpdateValues(values Values) (Settings, error) {
 	return m.Update(next)
 }
 
+// SaveTx 在调用方事务内校验并写入运行时设置，不发布快照；事务提交成功后须调用 Reload。
+// 供配置导入这类跨表事务使用：任一表失败时设置与业务数据一起回滚。
+func (m *Manager) SaveTx(tx *gorm.DB, values Values) error {
+	m.updateMu.Lock()
+	defer m.updateMu.Unlock()
+
+	current := m.Snapshot()
+	next := current
+	next.Values = values
+	next.Source = SourceDatabase
+	next.UpdatedAt = m.now().UTC()
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	row := toRow(next)
+	row.ID = settingRowID
+	result := tx.Model(&store.RuntimeSetting{}).Where("id = ?", settingRowID).Updates(toUpdates(row))
+	if result.Error != nil {
+		return fmt.Errorf("保存运行时设置失败: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// Reload 重新读取已提交的运行时设置并发布快照，供跨表事务在提交后刷新缓存。
+func (m *Manager) Reload() error {
+	m.updateMu.Lock()
+	defer m.updateMu.Unlock()
+
+	var row store.RuntimeSetting
+	if err := m.db.First(&row, "id = ?", settingRowID).Error; err != nil {
+		return fmt.Errorf("读取运行时设置失败: %w", err)
+	}
+	next := fromRow(row)
+	if next.Source == "" {
+		next.Source = SourceDatabase
+	}
+	if err := next.Validate(); err != nil {
+		return fmt.Errorf("数据库运行时设置非法: %w", err)
+	}
+	m.current.Store(&next)
+	m.notify()
+	return nil
+}
+
 // Subscribe 返回设置变更信号。后台任务可据此立即重算周期；通道容量为 1，
 // 发布方非阻塞，慢消费者不会拖垮管理台保存路径。
 func (m *Manager) Subscribe() (<-chan struct{}, func()) {

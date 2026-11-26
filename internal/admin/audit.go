@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"evergate/internal/httpx"
 	"evergate/internal/store"
 )
 
@@ -90,9 +91,7 @@ func (a *API) auditWrite(c *gin.Context) {
 // recordAudit 写入一条审计记录；失败只记日志，绝不影响已成功的业务响应。
 func (a *API) recordAudit(c *gin.Context, action, target, summary string) {
 	summary = strings.TrimSpace(summary)
-	if len(summary) > auditMaxSummary {
-		summary = summary[:auditMaxSummary]
-	}
+	summary = httpx.TruncateRunes(summary, auditMaxSummary)
 	entry := store.AuditLog{
 		Username: c.GetString("admin"), Action: action, Target: target, Summary: summary, IP: c.ClientIP(),
 	}

@@ -637,7 +637,7 @@ func TestResponsesStatefulFieldsRequireNativeCapableChannel(t *testing.T) {
 		t.Fatalf("stateful Responses bridge status = %d, body = %s", resp.StatusCode, body)
 	}
 	if !strings.Contains(body, `"code":"responses_native_required"`) ||
-		!strings.Contains(body, "候选渠道均未声明 Responses 能力") {
+		!strings.Contains(body, "no candidate channel supports the Responses API") {
 		t.Fatalf("stateful Responses bridge diagnostic is insufficient: %s", body)
 	}
 	if hits, _, _ := up.snapshot(); hits != 0 {

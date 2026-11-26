@@ -27,6 +27,7 @@ import (
 
 	"evergate/internal/config"
 	"evergate/internal/health"
+	"evergate/internal/httpx"
 	"evergate/internal/pool"
 	"evergate/internal/provider"
 	"evergate/internal/router"
@@ -431,7 +432,7 @@ func (a *API) authenticateSession(c *gin.Context) bool {
 	}
 	admin, aerr := store.GetAdminByUsername(a.opt.DB, username)
 	if aerr == nil && admin.MustChangePassword {
-		c.JSON(http.StatusForbidden, gin.H{"code": "must_change_password", "message": "首次登录必须修改密码"})
+		httpx.FailCode(c, http.StatusForbidden, "must_change_password", "首次登录必须修改密码")
 		c.Abort()
 		return false
 	}
@@ -1176,7 +1177,6 @@ type tokenDTO struct {
 	AllowedModels   []string   `json:"allowed_models"`
 	AllowedIPs      []string   `json:"allowed_ips"`
 	DisableFallback bool       `json:"disable_fallback"`
-	Group           string     `json:"group"`
 	CreatedAt       time.Time  `json:"created_at"`
 }
 
@@ -1201,7 +1201,7 @@ func toTokenDTO(t *store.Token) tokenDTO {
 		ID: t.ID, Name: t.Name, Enabled: t.Enabled, Quota: t.Quota, UsedQuota: t.UsedQuota,
 		RemainingQuota: remaining, Status: status,
 		ExpiredAt: t.ExpiredAt, AllowedModels: t.AllowedModels, AllowedIPs: t.AllowedIPs,
-		DisableFallback: t.DisableFallback, Group: t.Group, CreatedAt: t.CreatedAt,
+		DisableFallback: t.DisableFallback, CreatedAt: t.CreatedAt,
 	}
 }
 
@@ -1264,7 +1264,6 @@ func (a *API) createToken(c *gin.Context) {
 		AllowedModels   []string   `json:"allowed_models"`
 		AllowedIPs      []string   `json:"allowed_ips"`
 		DisableFallback bool       `json:"disable_fallback"`
-		Group           string     `json:"group"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
@@ -1278,10 +1277,6 @@ func (a *API) createToken(c *gin.Context) {
 	}
 	plain := "eg-" + hex.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(plain))
-	group := req.Group
-	if group == "" {
-		group = "default"
-	}
 	quota := derefInt64(req.Quota, 0)
 	if quota < 0 {
 		fail(c, http.StatusBadRequest, "额度不能为负数")
@@ -1295,7 +1290,7 @@ func (a *API) createToken(c *gin.Context) {
 	t := &store.Token{
 		Name: req.Name, KeyHash: hex.EncodeToString(sum[:]), Enabled: true,
 		Quota: quota, ExpiredAt: req.ExpiredAt,
-		AllowedModels: allowedModels, AllowedIPs: allowedIPs, Group: group,
+		AllowedModels: allowedModels, AllowedIPs: allowedIPs,
 		DisableFallback: req.DisableFallback,
 	}
 	if err := a.opt.DB.Create(t).Error; err != nil {
@@ -1410,7 +1405,11 @@ func (a *API) listLogs(c *gin.Context) {
 	if pageSize < 1 || pageSize > 100 {
 		pageSize = 20
 	}
-	q := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	q, filterErr := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	if filterErr != nil {
+		fail(c, http.StatusBadRequest, filterErr.Error())
+		return
+	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "查询失败")
@@ -1442,11 +1441,11 @@ func (a *API) getLog(c *gin.Context) {
 
 func ok(c *gin.Context, data any) {
 	stashAuditSummary(c, data)
-	c.JSON(http.StatusOK, gin.H{"ok": true, "data": data})
+	httpx.OK(c, data)
 }
 
 func fail(c *gin.Context, status int, msg string) {
-	c.JSON(status, gin.H{"ok": false, "message": msg})
+	httpx.Fail(c, status, msg)
 }
 
 func derefString(p *string, def string) string {
@@ -1485,7 +1484,15 @@ func queryInt(c *gin.Context, key string, def int) int {
 	return v
 }
 
-func queryInt64(c *gin.Context, key string) int64 {
-	v, _ := strconv.ParseInt(c.Query(key), 10, 64)
-	return v
+// parseQueryInt64 解析可选的整数查询参数：缺省返回 0，非法返回带字段名的错误。
+func parseQueryInt64(c *gin.Context, key string) (int64, error) {
+	raw := strings.TrimSpace(c.Query(key))
+	if raw == "" {
+		return 0, nil
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s 必须是整数", key)
+	}
+	return v, nil
 }

@@ -157,8 +157,9 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 	}
 	if _, _, ok := parseChatRequest(body); !ok {
 		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
-		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "缺少 model 字段")
+		const msg = "request body must be a JSON object with a model field"
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", msg)
+		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", msg)
 		return
 	}
 	_ = c.Request.Body.Close()
@@ -173,7 +174,7 @@ func (r *Relay) HandleResponses(c *gin.Context) {
 func responsesToChat(body []byte) ([]byte, *responsesToolRegistry, error) {
 	var wire map[string]json.RawMessage
 	if err := json.Unmarshal(body, &wire); err != nil {
-		return nil, nil, fmt.Errorf("请求体必须是合法 JSON: %w", err)
+		return nil, nil, fmt.Errorf("request body must be valid JSON: %w", err)
 	}
 	for key := range wire {
 		switch key {
@@ -186,10 +187,10 @@ func responsesToChat(body []byte) ([]byte, *responsesToolRegistry, error) {
 	}
 	var req responsesRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, nil, fmt.Errorf("请求体必须是合法 JSON: %w", err)
+		return nil, nil, fmt.Errorf("request body must be valid JSON: %w", err)
 	}
 	if req.Model == "" {
-		return nil, nil, fmt.Errorf("model 不能为空")
+		return nil, nil, fmt.Errorf("model must not be empty")
 	}
 	out := chatRequest{
 		Model:             req.Model,
@@ -250,7 +251,7 @@ func parseResponsesInput(raw json.RawMessage) (responsesParsedInput, error) {
 	}
 	var items []responsesInputItem
 	if err := json.Unmarshal(raw, &items); err != nil {
-		return responsesParsedInput{}, fmt.Errorf("input 必须是字符串或 item 数组: %w", err)
+		return responsesParsedInput{}, fmt.Errorf("input must be a string or an array of items: %w", err)
 	}
 	result := responsesParsedInput{Items: items}
 	for _, item := range items {

@@ -3,8 +3,10 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -127,7 +129,10 @@ func Load(path string) (Config, error) {
 		}
 		return cfg, fmt.Errorf("read config: %w", err)
 	}
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	// 未知字段视为配置错误：拼错的键会被静默忽略，导致运行行为与预期不符。
+	dec.KnownFields(true)
+	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return cfg, fmt.Errorf("parse config %s: %w", path, err)
 	}
 	if err := cfg.Validate(); err != nil {

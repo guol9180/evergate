@@ -60,16 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
 
-#### T105: 接口加固与信封统一（P2，代码审查）
-
-- 目标：管理台与网关接口的输入校验、导出安全、事务性与响应信封一次性收口
-- 验收标准：① 日志筛选的非法参数（非数字 id、非法时间）返回 400 并带字段名，不再静默忽略；② CSV 导出对以 = + - @ 开头的单元格转义，并补齐缓存 / 推理 token、重试次数、价格来源、来源列；③ 配置导入在单事务内执行，失败整体回滚；④ ChannelKey.KeyCipher 与 Token.KeyHash 改为不序列化，序列化测试证明全接口不出现密文 / 哈希；⑤ 管理台信封助手下沉到中立包，must_change_password 与 Playground 响应统一为 ok + data 或 message；⑥ 对外错误不回显内部错误（数据库 / 转换错误），下游 API 文案统一英文并带稳定 code；⑦ 字节截断统一改为按字符截断；⑧ YAML 未知字段报错；⑨ Token.Group 字段删除（全项目无使用点）
-- 边界：不改接口路径与成功响应结构；ChannelKey.RPMLimit 留给 T113 实现限流时处置
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
-- 进度：
-  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（规范 / 安全）
-
 #### T106: 工程门禁补齐与死代码清理（P2，代码审查）
 
 - 目标：把靠人守约定的规范变成 CI 可拦截的门禁，并清掉已确认的死代码
@@ -270,6 +260,20 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（静默失败）
   - 2026-11-26 执行 导入改为单事务 CreateInBatches(100)；批内去重 + 与渠道存量解密比对去重；单次上限 1000 把、单把上限 4096 字符（非法行计数）；返回新增 / 重复 / 非法三类计数。前端新增 keyImportMessage 统一结果文案（渠道 key 面板与新建渠道内联导入共用）；新建渠道内联导入失败时保持弹窗并给「重试导入」，记录已创建渠道 id 防止再次保存变成重名创建
   - 2026-11-26 验证 新增 admin 测试覆盖批内重复、存量重复、超长非法行、超限 400 与库内计数；go test -p 1 ./... 全 ok、vet/gofmt 干净；前端 lint 0 警告、unit 13 + ui 46、build 通过；18787 实测 1000 行单请求 22ms、重复批次 8ms、逐条 1000 次 6351ms（约 290 倍差距），验证后探针渠道已删除
+
+#### T105: 接口加固与信封统一（P2，代码审查）
+
+- 目标：管理台与网关接口的输入校验、导出安全、事务性与响应信封一次性收口
+- 验收标准：① 日志筛选的非法参数（非数字 id、非法时间）返回 400 并带字段名，不再静默忽略；用量报表的 channel_id / token_id 复用同一校验口径；② CSV 导出对以 = + - @ 开头的单元格转义，并补齐缓存 / 推理 token、重试次数、价格来源、来源列；③ 配置导入在单事务内执行，失败整体回滚；④ ChannelKey.KeyCipher 与 Token.KeyHash 改为不序列化，序列化测试证明全接口不出现密文 / 哈希；⑤ 管理台信封助手下沉到中立包，must_change_password 与 Playground 响应统一为 ok + data 或 message；⑥ 对外错误不回显内部错误（数据库 / 转换错误），下游 API 文案统一英文并带稳定 code；⑦ 字节截断统一改为按字符截断；⑧ YAML 未知字段报错；⑨ Token.Group 字段删除（全项目无使用点）
+- 边界：不改接口路径与成功响应结构；ChannelKey.RPMLimit 留给 T113 实现限流时处置
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：done
+- 进度：
+  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（规范 / 安全）
+  - 2026-11-26 执行 开工；① 覆盖范围明确为日志与用量筛选同口径（两处共用 queryInt64 静默落 0）；③ 设置与价格写入通过 settings.SaveTx / usage.ApplyImport 并入同一事务，提交后再刷新缓存
+  - 2026-11-26 执行 新增 internal/httpx（OK / Fail / FailCode / TruncateRunes），管理台 ok/fail、must_change_password、配置导出与 Playground 全部改走统一信封；日志与用量筛选改 parseQueryInt64 严格校验，非法值 400 带字段名；CSV 补 source / cached / cache_write / reasoning / retry_count / price_source 列并对 = + - @ 前缀转义；配置导入渠道 / 降级链 / 设置 / 价格 / 令牌全部入单事务，settings 与 usage 提供事务内写入口、提交后 Reload；KeyCipher / KeyHash 改 json:"-"；删除 Token.Group；YAML 用 KnownFields(true)；relay / audit / CSV 截断统一按字符。下游错误文案改英文与稳定 code（model_sequence_failed / channels_unavailable / invalid_gemini_path / *_conversion_failed），数据库、解密、上游响应转换与请求体重构的原文只进日志和 retry_trace；请求侧不可桥接字段保留字段路径诊断，reqconfig 校验文案同步英文
+  - 2026-11-26 验证 新增 admin t105 测试（筛选 400 带字段名、CSV 列与公式转义、导入晚失败整单回滚且设置/价格无残留、成功导入后快照发布、渠道详情与令牌列表及 store JSON 均无 cipher/hash）、httpx 截断、YAML 未知字段、relay 内部轨迹过滤；go test -p 1 ./... 24 包全 ok、gofmt/vet 干净、调度 93.3%、relay 81.1%、make build 通过；前端 lint 0 警告、unit 13 + ui 46、build 通过（类型删除后产物哈希不变）
+  - 2026-11-26 验证 18787 实测：logs 与 usage 非法筛选返回 400（channel_id / start / token_id 带字段名）、CSV 首行为新列且公式单元格带前缀、渠道详情无 key_cipher、令牌列表无 key_hash、Playground 非法协议返回 ok:false 信封、下游 503 为英文 all_channels_exhausted、导入含非法令牌时渠道与 price_default 均回滚、未知 YAML 键启动即报 `field prot not found in type config.Server`
 
 ## 归档索引
 

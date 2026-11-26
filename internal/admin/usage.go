@@ -46,11 +46,21 @@ func (a *API) getUsageReport(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "查询范围超过请求日志保留窗口")
 		return
 	}
+	channelID, err := parseQueryInt64(c, "channel_id")
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	tokenID, err := parseQueryInt64(c, "token_id")
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	report, err := usage.BuildReport(a.opt.DB, usage.ReportQuery{
 		Start: start, End: end,
-		ChannelID: queryInt64(c, "channel_id"),
+		ChannelID: channelID,
 		Model:     strings.TrimSpace(c.Query("model")),
-		TokenID:   queryInt64(c, "token_id"),
+		TokenID:   tokenID,
 	})
 	if err != nil {
 		fail(c, http.StatusInternalServerError, "统计查询失败")

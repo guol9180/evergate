@@ -9,6 +9,31 @@ import (
 	"evergate/internal/usage"
 )
 
+func TestIsInternalTraceType(t *testing.T) {
+	for _, typ := range []string{"internal", "decrypt", "responses_bridge", "messages_bridge", "gemini_bridge"} {
+		if !isInternalTraceType(typ) {
+			t.Fatalf("%q should be treated as internal", typ)
+		}
+	}
+	for _, typ := range []string{"", "transient", "rate_limited", "auth", "non_retryable"} {
+		if isInternalTraceType(typ) {
+			t.Fatalf("%q must not be treated as internal", typ)
+		}
+	}
+}
+
+func TestFilterChannelsByIDAndModel(t *testing.T) {
+	channels := []*store.Channel{
+		{ID: 1, Models: []string{"a"}},
+		{ID: 2, Models: []string{"b"}},
+		{ID: 3, Models: []string{"a"}},
+	}
+	got := filterChannelsByIDAndModel(channels, "a", []int64{1, 2, 3, 99})
+	if len(got) != 2 || got[0].ID != 1 || got[1].ID != 3 {
+		t.Fatalf("filtered channels = %+v, want ids [1 3]", got)
+	}
+}
+
 func TestBudgetThresholdFallsBackBeforeOriginalModel(t *testing.T) {
 	env := newEnv(t)
 	up := newUpstream(t, func(auth, body string, w http.ResponseWriter, r *http.Request) {

@@ -67,7 +67,7 @@ func TestRequestConfigValidateChannelTargets(t *testing.T) {
 		want   string
 	}{
 		{"unknown channel", `{"channels":[999999]}`, "channels[0]"},
-		{"unsupported model", fmt.Sprintf(`{"channels":[%d]}`, id), "不支持模型"},
+		{"unsupported model", fmt.Sprintf(`{"channels":[%d]}`, id), "does not support model"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -92,7 +92,7 @@ func TestRequestConfigValidateChannelTargets(t *testing.T) {
 	}
 	resp, body := postWithHeaders(t, gateway, "/v1/chat/completions", plain,
 		overrideHeader(fmt.Sprintf(`{"channels":[%d]}`, id)), `{"model":"gpt-x","messages":[]}`)
-	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "不存在或未启用") {
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "does not exist or is disabled") {
 		t.Fatalf("停用渠道应 400: %d %s", resp.StatusCode, body)
 	}
 }

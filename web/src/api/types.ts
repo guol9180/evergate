@@ -225,7 +225,6 @@ export interface Token {
   allowed_models: string[] | null
   allowed_ips: string[] | null
   disable_fallback: boolean
-  group: string
   created_at: string
 }
 

@@ -23,6 +23,7 @@ import (
 
 	"evergate/internal/affinity"
 	"evergate/internal/config"
+	"evergate/internal/httpx"
 	"evergate/internal/metrics"
 	"evergate/internal/pool"
 	"evergate/internal/reqconfig"
@@ -195,8 +196,9 @@ func (r *Relay) dispatch(c *gin.Context, hit *hitRecord) ([]store.RetryAttempt, 
 	}
 	model, stream, ok := parseChatRequest(body)
 	if !ok {
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
-		return nil, http.StatusBadRequest, "invalid_request_error", "缺少 model 字段"
+		const msg = "request body must be a JSON object with a model field"
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", msg)
+		return nil, http.StatusBadRequest, "invalid_request_error", msg
 	}
 	if isMessagesCountTokens(c) || isGeminiCountTokens(c) {
 		stream = false
@@ -266,10 +268,10 @@ func filterChannels(channels []*store.Channel, model string, ids []int64) ([]*st
 	for i, id := range ids {
 		ch, ok := byID[id]
 		if !ok {
-			return nil, fmt.Errorf("channels[%d]: 渠道 %d 不存在或未启用", i, id)
+			return nil, fmt.Errorf("channels[%d]: channel %d does not exist or is disabled", i, id)
 		}
 		if !router.SupportsModel(ch, model) {
-			return nil, fmt.Errorf("channels[%d]: 渠道 %d 不支持模型 %q", i, id, model)
+			return nil, fmt.Errorf("channels[%d]: channel %d does not support model %q", i, id, model)
 		}
 		out = append(out, ch)
 	}
@@ -280,7 +282,8 @@ func filterChannels(channels []*store.Channel, model string, ids []int64) ([]*st
 func (r *Relay) modelCatalog(c *gin.Context) ([]string, bool) {
 	var channels []*store.Channel
 	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
-		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
+		r.logInternalError("load model catalog failed", err)
+		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "channels_unavailable", "failed to load enabled channels")
 		return nil, false
 	}
 	models := router.PublicModelCatalog(channels)
@@ -430,7 +433,7 @@ func configSummaryFromContext(c *gin.Context) string {
 	}
 	summary, _ := value.(string)
 	if len(summary) > reqconfig.MaxSummaryBytes {
-		return summary[:reqconfig.MaxSummaryBytes]
+		return httpx.TruncateRunes(summary, reqconfig.MaxSummaryBytes)
 	}
 	return summary
 }
@@ -717,7 +720,9 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			converted, cerr := convertChatCompletionToResponses(data, model, r.opt.Now(), responsesToolIdentities(c))
 			if cerr != nil {
 				appendTrace(0, "internal", "转换 Responses 响应失败: "+cerr.Error(), start)
-				writeOpenAIError(c, http.StatusBadGateway, "server_error", "responses_conversion_failed", cerr.Error())
+				r.logInternalError("convert chat completion to responses response failed", cerr)
+				writeOpenAIError(c, http.StatusBadGateway, "server_error", "responses_conversion_failed",
+					"failed to convert upstream response to the Responses format")
 				return outcomeDone
 			}
 			data = converted
@@ -727,7 +732,9 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			converted, cerr := convertChatCompletionToMessages(data, model, r.opt.Now())
 			if cerr != nil {
 				appendTrace(0, "internal", "转换 Messages 响应失败: "+cerr.Error(), start)
-				writeOpenAIError(c, http.StatusBadGateway, "server_error", "messages_conversion_failed", cerr.Error())
+				r.logInternalError("convert chat completion to messages response failed", cerr)
+				writeOpenAIError(c, http.StatusBadGateway, "server_error", "messages_conversion_failed",
+					"failed to convert upstream response to the Messages format")
 				return outcomeDone
 			}
 			data = converted
@@ -737,7 +744,9 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 			converted, cerr := convertChatCompletionToGemini(data, model)
 			if cerr != nil {
 				appendTrace(0, "internal", "转换 Gemini 响应失败: "+cerr.Error(), start)
-				writeOpenAIError(c, http.StatusBadGateway, "server_error", "gemini_conversion_failed", cerr.Error())
+				r.logInternalError("convert chat completion to gemini response failed", cerr)
+				writeOpenAIError(c, http.StatusBadGateway, "server_error", "gemini_conversion_failed",
+					"failed to convert upstream response to the Gemini format")
 				return outcomeDone
 			}
 			data = converted
@@ -804,9 +813,9 @@ func requestBodyReadError(err error) (int, string, string) {
 	var maxErr *http.MaxBytesError
 	if errors.As(err, &maxErr) {
 		return http.StatusRequestEntityTooLarge, "request_too_large",
-			fmt.Sprintf("请求体超过 %d 字节上限", maxRelayRequestBody)
+			fmt.Sprintf("request body exceeds the %d byte limit", maxRelayRequestBody)
 	}
-	return http.StatusBadRequest, "invalid_request_error", "读取请求体失败"
+	return http.StatusBadRequest, "invalid_request_error", "failed to read request body"
 }
 
 func redactCredentials(text, secret string) string {
@@ -828,7 +837,7 @@ func upstreamErrorMessage(status int, body []byte, secret string) string {
 		msg = fmt.Sprintf("http %d (empty error body)", status)
 	}
 	if len(msg) > 200 {
-		msg = msg[:200]
+		msg = httpx.TruncateRunes(msg, 200)
 	}
 	return msg
 }
@@ -892,7 +901,7 @@ func (r *Relay) persistKeyAttempt(keyID int64, success bool, message string) {
 		return
 	}
 	if len(message) > 300 {
-		message = message[:300]
+		message = httpx.TruncateRunes(message, 300)
 	}
 	updates := map[string]any{"last_used_at": r.opt.Now().UTC()}
 	if success {
@@ -1038,6 +1047,13 @@ func ensureChatStreamUsage(body []byte, stream bool) ([]byte, error) {
 // writeOpenAIError 输出 OpenAI 格式错误体（对外契约）。
 func writeOpenAIError(c *gin.Context, status int, typ, code, message string) {
 	c.JSON(status, gin.H{"error": gin.H{"message": message, "type": typ, "code": code}})
+}
+
+// logInternalError 记录内部错误细节；对外响应只给稳定英文文案与 code。
+func (r *Relay) logInternalError(msg string, err error) {
+	if r.opt.Logger != nil && err != nil {
+		r.opt.Logger.Warn(msg, slog.String("error", err.Error()))
+	}
 }
 
 func firstNonEmpty(s, fallback string) string {

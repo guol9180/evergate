@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -92,6 +93,14 @@ type configImportResult struct {
 	Errors  []string `json:"errors,omitempty"`
 }
 
+// importFailure 是导入事务内可直接回给客户端的校验失败（400），与内部错误区分。
+type importFailure struct {
+	status  int
+	message string
+}
+
+func (e *importFailure) Error() string { return e.message }
+
 func (a *API) exportConfig(c *gin.Context) {
 	var channels []*store.Channel
 	if err := a.opt.DB.Order("id asc").Find(&channels).Error; err != nil {
@@ -168,7 +177,7 @@ func (a *API) exportConfig(c *gin.Context) {
 		out.Tokens = append(out.Tokens, entry)
 	}
 	c.Header("Content-Disposition", `attachment; filename="`+fmt.Sprintf("evergate-config-%s.json", a.now().Format("20060102T150405Z"))+`"`)
-	c.JSON(http.StatusOK, gin.H{"ok": true, "data": out})
+	ok(c, out)
 }
 
 // importConfig 按名称幂等 upsert 渠道/令牌，整体替换降级链，upsert 设置与价格；所有条目先校验后落库，任一条目非法则整体拒绝。
@@ -217,163 +226,184 @@ func (a *API) importConfig(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "系统设置未配置")
 		return
 	}
+	// 价格数值先校验，渠道名映射在事务内完成；非法价格不开启事务。
+	for _, p := range in.PriceOverrides {
+		if err := usage.ValidatePrice(p.priceInput()); err != nil {
+			fail(c, http.StatusBadRequest, "price_overrides: "+err.Error())
+			return
+		}
+	}
+	if in.PriceDefault != nil {
+		if err := usage.ValidatePrice(in.PriceDefault.priceInput()); err != nil {
+			fail(c, http.StatusBadRequest, "price_default: "+err.Error())
+			return
+		}
+	}
 
 	result := configImportResult{}
-	// 渠道：按名称 upsert，保留已启用状态与已有 key。
-	for i, req := range reqs {
-		var existing store.Channel
-		err := a.opt.DB.Where("name = ?", req.Name).First(&existing).Error
-		switch {
-		case errors.Is(err, gorm.ErrRecordNotFound):
-			ch := &store.Channel{
-				Name: req.Name, Type: req.Type, BaseURL: req.BaseURL,
-				PresetID: derefString(req.PresetID, ""),
-				Priority: derefInt(req.Priority, 0), Weight: derefInt(req.Weight, 1),
-				Models: req.Models, ModelMapping: req.ModelMapping,
-				Enabled: in.Channels[i].Enabled, Status: store.ChannelStatusActive,
-				SupportsResponses: derefBool(req.SupportsResponses, false), SupportsAnthropic: derefBool(req.SupportsAnthropic, false),
-				SupportsGemini: derefBool(req.SupportsGemini, false), Timeouts: req.Timeouts,
+	// 全量写入在单事务内完成：任一表失败整体回滚，不产生半成品。
+	err = a.opt.DB.Transaction(func(tx *gorm.DB) error {
+		// 渠道：按名称 upsert，保留已启用状态与已有 key。
+		for i, req := range reqs {
+			var existing store.Channel
+			ferr := tx.Where("name = ?", req.Name).First(&existing).Error
+			switch {
+			case errors.Is(ferr, gorm.ErrRecordNotFound):
+				ch := &store.Channel{
+					Name: req.Name, Type: req.Type, BaseURL: req.BaseURL,
+					PresetID: derefString(req.PresetID, ""),
+					Priority: derefInt(req.Priority, 0), Weight: derefInt(req.Weight, 1),
+					Models: req.Models, ModelMapping: req.ModelMapping,
+					Enabled: in.Channels[i].Enabled, Status: store.ChannelStatusActive,
+					SupportsResponses: derefBool(req.SupportsResponses, false), SupportsAnthropic: derefBool(req.SupportsAnthropic, false),
+					SupportsGemini: derefBool(req.SupportsGemini, false), Timeouts: req.Timeouts,
+				}
+				if err := tx.Create(ch).Error; err != nil {
+					return fmt.Errorf("导入渠道失败: %w", err)
+				}
+				result.Created++
+			case ferr != nil:
+				return fmt.Errorf("查询渠道失败: %w", ferr)
+			default:
+				existing.Type, existing.BaseURL = req.Type, req.BaseURL
+				existing.PresetID = derefString(req.PresetID, existing.PresetID)
+				existing.Priority, existing.Weight = derefInt(req.Priority, existing.Priority), derefInt(req.Weight, existing.Weight)
+				existing.Models, existing.ModelMapping, existing.Timeouts = req.Models, req.ModelMapping, req.Timeouts
+				existing.SupportsResponses = derefBool(req.SupportsResponses, existing.SupportsResponses)
+				existing.SupportsAnthropic = derefBool(req.SupportsAnthropic, existing.SupportsAnthropic)
+				existing.SupportsGemini = derefBool(req.SupportsGemini, existing.SupportsGemini)
+				if err := tx.Save(&existing).Error; err != nil {
+					return fmt.Errorf("更新渠道失败: %w", err)
+				}
+				result.Updated++
 			}
-			if err := a.opt.DB.Create(ch).Error; err != nil {
-				fail(c, http.StatusInternalServerError, "导入渠道失败："+err.Error())
-				return
-			}
-			result.Created++
-		case err != nil:
-			fail(c, http.StatusInternalServerError, "查询渠道失败")
-			return
-		default:
-			existing.Type, existing.BaseURL = req.Type, req.BaseURL
-			existing.PresetID = derefString(req.PresetID, existing.PresetID)
-			existing.Priority, existing.Weight = derefInt(req.Priority, existing.Priority), derefInt(req.Weight, existing.Weight)
-			existing.Models, existing.ModelMapping, existing.Timeouts = req.Models, req.ModelMapping, req.Timeouts
-			existing.SupportsResponses = derefBool(req.SupportsResponses, existing.SupportsResponses)
-			existing.SupportsAnthropic = derefBool(req.SupportsAnthropic, existing.SupportsAnthropic)
-			existing.SupportsGemini = derefBool(req.SupportsGemini, existing.SupportsGemini)
-			if err := a.opt.DB.Save(&existing).Error; err != nil {
-				fail(c, http.StatusInternalServerError, "更新渠道失败")
-				return
-			}
-			result.Updated++
 		}
-	}
-	// 降级链：整体替换（与管理台保存语义一致）。
-	if in.ModelFallbacks != nil {
-		if err := a.opt.DB.Transaction(func(tx *gorm.DB) error {
+		// 降级链：整体替换（与管理台保存语义一致）。
+		if in.ModelFallbacks != nil {
 			if err := tx.Where("1 = 1").Delete(&store.ModelFallback{}).Error; err != nil {
-				return err
+				return fmt.Errorf("导入降级链失败: %w", err)
 			}
-			if len(fallbackRows) == 0 {
-				return nil
+			if len(fallbackRows) > 0 {
+				if err := tx.Create(&fallbackRows).Error; err != nil {
+					return fmt.Errorf("导入降级链失败: %w", err)
+				}
 			}
-			return tx.Create(&fallbackRows).Error
-		}); err != nil {
-			fail(c, http.StatusInternalServerError, "导入降级链失败："+err.Error())
-			return
+			result.Updated += int64(len(fallbackRows))
 		}
-		result.Updated += int64(len(fallbackRows))
-	}
-	// 设置：复用管理台同一校验与热更新路径。
-	if in.Settings != nil {
-		if _, err := a.opt.Settings.UpdateValues(*in.Settings); err != nil {
-			fail(c, http.StatusBadRequest, "settings: "+err.Error())
-			return
-		}
-		result.Updated++
-	}
-	// 价格：渠道名 → 本实例 id 重映射；找不到渠道的覆盖跳过。
-	if a.opt.Usage != nil {
-		var channels []*store.Channel
-		if err := a.opt.DB.Find(&channels).Error; err != nil {
-			fail(c, http.StatusInternalServerError, "查询渠道失败")
-			return
-		}
-		idByName := make(map[string]int64, len(channels))
-		for _, ch := range channels {
-			idByName[ch.Name] = ch.ID
-		}
-		ctx := c.Request.Context()
-		if in.PriceDefault != nil {
-			if err := a.opt.Usage.SetDefault(ctx, in.PriceDefault.priceInput()); err != nil {
-				fail(c, http.StatusBadRequest, "price_default: "+err.Error())
-				return
+		// 设置：复用管理台同一校验，事务内写入，提交后再发布快照。
+		if in.Settings != nil {
+			if err := a.opt.Settings.SaveTx(tx, *in.Settings); err != nil {
+				return &importFailure{status: http.StatusBadRequest, message: "settings: " + err.Error()}
 			}
 			result.Updated++
 		}
-		for _, p := range in.PriceOverrides {
-			id, found := idByName[strings.TrimSpace(p.ChannelName)]
-			if !found {
+		// 价格：渠道名 → 本实例 id 重映射；找不到渠道的覆盖跳过。
+		if a.opt.Usage != nil {
+			var channels []*store.Channel
+			if err := tx.Find(&channels).Error; err != nil {
+				return fmt.Errorf("查询渠道失败: %w", err)
+			}
+			idByName := make(map[string]int64, len(channels))
+			for _, ch := range channels {
+				idByName[ch.Name] = ch.ID
+			}
+			var def *usage.PriceInput
+			if in.PriceDefault != nil {
+				price := in.PriceDefault.priceInput()
+				def = &price
+			}
+			overrides := make([]usage.ImportPrice, 0, len(in.PriceOverrides))
+			for _, p := range in.PriceOverrides {
+				id, found := idByName[strings.TrimSpace(p.ChannelName)]
+				if !found {
+					result.Skipped++
+					result.Errors = append(result.Errors, "price override skipped: channel not found: "+p.ChannelName)
+					continue
+				}
+				overrides = append(overrides, usage.ImportPrice{ChannelID: id, Model: p.Model, Price: p.priceInput()})
+			}
+			if err := a.opt.Usage.ApplyImport(tx, def, overrides); err != nil {
+				return &importFailure{status: http.StatusBadRequest, message: "price_overrides: " + err.Error()}
+			}
+			if def != nil {
+				result.Updated++
+			}
+			result.Updated += int64(len(overrides))
+		} else if in.PriceDefault != nil || len(in.PriceOverrides) > 0 {
+			result.Skipped += int64(len(in.PriceOverrides))
+			if in.PriceDefault != nil {
 				result.Skipped++
-				result.Errors = append(result.Errors, "price override skipped: channel not found: "+p.ChannelName)
+			}
+			result.Errors = append(result.Errors, "prices skipped: usage pricing not initialised")
+		}
+		// 令牌：只恢复治理字段。导出不含明文 key，导入时以随机不可知 key 建为禁用，用户需在管理台重新创建令牌。
+		for _, t := range in.Tokens {
+			name := strings.TrimSpace(t.Name)
+			if name == "" {
+				result.Skipped++
+				result.Errors = append(result.Errors, "token skipped: empty name")
 				continue
 			}
-			if _, err := a.opt.Usage.UpsertOverride(ctx, id, p.Model, p.priceInput()); err != nil {
-				fail(c, http.StatusBadRequest, "price_overrides: "+err.Error())
-				return
+			var count int64
+			if err := tx.Model(&store.Token{}).Where("name = ?", name).Count(&count).Error; err != nil {
+				return fmt.Errorf("查询令牌失败: %w", err)
 			}
-			result.Updated++
+			if count > 0 {
+				result.Skipped++
+				continue
+			}
+			allowedModels, allowedIPs, nerr := normalizeTokenRules(t.AllowedModels, t.AllowedIPs)
+			if nerr != nil {
+				return &importFailure{status: http.StatusBadRequest, message: fmt.Sprintf("tokens[%s]: %v", name, nerr)}
+			}
+			if t.Quota < 0 {
+				return &importFailure{status: http.StatusBadRequest, message: fmt.Sprintf("tokens[%s]: 额度不能为负数", name)}
+			}
+			raw := make([]byte, 24)
+			if _, rerr := rand.Read(raw); rerr != nil {
+				return fmt.Errorf("生成令牌失败: %w", rerr)
+			}
+			sum := sha256.Sum256(raw)
+			token := store.Token{
+				Name: name, KeyHash: hex.EncodeToString(sum[:]), Enabled: false, Quota: t.Quota,
+				AllowedModels: allowedModels, AllowedIPs: allowedIPs, DisableFallback: t.DisableFallback,
+			}
+			if t.ExpiredAt != nil {
+				if parsed, perr := time.Parse(time.RFC3339, *t.ExpiredAt); perr == nil {
+					utc := parsed.UTC()
+					token.ExpiredAt = &utc
+				}
+			}
+			if err := tx.Create(&token).Error; err != nil {
+				return fmt.Errorf("导入令牌失败: %w", err)
+			}
+			// Enabled=false 是零值，GORM Create 会回退到列默认值 true；导入令牌必须以禁用态落地，单独强制写一次。
+			if err := tx.Model(&token).Update("enabled", false).Error; err != nil {
+				return fmt.Errorf("导入令牌失败: %w", err)
+			}
+			token.Enabled = false
+			result.Created++
+			result.Errors = append(result.Errors, "token imported disabled without key; create a new token in the console: "+name)
 		}
-	} else if in.PriceDefault != nil || len(in.PriceOverrides) > 0 {
-		result.Skipped += int64(len(in.PriceOverrides))
-		if in.PriceDefault != nil {
-			result.Skipped++
+		return nil
+	})
+	if err != nil {
+		var f *importFailure
+		if errors.As(err, &f) {
+			fail(c, f.status, f.message)
+			return
 		}
-		result.Errors = append(result.Errors, "prices skipped: usage pricing not initialised")
+		if a.opt.Logger != nil {
+			a.opt.Logger.Warn("config import failed", slog.Any("error", err))
+		}
+		fail(c, http.StatusInternalServerError, "导入失败，改动已回滚")
+		return
 	}
-	// 令牌：只恢复治理字段。导出不含明文 key，导入时以随机不可知 key 建为禁用，用户需在管理台重新创建令牌。
-	for _, t := range in.Tokens {
-		name := strings.TrimSpace(t.Name)
-		if name == "" {
-			result.Skipped++
-			result.Errors = append(result.Errors, "token skipped: empty name")
-			continue
+	// 事务提交后再发布缓存快照，失败不会留下半成品。
+	if in.Settings != nil {
+		if rerr := a.opt.Settings.Reload(); rerr != nil && a.opt.Logger != nil {
+			a.opt.Logger.Warn("reload settings after import failed", slog.Any("error", rerr))
 		}
-		var count int64
-		if err := a.opt.DB.Model(&store.Token{}).Where("name = ?", name).Count(&count).Error; err != nil {
-			fail(c, http.StatusInternalServerError, "查询令牌失败")
-			return
-		}
-		if count > 0 {
-			result.Skipped++
-			continue
-		}
-		allowedModels, allowedIPs, err := normalizeTokenRules(t.AllowedModels, t.AllowedIPs)
-		if err != nil {
-			fail(c, http.StatusBadRequest, fmt.Sprintf("tokens[%s]: %v", name, err))
-			return
-		}
-		if t.Quota < 0 {
-			fail(c, http.StatusBadRequest, fmt.Sprintf("tokens[%s]: 额度不能为负数", name))
-			return
-		}
-		raw := make([]byte, 24)
-		if _, err := rand.Read(raw); err != nil {
-			fail(c, http.StatusInternalServerError, "生成失败")
-			return
-		}
-		sum := sha256.Sum256(raw)
-		token := store.Token{
-			Name: name, KeyHash: hex.EncodeToString(sum[:]), Enabled: false, Quota: t.Quota,
-			AllowedModels: allowedModels, AllowedIPs: allowedIPs, DisableFallback: t.DisableFallback, Group: "default",
-		}
-		if t.ExpiredAt != nil {
-			if parsed, err := time.Parse(time.RFC3339, *t.ExpiredAt); err == nil {
-				utc := parsed.UTC()
-				token.ExpiredAt = &utc
-			}
-		}
-		if err := a.opt.DB.Create(&token).Error; err != nil {
-			fail(c, http.StatusInternalServerError, "导入令牌失败："+err.Error())
-			return
-		}
-		// Enabled=false 是零值，GORM Create 会回退到列默认值 true；导入令牌必须以禁用态落地，单独强制写一次。
-		if err := a.opt.DB.Model(&token).Update("enabled", false).Error; err != nil {
-			fail(c, http.StatusInternalServerError, "导入令牌失败："+err.Error())
-			return
-		}
-		token.Enabled = false
-		result.Created++
-		result.Errors = append(result.Errors, "token imported disabled without key; create a new token in the console: "+name)
 	}
 	a.reloadPrices()
 	ok(c, gin.H{"result": result})

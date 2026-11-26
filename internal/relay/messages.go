@@ -57,8 +57,9 @@ func (r *Relay) handleMessages(c *gin.Context, countTokens bool) {
 	}
 	if _, _, ok := parseChatRequest(body); !ok {
 		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是含 model 字段的 JSON")
-		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "缺少 model 字段")
+		const msg = "request body must be a JSON object with a model field"
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", msg)
+		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", msg)
 		return
 	}
 	_ = c.Request.Body.Close()
@@ -102,7 +103,7 @@ type messagesTool struct {
 func messagesToChat(body []byte) ([]byte, error) {
 	var wire map[string]json.RawMessage
 	if err := json.Unmarshal(body, &wire); err != nil {
-		return nil, fmt.Errorf("请求体必须是合法 JSON: %w", err)
+		return nil, fmt.Errorf("request body must be valid JSON: %w", err)
 	}
 	allowed := map[string]bool{
 		"model": true, "max_tokens": true, "messages": true, "system": true,
@@ -115,7 +116,7 @@ func messagesToChat(body []byte) ([]byte, error) {
 		}
 	}
 	if raw, ok := wire["thinking"]; ok && !isJSONNull(raw) {
-		return nil, fmt.Errorf("thinking 无法桥接到 Chat Completions，请为该模型配置支持 Anthropic 原生协议的渠道")
+		return nil, fmt.Errorf("thinking cannot be bridged to Chat Completions; configure a channel with native Anthropic support for this model")
 	}
 
 	var req struct {
@@ -134,10 +135,10 @@ func messagesToChat(body []byte) ([]byte, error) {
 		} `json:"metadata"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, fmt.Errorf("请求体必须是合法 JSON: %w", err)
+		return nil, fmt.Errorf("request body must be valid JSON: %w", err)
 	}
 	if len(req.Messages) == 0 {
-		return nil, fmt.Errorf("messages 不能为空")
+		return nil, fmt.Errorf("messages must not be empty")
 	}
 
 	out := map[string]any{"model": req.Model, "stream": req.Stream}
@@ -180,10 +181,10 @@ func messagesToChat(body []byte) ([]byte, error) {
 		tools := make([]chatTool, 0, len(req.Tools))
 		for i, tool := range req.Tools {
 			if hasCacheControl(tool.CacheControl) {
-				return nil, fmt.Errorf("tools[%d]: cache_control 无法桥接到 Chat Completions", i)
+				return nil, fmt.Errorf("tools[%d]: cache_control cannot be bridged to Chat Completions", i)
 			}
 			if tool.Name == "" {
-				return nil, fmt.Errorf("tools[%d]: name 不能为空", i)
+				return nil, fmt.Errorf("tools[%d]: name must not be empty", i)
 			}
 			parameters := tool.InputSchema
 			if parameters == nil {
@@ -215,15 +216,15 @@ func messagesSystemText(raw json.RawMessage) (string, error) {
 	}
 	var blocks []messagesBlock
 	if err := json.Unmarshal(raw, &blocks); err != nil {
-		return "", fmt.Errorf("必须是字符串或内容块数组")
+		return "", fmt.Errorf("must be a string or an array of content blocks")
 	}
 	var sb strings.Builder
 	for _, block := range blocks {
 		if hasCacheControl(block.CacheControl) {
-			return "", fmt.Errorf("cache_control 无法桥接到 Chat Completions")
+			return "", fmt.Errorf("cache_control cannot be bridged to Chat Completions")
 		}
 		if block.Type != "text" {
-			return "", fmt.Errorf("不支持的内容块类型 %q", block.Type)
+			return "", fmt.Errorf("unsupported content block type %q", block.Type)
 		}
 		sb.WriteString(block.Text)
 	}
@@ -232,7 +233,7 @@ func messagesSystemText(raw json.RawMessage) (string, error) {
 
 func bridgeMessagesMessage(msg messagesMessage) ([]chatMessage, error) {
 	if msg.Role != "user" && msg.Role != "assistant" {
-		return nil, fmt.Errorf("不支持的 role %q", msg.Role)
+		return nil, fmt.Errorf("unsupported role %q", msg.Role)
 	}
 	var text string
 	if json.Unmarshal(msg.Content, &text) == nil {
@@ -240,7 +241,7 @@ func bridgeMessagesMessage(msg messagesMessage) ([]chatMessage, error) {
 	}
 	var blocks []messagesBlock
 	if err := json.Unmarshal(msg.Content, &blocks); err != nil {
-		return nil, fmt.Errorf("content 必须是字符串或内容块数组")
+		return nil, fmt.Errorf("content must be a string or an array of content blocks")
 	}
 
 	var texts []string
@@ -248,14 +249,14 @@ func bridgeMessagesMessage(msg messagesMessage) ([]chatMessage, error) {
 	var toolMessages []chatMessage
 	for _, block := range blocks {
 		if hasCacheControl(block.CacheControl) {
-			return nil, fmt.Errorf("cache_control 无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("cache_control cannot be bridged to Chat Completions")
 		}
 		switch block.Type {
 		case "text":
 			texts = append(texts, block.Text)
 		case "tool_use":
 			if msg.Role != "assistant" {
-				return nil, fmt.Errorf("tool_use 只能出现在 assistant 消息")
+				return nil, fmt.Errorf("tool_use can only appear in assistant messages")
 			}
 			arguments := "{}"
 			if len(block.Input) > 0 && !isJSONNull(block.Input) {
@@ -266,7 +267,7 @@ func bridgeMessagesMessage(msg messagesMessage) ([]chatMessage, error) {
 			}})
 		case "tool_result":
 			if msg.Role != "user" {
-				return nil, fmt.Errorf("tool_result 只能出现在 user 消息")
+				return nil, fmt.Errorf("tool_result can only appear in user messages")
 			}
 			content, err := messagesToolResultText(block.Content)
 			if err != nil {
@@ -274,11 +275,11 @@ func bridgeMessagesMessage(msg messagesMessage) ([]chatMessage, error) {
 			}
 			toolMessages = append(toolMessages, chatMessage{Role: "tool", ToolCallID: block.ToolUseID, Content: content})
 		case "thinking", "redacted_thinking":
-			return nil, fmt.Errorf("thinking 内容块无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("thinking content block cannot be bridged to Chat Completions")
 		case "image", "document":
-			return nil, fmt.Errorf("%s 内容块无法桥接到 Chat Completions", block.Type)
+			return nil, fmt.Errorf("%s content block cannot be bridged to Chat Completions", block.Type)
 		default:
-			return nil, fmt.Errorf("不支持的内容块类型 %q", block.Type)
+			return nil, fmt.Errorf("unsupported content block type %q", block.Type)
 		}
 	}
 	joined := strings.Join(texts, "")
@@ -309,15 +310,15 @@ func messagesToolResultText(raw json.RawMessage) (string, error) {
 	}
 	var blocks []messagesBlock
 	if err := json.Unmarshal(raw, &blocks); err != nil {
-		return "", fmt.Errorf("tool_result.content 必须是字符串或内容块数组")
+		return "", fmt.Errorf("tool_result.content must be a string or an array of content blocks")
 	}
 	var sb strings.Builder
 	for _, block := range blocks {
 		if hasCacheControl(block.CacheControl) {
-			return "", fmt.Errorf("cache_control 无法桥接到 Chat Completions")
+			return "", fmt.Errorf("cache_control cannot be bridged to Chat Completions")
 		}
 		if block.Type != "text" {
-			return "", fmt.Errorf("tool_result 不支持的内容块类型 %q", block.Type)
+			return "", fmt.Errorf("tool_result contains an unsupported content block type %q", block.Type)
 		}
 		sb.WriteString(block.Text)
 	}
@@ -331,7 +332,7 @@ func messagesToolChoice(raw json.RawMessage) (any, *bool, error) {
 		DisableParallelToolUse *bool  `json:"disable_parallel_tool_use"`
 	}
 	if err := json.Unmarshal(raw, &choice); err != nil {
-		return nil, nil, fmt.Errorf("tool_choice 必须是对象")
+		return nil, nil, fmt.Errorf("tool_choice must be an object")
 	}
 	var parallel *bool
 	if choice.DisableParallelToolUse != nil {
@@ -347,11 +348,11 @@ func messagesToolChoice(raw json.RawMessage) (any, *bool, error) {
 		return "none", parallel, nil
 	case "tool":
 		if choice.Name == "" {
-			return nil, nil, fmt.Errorf("tool_choice.name 不能为空")
+			return nil, nil, fmt.Errorf("tool_choice.name must not be empty")
 		}
 		return map[string]any{"type": "function", "function": map[string]any{"name": choice.Name}}, parallel, nil
 	default:
-		return nil, nil, fmt.Errorf("不支持的 tool_choice.type %q", choice.Type)
+		return nil, nil, fmt.Errorf("unsupported tool_choice.type %q", choice.Type)
 	}
 }
 
@@ -368,10 +369,10 @@ func convertChatCompletionToMessages(body []byte, model string, now time.Time) (
 		Usage *usageWire `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
-		return nil, fmt.Errorf("解析上游响应失败: %w", err)
+		return nil, fmt.Errorf("failed to parse upstream response: %w", err)
 	}
 	if len(wire.Choices) == 0 {
-		return nil, fmt.Errorf("上游响应缺少 choices")
+		return nil, fmt.Errorf("upstream response is missing choices")
 	}
 	choice := wire.Choices[0]
 	text, err := chatMessageText(choice.Message.Content)
@@ -424,12 +425,12 @@ func chatMessageText(raw json.RawMessage) (string, error) {
 		Text string `json:"text"`
 	}
 	if err := json.Unmarshal(raw, &parts); err != nil {
-		return "", fmt.Errorf("上游响应 content 格式不受支持")
+		return "", fmt.Errorf("unsupported upstream response content format")
 	}
 	var sb strings.Builder
 	for _, part := range parts {
 		if part.Type != "text" && part.Type != "output_text" {
-			return "", fmt.Errorf("上游响应 content part %q 无法桥接", part.Type)
+			return "", fmt.Errorf("upstream response content part %q cannot be bridged", part.Type)
 		}
 		sb.WriteString(part.Text)
 	}

@@ -4,6 +4,7 @@ package usage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -260,22 +261,9 @@ func (m *Manager) SetDefault(ctx context.Context, price PriceInput) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var row store.ModelPrice
-	result := m.db.WithContext(ctx).Where("channel_id = ? AND model = ?", 0, "").First(&row)
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		row = store.ModelPrice{
-			InputMicrosPerMillion: price.Input, OutputMicrosPerMillion: price.Output,
-			CacheReadMicrosPerMillion: derefInt64(price.CacheRead), CacheWriteMicrosPerMillion: derefInt64(price.CacheWrite),
-		}
-		if err := m.db.WithContext(ctx).Create(&row).Error; err != nil {
-			return err
-		}
-	} else if result.Error != nil {
-		return result.Error
-	} else if err := m.db.WithContext(ctx).Model(&row).Updates(price.updates()).Error; err != nil {
+	if _, err := upsertPrice(m.db.WithContext(ctx), 0, "", price); err != nil {
 		return err
 	}
-	price.applyTo(&row)
 	return m.Reload()
 }
 
@@ -288,25 +276,70 @@ func (m *Manager) UpsertOverride(ctx context.Context, channelID int64, model str
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	row, err := upsertPrice(m.db.WithContext(ctx), channelID, model, price)
+	if err != nil {
+		return store.ModelPrice{}, err
+	}
+	if err := m.Reload(); err != nil {
+		return store.ModelPrice{}, err
+	}
+	return row, nil
+}
+
+// ValidatePrice 校验一组价格；配置导入在开启事务前复用同一口径。
+func ValidatePrice(price PriceInput) error {
+	return price.validate()
+}
+
+// ImportPrice 是配置导入的一条渠道价格覆盖。
+type ImportPrice struct {
+	ChannelID int64
+	Model     string
+	Price     PriceInput
+}
+
+// ApplyImport 在调用方事务内写入默认价与覆盖价，不刷新快照；提交成功后由调用方 Reload。
+// 任一价格非法或写入失败都返回错误，调用方事务整体回滚。
+func (m *Manager) ApplyImport(tx *gorm.DB, def *PriceInput, overrides []ImportPrice) error {
+	if def != nil {
+		if err := def.validate(); err != nil {
+			return err
+		}
+		if _, err := upsertPrice(tx, 0, "", *def); err != nil {
+			return err
+		}
+	}
+	for _, o := range overrides {
+		if err := o.Price.validate(); err != nil {
+			return fmt.Errorf("%s: %w", o.Model, err)
+		}
+		if _, err := upsertPrice(tx, o.ChannelID, o.Model, o.Price); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// upsertPrice 按 (channel_id, model) 收敛写入路径；缓存价为 nil 时保留原值。
+func upsertPrice(db *gorm.DB, channelID int64, model string, price PriceInput) (store.ModelPrice, error) {
 	var row store.ModelPrice
-	result := m.db.WithContext(ctx).Where("channel_id = ? AND model = ?", channelID, model).First(&row)
+	result := db.Where("channel_id = ? AND model = ?", channelID, model).First(&row)
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		row = store.ModelPrice{
 			ChannelID: channelID, Model: model,
 			InputMicrosPerMillion: price.Input, OutputMicrosPerMillion: price.Output,
 			CacheReadMicrosPerMillion: derefInt64(price.CacheRead), CacheWriteMicrosPerMillion: derefInt64(price.CacheWrite),
 		}
-		if err := m.db.WithContext(ctx).Create(&row).Error; err != nil {
+		if err := db.Create(&row).Error; err != nil {
 			return store.ModelPrice{}, err
 		}
 	} else if result.Error != nil {
 		return store.ModelPrice{}, result.Error
-	} else if err := m.db.WithContext(ctx).Model(&row).Updates(price.updates()).Error; err != nil {
-		return store.ModelPrice{}, err
-	}
-	price.applyTo(&row)
-	if err := m.Reload(); err != nil {
-		return store.ModelPrice{}, err
+	} else {
+		if err := db.Model(&row).Updates(price.updates()).Error; err != nil {
+			return store.ModelPrice{}, err
+		}
+		price.applyTo(&row)
 	}
 	return row, nil
 }

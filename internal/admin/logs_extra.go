@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"evergate/internal/httpx"
 	"evergate/internal/store"
 )
 
@@ -20,30 +22,47 @@ import (
 const logExportMaxRows = 10000
 
 // applyLogFilters 把 /logs、/logs/stats、/logs/export 共用的查询参数映射到 WHERE 条件。
-func applyLogFilters(c *gin.Context, q *gorm.DB) *gorm.DB {
+// 非法筛选值返回带字段名的错误，由调用方转成 400，避免静默忽略导致筛选结果与预期不符。
+func applyLogFilters(c *gin.Context, q *gorm.DB) (*gorm.DB, error) {
 	if v := c.Query("channel_id"); v != "" {
-		q = q.Where("channel_id = ?", queryInt64(c, "channel_id"))
+		id, err := parseQueryInt64(c, "channel_id")
+		if err != nil {
+			return nil, err
+		}
+		q = q.Where("channel_id = ?", id)
 	}
 	if v := c.Query("token_id"); v != "" {
-		q = q.Where("token_id = ?", queryInt64(c, "token_id"))
+		id, err := parseQueryInt64(c, "token_id")
+		if err != nil {
+			return nil, err
+		}
+		q = q.Where("token_id = ?", id)
 	}
 	if v := c.Query("model"); v != "" {
 		q = q.Where("model = ?", v)
 	}
 	if v := c.Query("status"); v != "" {
-		q = q.Where("status_code = ?", queryInt(c, "status", 0))
+		code, err := parseQueryInt64(c, "status")
+		if err != nil {
+			return nil, err
+		}
+		q = q.Where("status_code = ?", code)
 	}
 	if v := c.Query("start"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			q = q.Where("created_at >= ?", t.UTC())
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
+		if err != nil {
+			return nil, fmt.Errorf("start 必须是 RFC3339 时间（如 2026-01-02T15:04:05Z）")
 		}
+		q = q.Where("created_at >= ?", t.UTC())
 	}
 	if v := c.Query("end"); v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			q = q.Where("created_at <= ?", t.UTC())
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
+		if err != nil {
+			return nil, fmt.Errorf("end 必须是 RFC3339 时间（如 2026-01-02T15:04:05Z）")
 		}
+		q = q.Where("created_at <= ?", t.UTC())
 	}
-	return q
+	return q, nil
 }
 
 // logStats 聚合结果：基于全部匹配行计算，不受分页限制（修复 Dashboard 只看最新 100 条的口径偏差）。
@@ -57,7 +76,11 @@ type logStats struct {
 }
 
 func (a *API) logStatsHandler(c *gin.Context) {
-	q := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	var rows []struct {
 		StatusCode int   `gorm:"column:status_code"`
 		TotalMS    int64 `gorm:"column:total_ms"`
@@ -113,7 +136,11 @@ func percentile(sorted []int64, p float64) int64 {
 }
 
 func (a *API) exportLogs(c *gin.Context) {
-	q := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
 	var logs []*store.RequestLog
 	if err := q.Order("id desc").Limit(logExportMaxRows).Find(&logs).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "查询失败")
@@ -124,17 +151,23 @@ func (a *API) exportLogs(c *gin.Context) {
 	buf.Write([]byte{0xEF, 0xBB, 0xBF})
 	w := csv.NewWriter(buf)
 	_ = w.Write([]string{
-		"id", "created_at", "model", "upstream_model", "original_model", "channel", "token", "status_code",
-		"first_token_ms", "total_ms", "prompt_tokens", "completion_tokens", "total_tokens",
-		"cost_micros", "cost_status", "error_type", "error_message",
+		"id", "created_at", "source", "model", "upstream_model", "original_model", "channel", "token", "status_code",
+		"first_token_ms", "total_ms", "prompt_tokens", "cached_tokens", "cache_write_tokens", "completion_tokens",
+		"reasoning_tokens", "total_tokens", "retry_count", "cost_micros", "cost_status", "price_source",
+		"error_type", "error_message",
 	})
 	for _, l := range logs {
 		_ = w.Write([]string{
-			strconv.FormatInt(l.ID, 10), l.CreatedAt.UTC().Format(time.RFC3339), l.Model, l.UpstreamModel, l.OriginalModel,
-			l.ChannelName, l.TokenName, strconv.Itoa(l.StatusCode),
+			strconv.FormatInt(l.ID, 10), l.CreatedAt.UTC().Format(time.RFC3339), csvCell(l.Source),
+			csvCell(l.Model), csvCell(l.UpstreamModel), csvCell(l.OriginalModel),
+			csvCell(l.ChannelName), csvCell(l.TokenName), strconv.Itoa(l.StatusCode),
 			strconv.FormatInt(l.FirstTokenMS, 10), strconv.FormatInt(l.TotalMS, 10),
-			strconv.FormatInt(l.PromptTokens, 10), strconv.FormatInt(l.CompletionTokens, 10), strconv.FormatInt(l.TotalTokens, 10),
-			strconv.FormatInt(l.CostMicros, 10), l.CostStatus, l.ErrorType, truncateRunes(l.ErrorMessage, 500),
+			strconv.FormatInt(l.PromptTokens, 10), strconv.FormatInt(l.CachedTokens, 10),
+			strconv.FormatInt(l.CacheWriteTokens, 10), strconv.FormatInt(l.CompletionTokens, 10),
+			strconv.FormatInt(l.ReasoningTokens, 10), strconv.FormatInt(l.TotalTokens, 10),
+			strconv.Itoa(len(l.RetryTrace)), strconv.FormatInt(l.CostMicros, 10),
+			csvCell(l.CostStatus), csvCell(l.PriceSource), csvCell(l.ErrorType),
+			csvCell(httpx.TruncateRunes(l.ErrorMessage, 500)),
 		})
 	}
 	w.Flush()
@@ -143,14 +176,15 @@ func (a *API) exportLogs(c *gin.Context) {
 	c.Data(http.StatusOK, "text/csv; charset=utf-8", buf.Bytes())
 }
 
-// truncateRunes 按字符数截断，避免切断多字节字符。
-func truncateRunes(s string, max int) string {
-	if len(s) <= max {
+// csvCell 防公式注入：以 = + - @ 或制表/回车开头的单元格前置单引号，Excel 按文本处理。
+// 只用于字符串列；数字列由 strconv 生成，不经过这里。
+func csvCell(s string) string {
+	if s == "" {
 		return s
 	}
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
+	switch s[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + s
 	}
-	return string(runes[:max])
+	return s
 }

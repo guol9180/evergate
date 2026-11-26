@@ -85,7 +85,7 @@ func Parse(raw string) (*Config, error) {
 		return cfg, nil
 	}
 	if len(raw) > MaxHeaderBytes {
-		return nil, errf("", "配置超过 %d 字节上限", MaxHeaderBytes)
+		return nil, errf("", "config exceeds the %d byte limit", MaxHeaderBytes)
 	}
 	top, err := object(json.RawMessage(raw), "")
 	if err != nil {
@@ -118,7 +118,7 @@ func Parse(raw string) (*Config, error) {
 			}
 			cfg.SessionAffinity = &v
 		default:
-			return nil, errf(key, "未知字段（仅允许 timeouts/retry/channels/session_affinity）")
+			return nil, errf(key, "unknown field (allowed: timeouts/retry/channels/session_affinity)")
 		}
 	}
 	return cfg, nil
@@ -152,11 +152,11 @@ func parseTimeouts(raw json.RawMessage) (*Timeouts, error) {
 			}
 			out.Overall = &d
 		default:
-			return nil, errf(path, "未知字段（仅允许 connect/first_token/overall）")
+			return nil, errf(path, "unknown field (allowed: connect/first_token/overall)")
 		}
 	}
 	if out.Overall != nil && out.FirstToken != nil && *out.Overall < *out.FirstToken {
-		return nil, errf("timeouts.overall", "必须 >= timeouts.first_token")
+		return nil, errf("timeouts.overall", "must be >= timeouts.first_token")
 	}
 	return out, nil
 }
@@ -176,7 +176,7 @@ func parseRetry(raw json.RawMessage) (*Retry, error) {
 				return nil, err
 			}
 			if n < 1 || n > maxRetryChan {
-				return nil, errf(path, "必须在 1-%d", maxRetryChan)
+				return nil, errf(path, "must be between 1 and %d", maxRetryChan)
 			}
 			out.Channels = &n
 		case "keys_per_channel":
@@ -185,7 +185,7 @@ func parseRetry(raw json.RawMessage) (*Retry, error) {
 				return nil, err
 			}
 			if n < 1 || n > maxRetryKeys {
-				return nil, errf(path, "必须在 1-%d", maxRetryKeys)
+				return nil, errf(path, "must be between 1 and %d", maxRetryKeys)
 			}
 			out.KeysPerChannel = &n
 		case "total":
@@ -195,7 +195,7 @@ func parseRetry(raw json.RawMessage) (*Retry, error) {
 			}
 			out.Total = &d
 		default:
-			return nil, errf(path, "未知字段（仅允许 channels/keys_per_channel/total）")
+			return nil, errf(path, "unknown field (allowed: channels/keys_per_channel/total)")
 		}
 	}
 	return out, nil
@@ -204,13 +204,13 @@ func parseRetry(raw json.RawMessage) (*Retry, error) {
 func parseChannels(raw json.RawMessage) ([]int64, error) {
 	var values []json.RawMessage
 	if err := json.Unmarshal(raw, &values); err != nil {
-		return nil, errf("channels", "必须是整数数组")
+		return nil, errf("channels", "must be an array of integers")
 	}
 	if len(values) == 0 {
-		return nil, errf("channels", "不能为空")
+		return nil, errf("channels", "must not be empty")
 	}
 	if len(values) > MaxChannelIDs {
-		return nil, errf("channels", "最多 %d 个渠道", MaxChannelIDs)
+		return nil, errf("channels", "at most %d channels", MaxChannelIDs)
 	}
 	seen := make(map[int64]bool, len(values))
 	out := make([]int64, 0, len(values))
@@ -218,10 +218,10 @@ func parseChannels(raw json.RawMessage) ([]int64, error) {
 		path := fmt.Sprintf("channels[%d]", i)
 		id, err := int64Value(item)
 		if err != nil {
-			return nil, errf(path, "必须是整数")
+			return nil, errf(path, "must be an integer")
 		}
 		if id <= 0 {
-			return nil, errf(path, "必须是正整数渠道 id")
+			return nil, errf(path, "must be a positive channel id")
 		}
 		if seen[id] {
 			continue
@@ -236,13 +236,13 @@ func object(raw json.RawMessage, path string) (map[string]json.RawMessage, error
 	var obj map[string]json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if err := dec.Decode(&obj); err != nil {
-		return nil, errf(path, "必须是 JSON 对象")
+		return nil, errf(path, "must be a JSON object")
 	}
 	if obj == nil {
-		return nil, errf(path, "必须是 JSON 对象")
+		return nil, errf(path, "must be a JSON object")
 	}
 	if err := ensureEOF(dec); err != nil {
-		return nil, errf(path, "JSON 之后存在多余内容")
+		return nil, errf(path, "unexpected trailing content after JSON")
 	}
 	return obj, nil
 }
@@ -258,17 +258,17 @@ func ensureEOF(dec *json.Decoder) error {
 func durationValue(raw json.RawMessage, path string, min, max time.Duration) (time.Duration, error) {
 	var s string
 	if err := json.Unmarshal(raw, &s); err != nil {
-		return 0, errf(path, "必须是时长字符串，如 \"30s\"")
+		return 0, errf(path, "must be a duration string such as \"30s\"")
 	}
 	d, err := time.ParseDuration(strings.TrimSpace(s))
 	if err != nil {
-		return 0, errf(path, "非法时长 %q", s)
+		return 0, errf(path, "invalid duration %q", s)
 	}
 	if d <= 0 {
-		return 0, errf(path, "必须 > 0")
+		return 0, errf(path, "must be > 0")
 	}
 	if d > max {
-		return 0, errf(path, "超过上限 %s", max)
+		return 0, errf(path, "exceeds the limit %s", max)
 	}
 	if d < min {
 		return min, nil // 安全下限收敛，避免请求设置过小超时导致误切换
@@ -279,7 +279,7 @@ func durationValue(raw json.RawMessage, path string, min, max time.Duration) (ti
 func intValue(raw json.RawMessage, path string) (int, error) {
 	n, err := int64Value(raw)
 	if err != nil {
-		return 0, errf(path, "必须是整数")
+		return 0, errf(path, "must be an integer")
 	}
 	return int(n), nil
 }
@@ -300,7 +300,7 @@ func int64Value(raw json.RawMessage) (int64, error) {
 func boolValue(raw json.RawMessage, path string) (bool, error) {
 	var v bool
 	if err := json.Unmarshal(raw, &v); err != nil {
-		return false, errf(path, "必须是布尔值")
+		return false, errf(path, "must be a boolean")
 	}
 	return v, nil
 }

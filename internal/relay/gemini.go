@@ -49,8 +49,9 @@ func (r *Relay) HandleGemini(c *gin.Context) {
 	model, method, err := parseGeminiAction(c.Param("action"))
 	if err != nil {
 		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_gemini_path", err.Error())
-		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", err.Error())
+		const msg = "invalid Gemini request path"
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_gemini_path", msg)
+		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", msg)
 		return
 	}
 	c.Set(geminiMethodKey, method)
@@ -66,8 +67,9 @@ func (r *Relay) HandleGemini(c *gin.Context) {
 	var wire map[string]json.RawMessage
 	if err := json.Unmarshal(body, &wire); err != nil {
 		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "请求体必须是合法 JSON 对象")
-		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "请求体必须是合法 JSON 对象")
+		const msg = "request body must be a valid JSON object"
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", msg)
+		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", msg)
 		return
 	}
 	setGeminiOriginalBody(c, body)
@@ -75,8 +77,10 @@ func (r *Relay) HandleGemini(c *gin.Context) {
 	dispatchBody, err := geminiDispatchBody(body, model, method)
 	if err != nil {
 		r.recordRequestMetrics(c, http.StatusBadRequest, "invalid_request_error")
-		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_error", "重构请求体失败")
-		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", "重构请求体失败")
+		r.logInternalError("rebuild gemini request body failed", err)
+		const msg = "failed to rebuild Gemini request body"
+		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "invalid_request_body", msg)
+		req.setResult(nil, http.StatusBadRequest, "invalid_request_error", msg)
 		return
 	}
 	_ = c.Request.Body.Close()
@@ -103,7 +107,7 @@ func parseGeminiAction(action string) (model, method string, err error) {
 	path := strings.TrimPrefix(action, "/")
 	index := strings.LastIndex(path, ":")
 	if index <= 0 || index == len(path)-1 {
-		return "", "", fmt.Errorf("路径必须形如 /v1beta/models/{model}:generateContent")
+		return "", "", fmt.Errorf("path must look like /v1beta/models/{model}:generateContent")
 	}
 	model = strings.TrimPrefix(path[:index], "models/")
 	method = path[index+1:]
@@ -111,7 +115,7 @@ func parseGeminiAction(action string) (model, method string, err error) {
 	case geminiMethodGenerate, geminiMethodStream, geminiMethodCount:
 		return model, method, nil
 	default:
-		return "", "", fmt.Errorf("不支持的 Gemini 方法 %q", method)
+		return "", "", fmt.Errorf("unsupported Gemini method %q", method)
 	}
 }
 
@@ -152,7 +156,7 @@ type geminiTool struct {
 func geminiToChat(body []byte, model string, stream bool) ([]byte, error) {
 	var wire map[string]json.RawMessage
 	if err := json.Unmarshal(body, &wire); err != nil {
-		return nil, fmt.Errorf("请求体必须是合法 JSON: %w", err)
+		return nil, fmt.Errorf("request body must be valid JSON: %w", err)
 	}
 	allowed := map[string]bool{
 		"contents": true, "systemInstruction": true, "system_instruction": true,
@@ -166,7 +170,7 @@ func geminiToChat(body []byte, model string, stream bool) ([]byte, error) {
 		}
 	}
 	if raw := geminiRaw(wire, "safetySettings", "safety_settings"); len(raw) > 0 && !isJSONNull(raw) && strings.TrimSpace(string(raw)) != "[]" {
-		return nil, fmt.Errorf("safetySettings 无法桥接到 Chat Completions，请为该模型配置支持 Gemini 原生协议的渠道")
+		return nil, fmt.Errorf("safetySettings cannot be bridged to Chat Completions; configure a channel with native Gemini support for this model")
 	}
 	if _, ok := wire["systemInstruction"]; !ok {
 		if raw, exists := wire["system_instruction"]; exists {
@@ -212,23 +216,23 @@ func geminiToChat(body []byte, model string, stream bool) ([]byte, error) {
 		} `json:"generationConfig"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, fmt.Errorf("请求体必须是合法 JSON: %w", err)
+		return nil, fmt.Errorf("request body must be valid JSON: %w", err)
 	}
 	if len(req.Contents) == 0 {
-		return nil, fmt.Errorf("contents 不能为空")
+		return nil, fmt.Errorf("contents must not be empty")
 	}
 	if req.GenerationConfig != nil {
 		if len(req.GenerationConfig.ThinkingConfig) > 0 && !isJSONNull(req.GenerationConfig.ThinkingConfig) {
-			return nil, fmt.Errorf("generationConfig.thinkingConfig 无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("generationConfig.thinkingConfig cannot be bridged to Chat Completions")
 		}
 		if req.GenerationConfig.ResponseMimeType != "" || (len(req.GenerationConfig.ResponseSchema) > 0 && !isJSONNull(req.GenerationConfig.ResponseSchema)) {
-			return nil, fmt.Errorf("generationConfig.responseSchema/responseMimeType 无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("generationConfig.responseSchema/responseMimeType cannot be bridged to Chat Completions")
 		}
 		if req.GenerationConfig.TopK != nil {
-			return nil, fmt.Errorf("generationConfig.topK 无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("generationConfig.topK cannot be bridged to Chat Completions")
 		}
 		if req.GenerationConfig.CandidateCount != nil && *req.GenerationConfig.CandidateCount > 1 {
-			return nil, fmt.Errorf("generationConfig.candidateCount > 1 无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("generationConfig.candidateCount > 1 cannot be bridged to Chat Completions")
 		}
 	}
 
@@ -251,7 +255,7 @@ func geminiToChat(body []byte, model string, stream bool) ([]byte, error) {
 			role = "user"
 		}
 		if role != "user" && role != "model" {
-			return nil, fmt.Errorf("contents[%d]: 不支持的 role %q", i, role)
+			return nil, fmt.Errorf("contents[%d]: unsupported role %q", i, role)
 		}
 		converted, err := bridgeGeminiContent(content, role, pendingCalls, &callSeq)
 		if err != nil {
@@ -265,14 +269,14 @@ func geminiToChat(body []byte, model string, stream bool) ([]byte, error) {
 		tools := make([]chatTool, 0, len(req.Tools))
 		for i, tool := range req.Tools {
 			if len(tool.FunctionDeclarations) == 0 {
-				return nil, fmt.Errorf("tools[%d]: 仅支持 functionDeclarations，其他内置工具无法桥接", i)
+				return nil, fmt.Errorf("tools[%d]: only functionDeclarations are supported; other built-in tools cannot be bridged", i)
 			}
 			for j, decl := range tool.FunctionDeclarations {
 				if decl.Name == "" {
-					return nil, fmt.Errorf("tools[%d].functionDeclarations[%d]: name 不能为空", i, j)
+					return nil, fmt.Errorf("tools[%d].functionDeclarations[%d]: name must not be empty", i, j)
 				}
 				if len(decl.ParametersJSONSchema) > 0 && !isJSONNull(decl.ParametersJSONSchema) {
-					return nil, fmt.Errorf("tools[%d].functionDeclarations[%d]: parametersJsonSchema 无法桥接", i, j)
+					return nil, fmt.Errorf("tools[%d].functionDeclarations[%d]: parametersJsonSchema cannot be bridged", i, j)
 				}
 				parameters := decl.Parameters
 				if parameters == nil {
@@ -324,17 +328,17 @@ func bridgeGeminiContent(content geminiContent, role string, pendingCalls map[st
 	var toolMessages []chatMessage
 	for _, part := range content.Parts {
 		if part.Thought != nil && *part.Thought {
-			return nil, fmt.Errorf("thought 内容无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("thought content cannot be bridged to Chat Completions")
 		}
 		if len(part.InlineData) > 0 || len(part.FileData) > 0 {
-			return nil, fmt.Errorf("inlineData/fileData 无法桥接到 Chat Completions")
+			return nil, fmt.Errorf("inlineData/fileData cannot be bridged to Chat Completions")
 		}
 		if part.FunctionCall != nil {
 			if role != "model" {
-				return nil, fmt.Errorf("functionCall 只能出现在 model 内容")
+				return nil, fmt.Errorf("functionCall can only appear in model content")
 			}
 			if part.FunctionCall.Name == "" {
-				return nil, fmt.Errorf("functionCall.name 不能为空")
+				return nil, fmt.Errorf("functionCall.name must not be empty")
 			}
 			*callSeq = *callSeq + 1
 			id := fmt.Sprintf("call_%d_%s", *callSeq, part.FunctionCall.Name)
@@ -350,7 +354,7 @@ func bridgeGeminiContent(content geminiContent, role string, pendingCalls map[st
 		}
 		if part.FunctionResponse != nil {
 			if role != "user" {
-				return nil, fmt.Errorf("functionResponse 只能出现在 user 内容")
+				return nil, fmt.Errorf("functionResponse can only appear in user content")
 			}
 			id := ""
 			queue := pendingCalls[part.FunctionResponse.Name]
@@ -393,10 +397,10 @@ func geminiPartsText(parts []geminiPart, field string) (string, error) {
 	var sb strings.Builder
 	for _, part := range parts {
 		if part.Thought != nil && *part.Thought {
-			return "", fmt.Errorf("%s: thought 内容无法桥接到 Chat Completions", field)
+			return "", fmt.Errorf("%s: thought content cannot be bridged to Chat Completions", field)
 		}
 		if part.FunctionCall != nil || part.FunctionResponse != nil || len(part.InlineData) > 0 || len(part.FileData) > 0 {
-			return "", fmt.Errorf("%s: 只支持 text parts", field)
+			return "", fmt.Errorf("%s: only text parts are supported", field)
 		}
 		sb.WriteString(part.Text)
 	}
@@ -413,7 +417,7 @@ func geminiFunctionResponseText(raw json.RawMessage) (string, error) {
 	}
 	var obj map[string]any
 	if err := json.Unmarshal(raw, &obj); err != nil {
-		return "", fmt.Errorf("functionResponse.response 必须是对象或字符串")
+		return "", fmt.Errorf("functionResponse.response must be an object or string")
 	}
 	if result, ok := obj["result"]; ok {
 		data, _ := json.Marshal(result)
@@ -425,7 +429,7 @@ func geminiFunctionResponseText(raw json.RawMessage) (string, error) {
 
 func geminiToolChoice(mode string, allowed []string) (any, error) {
 	if len(allowed) > 1 {
-		return nil, fmt.Errorf("toolConfig.allowedFunctionNames 多于一个时无法桥接")
+		return nil, fmt.Errorf("toolConfig.allowedFunctionNames with more than one entry cannot be bridged")
 	}
 	if len(allowed) == 1 {
 		return map[string]any{"type": "function", "function": map[string]any{"name": allowed[0]}}, nil
@@ -438,7 +442,7 @@ func geminiToolChoice(mode string, allowed []string) (any, error) {
 	case "NONE":
 		return "none", nil
 	default:
-		return nil, fmt.Errorf("不支持的 toolConfig.functionCallingConfig.mode %q", mode)
+		return nil, fmt.Errorf("unsupported toolConfig.functionCallingConfig.mode %q", mode)
 	}
 }
 
@@ -455,10 +459,10 @@ func convertChatCompletionToGemini(body []byte, model string) ([]byte, error) {
 		Usage *usageWire `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &wire); err != nil {
-		return nil, fmt.Errorf("解析上游响应失败: %w", err)
+		return nil, fmt.Errorf("failed to parse upstream response: %w", err)
 	}
 	if len(wire.Choices) == 0 {
-		return nil, fmt.Errorf("上游响应缺少 choices")
+		return nil, fmt.Errorf("upstream response is missing choices")
 	}
 	choice := wire.Choices[0]
 	text, err := chatMessageText(choice.Message.Content)

@@ -36,14 +36,18 @@ func (r *Relay) dispatchWithFallbacks(c *gin.Context, hit *hitRecord, body []byt
 	c.Set("evergate.original_model", originalModel)
 	entries, err := r.modelSequence(c, originalModel)
 	if err != nil {
-		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", err.Error())
-		return nil, http.StatusInternalServerError, "server_error", err.Error()
+		r.logInternalError("resolve model fallback sequence failed", err)
+		const msg = "failed to resolve model fallback sequence"
+		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "model_sequence_failed", msg)
+		return nil, http.StatusInternalServerError, "model_sequence_failed", msg
 	}
 
 	var channels []*store.Channel
 	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
-		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "server_error", "查询渠道失败")
-		return nil, http.StatusInternalServerError, "server_error", err.Error()
+		r.logInternalError("load enabled channels failed", err)
+		const msg = "failed to load enabled channels"
+		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "channels_unavailable", msg)
+		return nil, http.StatusInternalServerError, "channels_unavailable", msg
 	}
 
 	d := r.currentDefaults()
@@ -88,7 +92,7 @@ func (r *Relay) dispatchWithFallbacks(c *gin.Context, hit *hitRecord, body []byt
 	}
 
 	if nativeRequired {
-		const msg = "请求携带 previous_response_id/background/store 等 Responses 原生状态字段，但候选渠道均未声明 Responses 能力"
+		const msg = "request uses native Responses state (previous_response_id/background/store) but no candidate channel supports the Responses API"
 		writeOpenAIError(c, http.StatusBadRequest, "invalid_request_error", "responses_native_required", msg)
 		return trace, http.StatusBadRequest, "responses_native_required", msg
 	}
@@ -97,7 +101,7 @@ func (r *Relay) dispatchWithFallbacks(c *gin.Context, hit *hitRecord, body []byt
 	errType := "server_error"
 	if n := len(trace); n > 0 {
 		last := trace[n-1]
-		if last.ErrorMessage != "" {
+		if last.ErrorMessage != "" && !isInternalTraceType(last.ErrorType) {
 			msg += ": " + last.ErrorMessage
 		}
 		if last.ErrorType != "" {
@@ -107,6 +111,16 @@ func (r *Relay) dispatchWithFallbacks(c *gin.Context, hit *hitRecord, body []byt
 	r.opt.Logger.Warn("relay exhausted", "model", originalModel, "attempts", len(trace))
 	writeOpenAIError(c, http.StatusServiceUnavailable, "server_error", "all_channels_exhausted", msg)
 	return trace, http.StatusServiceUnavailable, errType, msg
+}
+
+// isInternalTraceType 判断重试轨迹里的错误类型是否来自网关内部（解密 / 转换 / 重构），
+// 这类文案不得回显给下游；上游返回的错误消息则允许透出。
+func isInternalTraceType(errType string) bool {
+	switch errType {
+	case "internal", "decrypt", "responses_bridge", "messages_bridge", "gemini_bridge":
+		return true
+	}
+	return false
 }
 
 func (r *Relay) modelSequence(c *gin.Context, originalModel string) ([]fallbackEntry, error) {
@@ -189,7 +203,7 @@ func (r *Relay) dispatchModel(
 		if isGeminiCountTokens(c) {
 			candidates = filterGeminiNative(candidates)
 			if len(candidates) == 0 {
-				const msg = "countTokens 只能路由到声明 Gemini 原生能力的渠道"
+				const msg = "countTokens can only be routed to channels with native Gemini support"
 				return modelDispatchResult{status: http.StatusBadRequest, errType: "gemini_native_required", errMsg: msg}
 			}
 		} else if !anyGeminiNative(candidates) {
@@ -207,7 +221,7 @@ func (r *Relay) dispatchModel(
 		if isMessagesCountTokens(c) {
 			candidates = filterAnthropicNative(candidates)
 			if len(candidates) == 0 {
-				const msg = "count_tokens 只能路由到声明 Anthropic 原生能力的渠道"
+				const msg = "count_tokens can only be routed to channels with native Anthropic support"
 				return modelDispatchResult{status: http.StatusBadRequest, errType: "messages_native_required", errMsg: msg}
 			}
 		} else if !anyAnthropicNative(candidates) {

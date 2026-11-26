@@ -60,7 +60,7 @@ type ChannelTimeouts struct {
 type ChannelKey struct {
 	ID               int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	ChannelID        int64      `gorm:"not null;index" json:"channel_id"`
-	KeyCipher        string     `gorm:"column:key_cipher;not null" json:"key_cipher"` // AES-GCM base64，任何接口不回显明文
+	KeyCipher        string     `gorm:"column:key_cipher;not null" json:"-"` // AES-GCM base64，任何接口不回显明文或密文
 	Enabled          bool       `gorm:"not null;default:true" json:"enabled"`
 	Weight           int        `gorm:"not null;default:1" json:"weight"`
 	State            string     `gorm:"size:16;not null;default:'active'" json:"state"`
@@ -80,7 +80,7 @@ type ChannelKey struct {
 type Token struct {
 	ID            int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	Name          string     `gorm:"size:100;not null" json:"name"`
-	KeyHash       string     `gorm:"size:64;not null;uniqueIndex" json:"key_hash"` // SHA-256 hex，原文仅创建时展示一次
+	KeyHash       string     `gorm:"size:64;not null;uniqueIndex" json:"-"` // SHA-256 hex，原文仅创建时展示一次
 	Enabled       bool       `gorm:"not null;default:true" json:"enabled"`
 	Quota         int64      `gorm:"not null;default:0" json:"quota"` // 0 = 不限
 	UsedQuota     int64      `gorm:"not null;default:0" json:"used_quota"`
@@ -89,7 +89,6 @@ type Token struct {
 	AllowedIPs    []string   `gorm:"serializer:json" json:"allowed_ips"`
 	// DisableFallback 为 true 时该令牌不参与模型降级，保持原模型失败语义。
 	DisableFallback bool      `gorm:"not null;default:false" json:"disable_fallback"`
-	Group           string    `gorm:"size:50;not null;default:'default'" json:"group"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }

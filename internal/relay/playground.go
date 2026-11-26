@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"evergate/internal/httpx"
 	"evergate/internal/store"
 )
 
@@ -67,12 +68,12 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	defer reqSpan.end()
 	req, err := parsePlaygroundRequest(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
+		httpx.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	body, err := buildPlaygroundBody(req)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": err.Error()})
+		httpx.Fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
 	dispatchBody := body
@@ -84,7 +85,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 		}
 		dispatchBody, err = geminiDispatchBody(body, req.Model, geminiMethodName)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"ok": false, "message": "构造 Gemini 请求失败"})
+			httpx.Fail(c, http.StatusBadRequest, "构造 Gemini 请求失败")
 			return
 		}
 	}
@@ -145,7 +146,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	if json.Valid(writer.body.Bytes()) {
 		response = json.RawMessage(append([]byte(nil), writer.body.Bytes()...))
 	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "data": gin.H{"response": response, "meta": meta}})
+	httpx.OK(c, gin.H{"response": response, "meta": meta})
 }
 
 func parsePlaygroundRequest(c *gin.Context) (playgroundRequest, error) {

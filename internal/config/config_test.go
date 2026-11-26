@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,6 +67,17 @@ func TestLoadOpenBrowserOverride(t *testing.T) {
 	}
 	if cfg.Server.ShouldOpenBrowser() {
 		t.Fatal("YAML false should disable browser opening")
+	}
+}
+
+func TestLoadRejectsUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "evergate.yml")
+	if err := writeTestFile(path, "server:\n  port: 18787\n  prot: 8787\n"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "prot") {
+		t.Fatalf("unknown field should be rejected with field name, got %v", err)
 	}
 }
 
