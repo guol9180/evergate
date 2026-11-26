@@ -10,9 +10,10 @@ import {
 } from 'react'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as SelectPrimitive from '@radix-ui/react-select'
+import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
-import { Check, CircleAlert, CircleCheck, ChevronDown, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import { Check, CircleAlert, CircleCheck, ChevronDown, ChevronUp, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
 
@@ -93,26 +94,29 @@ export function Select({ value, onValueChange, options, size = 'md', className =
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
         aria-invalid={ariaInvalid || undefined}
-        className={`inline-flex items-center justify-between gap-2 rounded-md border border-line-strong bg-surface text-foreground outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle aria-invalid:border-danger-solid aria-invalid:focus:border-danger-solid aria-invalid:focus:ring-danger-subtle ${
-          compact ? 'h-7 w-auto pl-2 pr-6 text-xs' : 'h-9 w-full px-3 pr-8 text-sm'
+        className={`group inline-flex items-center justify-between gap-2 rounded-md border border-line-strong bg-surface text-foreground outline-none transition-colors focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand-subtle data-[state=open]:border-brand data-[state=open]:ring-2 data-[state=open]:ring-brand-subtle disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-subtle aria-invalid:border-danger-solid aria-invalid:focus-visible:border-danger-solid aria-invalid:focus-visible:ring-danger-subtle aria-invalid:data-[state=open]:border-danger-solid aria-invalid:data-[state=open]:ring-danger-subtle ${
+          compact ? 'h-7 w-auto px-2 text-xs' : 'h-9 w-full px-3 text-sm'
         } ${className}`}
       >
         <span className="min-w-0 truncate">
           <SelectPrimitive.Value placeholder={placeholder} />
         </span>
         <SelectPrimitive.Icon asChild>
-          <ChevronDown size={compact ? 12 : 14} className="shrink-0 text-subtle" aria-hidden="true" />
+          <ChevronDown size={compact ? 14 : 16} className="shrink-0 text-muted transition-transform duration-200 group-data-[state=open]:rotate-180" aria-hidden="true" />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
-        <SelectPrimitive.Content position="popper" sideOffset={4} className="eg-select-content eg-select-pop-in">
+        <SelectPrimitive.Content position="popper" sideOffset={6} collisionPadding={8} className="eg-select-content eg-select-pop-in">
+          <SelectPrimitive.ScrollUpButton className="eg-select-scroll">
+            <ChevronUp size={14} aria-hidden="true" />
+          </SelectPrimitive.ScrollUpButton>
           <SelectPrimitive.Viewport className="p-1">
             {options.map((option) => (
               <SelectPrimitive.Item
                 key={option.value}
                 value={toInternal(option.value)}
                 disabled={option.disabled}
-                className="relative flex h-8 cursor-pointer select-none items-center rounded-md pl-2.5 pr-8 text-sm text-foreground-soft outline-none data-[highlighted]:bg-surface-soft data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[state=checked]:font-medium data-[state=checked]:text-foreground"
+                className="relative flex h-8 cursor-pointer select-none items-center rounded-md pl-2.5 pr-8 text-sm text-foreground-soft outline-none data-[highlighted]:bg-surface-strong data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[state=checked]:font-medium data-[state=checked]:text-foreground"
               >
                 <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
                 <SelectPrimitive.ItemIndicator className="absolute right-2 inline-flex text-brand-text">
@@ -121,6 +125,9 @@ export function Select({ value, onValueChange, options, size = 'md', className =
               </SelectPrimitive.Item>
             ))}
           </SelectPrimitive.Viewport>
+          <SelectPrimitive.ScrollDownButton className="eg-select-scroll">
+            <ChevronDown size={14} aria-hidden="true" />
+          </SelectPrimitive.ScrollDownButton>
         </SelectPrimitive.Content>
       </SelectPrimitive.Portal>
     </SelectPrimitive.Root>
@@ -503,7 +510,11 @@ export function SettingRow({ title, description, checked, onChange, label, disab
   )
 }
 
-/** 分段单选（radiogroup 语义 + 方向键切换）：替代各页手写的并排切换按钮。 */
+/**
+ * 分段单选（Radix RadioGroup）：单条轨道内凸起选中段；不传 orientation，四个方向键都沿 DOM 顺序前后移动。
+ * Radix 在下一拍才把焦点移到目标段、再靠「聚焦即点击」选中，keydown / keyup 同帧的快速点按会错过这个时机，
+ * 所以方向键按下时先同步选中，焦点与选中之间不出现空窗。
+ */
 export function SegmentedControl<T extends string>({ value, onChange, options, label, disabled, size = 'md', className = '' }: {
   value: T
   onChange: (value: T) => void
@@ -513,39 +524,34 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
   size?: 'sm' | 'md'
   className?: string
 }) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([])
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0
-    if (!delta) return
-    event.preventDefault()
-    const next = (index + delta + options.length) % options.length
-    onChange(options[next].value)
-    refs.current[next]?.focus()
+    if (!delta || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+    const index = options.findIndex((option) => option.value === value)
+    if (index >= 0) onChange(options[(index + delta + options.length) % options.length].value)
   }
   return (
-    <div role="radiogroup" aria-label={label} className={`grid gap-2 ${className}`}>
-      {options.map((option, index) => {
-        const active = value === option.value
-        return (
-          <button
-            key={option.value}
-            ref={(el) => { refs.current[index] = el }}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            tabIndex={active ? 0 : -1}
-            disabled={disabled}
-            onClick={() => onChange(option.value)}
-            onKeyDown={(event) => onKeyDown(event, index)}
-            className={`${size === 'sm' ? 'h-7 px-2' : 'h-9'} rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-60 ${
-              active ? 'border-brand-border bg-brand-subtle text-brand-text' : 'border-line-strong bg-surface text-muted hover:bg-surface-soft'
-            }`}
-          >
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
+    <RadioGroupPrimitive.Root
+      aria-label={label}
+      value={value}
+      onValueChange={(next) => onChange(next as T)}
+      disabled={disabled}
+      loop
+      onKeyDown={onKeyDown}
+      className={`grid gap-1 rounded-lg bg-surface-strong p-1 ${className}`}
+    >
+      {options.map((option) => (
+        <RadioGroupPrimitive.Item
+          key={option.value}
+          value={option.value}
+          className={`flex items-center justify-center rounded-md font-medium text-muted outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand data-[state=checked]:bg-surface data-[state=checked]:text-foreground data-[state=checked]:shadow-sm disabled:opacity-50 ${
+            size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-3 text-sm'
+          }`}
+        >
+          {option.label}
+        </RadioGroupPrimitive.Item>
+      ))}
+    </RadioGroupPrimitive.Root>
   )
 }
 

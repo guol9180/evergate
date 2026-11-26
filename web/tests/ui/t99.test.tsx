@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Alert, ErrorText, Field, Input, Progress, SegmentedControl, Select, Tooltip } from '../../src/components/ui'
 import { notify, Toaster } from '../../src/components/Toaster'
@@ -45,7 +45,7 @@ describe('Field error', () => {
 })
 
 describe('SegmentedControl', () => {
-  it('exposes radiogroup semantics and moves with arrow keys', () => {
+  it('exposes radiogroup semantics and moves with arrow keys', async () => {
     const onChange = vi.fn()
     render(
       <SegmentedControl
@@ -61,7 +61,8 @@ describe('SegmentedControl', () => {
     expect(gemini.getAttribute('tabindex')).toBe('-1')
     fireEvent.keyDown(chat, { key: 'ArrowRight' })
     expect(onChange).toHaveBeenCalledWith('gemini')
-    expect(document.activeElement).toBe(gemini)
+    // 焦点由 Radix 在下一拍跟上
+    await waitFor(() => expect(document.activeElement).toBe(gemini))
   })
 })
 

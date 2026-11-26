@@ -240,6 +240,8 @@ body {
   min-width: var(--radix-select-trigger-width);
   max-height: min(360px, var(--radix-select-content-available-height));
 }
+/* 长列表上下滚动按钮：仅在可滚动方向出现，用弱化色不与选项抢注意力。 */
+.eg-select-scroll { @apply flex h-6 items-center justify-center text-muted; }
 
 /* Toast（sonner）：颜色映射到语义 token，浅深色随 .dark 自动切换；
    选择器需压过 sonner 运行时注入的 [data-sonner-theme] 规则（同特异性时后注入者胜出）。 */
