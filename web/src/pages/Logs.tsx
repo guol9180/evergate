@@ -208,6 +208,7 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
               [t('log.field.completionTokens'), fmtInt(log.completion_tokens)],
               [t('log.field.totalTokens'), fmtInt(log.total_tokens || 0)],
               [t('log.field.cachedTokens'), fmtInt(log.cached_tokens || 0)],
+              [t('log.field.cacheWriteTokens'), fmtInt(log.cache_write_tokens || 0)],
               [t('log.field.reasoningTokens'), fmtInt(log.reasoning_tokens || 0)],
               [t('table.cost'), fmtRequestCost(log.cost_micros, log.cost_status)],
               [t('usage.price.sourceLabel'), log.price_source ? <PriceSourceBadge source={log.price_source} /> : '—'],

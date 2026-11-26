@@ -117,6 +117,12 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
           <dt className="text-subtle">{t('chart.successRate')}</dt>
           <dd className="tabular-nums text-success-text">{row.successRate == null ? '—' : `${row.successRate.toFixed(1)}%`}</dd>
         </div>
+        {!!row.cache_read_tokens && (
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-subtle">{t('chart.cacheRead')}</dt>
+            <dd className="tabular-nums text-foreground-soft">{fmtInt(row.cache_read_tokens)}</dd>
+          </div>
+        )}
         <div className="flex items-center justify-between gap-4">
           <dt className="text-subtle">{t('chart.cost')}</dt>
           <dd className="tabular-nums text-foreground-soft">{costKnown ? fmtMoney(row.cost_micros) : '—'}</dd>

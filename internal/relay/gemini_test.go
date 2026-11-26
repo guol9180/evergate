@@ -357,9 +357,14 @@ func TestGeminiUsageAndFinishReasonMapping(t *testing.T) {
 		PromptTokenCount: 10, ToolUsePromptTokenCount: 2,
 		CandidatesTokenCount: 4, ThoughtsTokenCount: 3, TotalTokenCount: 19,
 	}
-	prompt, completion, total, _ := usage.normalize()
-	if prompt != 12 || completion != 7 || total != 19 {
-		t.Fatalf("gemini usage = prompt %d completion %d total %d", prompt, completion, total)
+	n := usage.normalize().withTotal()
+	if n.Prompt != 12 || n.Completion != 7 || n.Total != 19 || n.CacheRead != 0 {
+		t.Fatalf("gemini usage = %+v", n)
+	}
+	// Gemini 的 cachedContentTokenCount 是 promptTokenCount 的子集：只拆出缓存读，不重复累加输入。
+	cached := (geminiUsage{PromptTokenCount: 12, CandidatesTokenCount: 4, CachedContentTokenCount: 5}).normalize().withTotal()
+	if cached.Prompt != 12 || cached.CacheRead != 5 || cached.regularInput() != 7 || cached.Total != 16 {
+		t.Fatalf("gemini cached usage = %+v", cached)
 	}
 	cases := map[string]string{"stop": "STOP", "length": "MAX_TOKENS", "content_filter": "SAFETY"}
 	for input, want := range cases {

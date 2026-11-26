@@ -162,6 +162,9 @@ export interface EffectivePrice {
   model: string
   input_micros_per_million: number
   output_micros_per_million: number
+  /** 缓存读写价（微美元 / 百万 token）；0 表示未设置，计费时按输入价 */
+  cache_read_micros_per_million: number
+  cache_write_micros_per_million: number
   source: 'override' | 'default' | 'catalog' | ''
   source_url?: string
 }
@@ -184,7 +187,12 @@ export interface ModelPreviewItem {
   public_model: string
   upstream_model: string
   /** 上游目录带 OpenRouter 风格 pricing 时的微美元 / 百万 token */
-  price_micros?: { input_micros_per_million: number; output_micros_per_million: number }
+  price_micros?: {
+    input_micros_per_million: number
+    output_micros_per_million: number
+    cache_read_micros_per_million?: number
+    cache_write_micros_per_million?: number
+  }
 }
 
 export interface ModelPreview {
@@ -258,6 +266,7 @@ export interface RequestLog {
   completion_tokens: number
   total_tokens?: number
   cached_tokens?: number
+  cache_write_tokens?: number
   reasoning_tokens?: number
   cost_micros: number
   cost_status: string
@@ -280,6 +289,7 @@ export interface UsageTotals {
   success: number
   tokens_in: number
   tokens_out: number
+  cache_read_tokens?: number
   cost_micros: number
   cost: number
   priced_requests: number
@@ -294,6 +304,7 @@ export interface UsageDailyPoint {
   success: number
   tokens_in: number
   tokens_out: number
+  cache_read_tokens?: number
   cost_micros: number
   cost: number
   priced_requests: number
@@ -310,6 +321,7 @@ export interface UsageDimensionRow {
   success: number
   tokens_in: number
   tokens_out: number
+  cache_read_tokens?: number
   cost_micros: number
   cost: number
   priced_requests: number
@@ -334,6 +346,8 @@ export interface ModelPrice {
   model: string
   input_micros_per_million: number
   output_micros_per_million: number
+  cache_read_micros_per_million: number
+  cache_write_micros_per_million: number
   created_at: string
   updated_at: string
 }
@@ -343,6 +357,8 @@ export interface CatalogEntry {
   model: string
   input_micros_per_million: number
   output_micros_per_million: number
+  cache_read_micros_per_million?: number
+  cache_write_micros_per_million?: number
   source_url: string
 }
 

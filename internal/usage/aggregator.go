@@ -95,6 +95,8 @@ type aggregateRow struct {
 	Success             int64  `gorm:"column:success"`
 	TokensIn            int64  `gorm:"column:tokens_in"`
 	TokensOut           int64  `gorm:"column:tokens_out"`
+	CacheReadTokens     int64  `gorm:"column:cache_read_tokens"`
+	CacheWriteTokens    int64  `gorm:"column:cache_write_tokens"`
 	CostMicros          int64  `gorm:"column:cost_micros"`
 	PricedRequests      int64  `gorm:"column:priced_requests"`
 	UnpricedRequests    int64  `gorm:"column:unpriced_requests"`
@@ -115,6 +117,8 @@ func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
 			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END), 0) AS success,
 			COALESCE(SUM(prompt_tokens), 0) AS tokens_in,
 			COALESCE(SUM(completion_tokens), 0) AS tokens_out,
+			COALESCE(SUM(cached_tokens), 0) AS cache_read_tokens,
+			COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
 			COALESCE(SUM(cost_micros), 0) AS cost_micros,
 			COALESCE(SUM(CASE WHEN cost_status = 'priced' THEN 1 ELSE 0 END), 0) AS priced_requests,
 			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 AND cost_status = 'unpriced' THEN 1 ELSE 0 END), 0) AS unpriced_requests,
@@ -139,6 +143,7 @@ func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
 				Date: day, ChannelID: row.ChannelID, Model: row.Model, TokenID: row.TokenID,
 				Requests: row.Requests, Success: row.Success,
 				TokensIn: row.TokensIn, TokensOut: row.TokensOut,
+				CacheReadTokens: row.CacheReadTokens, CacheWriteTokens: row.CacheWriteTokens,
 				CostMicros: row.CostMicros, Cost: float64(row.CostMicros) / 1_000_000,
 				PricedRequests: row.PricedRequests, UnpricedRequests: row.UnpricedRequests,
 				NoUsageRequests: row.NoUsageRequests, UnknownCostRequests: row.UnknownCostRequests,

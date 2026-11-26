@@ -99,10 +99,12 @@ type ModelListResult struct {
 	Prices map[string]ModelPriceHint
 }
 
-// ModelPriceHint 上游目录声明的价格（USD / 百万 token）。
+// ModelPriceHint 上游目录声明的价格（USD / 百万 token）；缓存价只在目录给出时为正，0 表示未声明。
 type ModelPriceHint struct {
-	InputMicrosPerMillion  int64 `json:"input_micros_per_million"`
-	OutputMicrosPerMillion int64 `json:"output_micros_per_million"`
+	InputMicrosPerMillion      int64 `json:"input_micros_per_million"`
+	OutputMicrosPerMillion     int64 `json:"output_micros_per_million"`
+	CacheReadMicrosPerMillion  int64 `json:"cache_read_micros_per_million,omitempty"`
+	CacheWriteMicrosPerMillion int64 `json:"cache_write_micros_per_million,omitempty"`
 }
 
 // parsePerTokenUSD 把 OpenRouter 风格的 per-token 价格字符串换算为微美元 / 百万 token：v × 1e6 token × 1e6 micros。
@@ -118,8 +120,10 @@ type modelListPayload struct {
 	Data []struct {
 		ID      string `json:"id"`
 		Pricing *struct {
-			Prompt     string `json:"prompt"`
-			Completion string `json:"completion"`
+			Prompt          string `json:"prompt"`
+			Completion      string `json:"completion"`
+			InputCacheRead  string `json:"input_cache_read"`
+			InputCacheWrite string `json:"input_cache_write"`
 		} `json:"pricing"`
 	} `json:"data"`
 	Models []struct {
@@ -211,7 +215,14 @@ func ListModels(ctx context.Context, client HTTPClient, ch *store.Channel, key s
 			if result.Prices == nil {
 				result.Prices = map[string]ModelPriceHint{}
 			}
-			result.Prices[id] = ModelPriceHint{InputMicrosPerMillion: in, OutputMicrosPerMillion: out}
+			hint := ModelPriceHint{InputMicrosPerMillion: in, OutputMicrosPerMillion: out}
+			if cacheRead, ok := parsePerTokenUSD(item.Pricing.InputCacheRead); ok {
+				hint.CacheReadMicrosPerMillion = cacheRead
+			}
+			if cacheWrite, ok := parsePerTokenUSD(item.Pricing.InputCacheWrite); ok {
+				hint.CacheWriteMicrosPerMillion = cacheWrite
+			}
+			result.Prices[id] = hint
 		}
 		for _, model := range pageModels {
 			if model == "" || seen[model] {

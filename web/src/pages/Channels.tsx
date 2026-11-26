@@ -327,6 +327,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         model,
         input_micros_per_million: entry.input_micros_per_million,
         output_micros_per_million: entry.output_micros_per_million,
+        cache_read_micros_per_million: entry.cache_read_micros_per_million ?? 0,
+        cache_write_micros_per_million: entry.cache_write_micros_per_million ?? 0,
         source: 'catalog' as const,
         source_url: entry.source_url,
       }] : []
@@ -591,6 +593,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
                       model: item.upstream_model,
                       input_micros_per_million: item.price_micros.input_micros_per_million,
                       output_micros_per_million: item.price_micros.output_micros_per_million,
+                      cache_read_micros_per_million: item.price_micros.cache_read_micros_per_million ?? 0,
+                      cache_write_micros_per_million: item.price_micros.cache_write_micros_per_million ?? 0,
                     })
                   }
                 }

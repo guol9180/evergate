@@ -70,7 +70,7 @@ func TestPlaygroundChatNonStream(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"chatcmpl-pg","choices":[{"message":{"role":"assistant","content":"playground ok"}}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`))
 	})
 	env.addChannel(t, "pg", up.server.URL, 0, []string{"gpt-x"}, map[string]string{"gpt-x": "gpt-upstream"}, "sk-pg")
-	if err := env.usage.SetDefault(context.Background(), 1_000_000, 2_000_000); err != nil {
+	if err := env.usage.SetDefault(context.Background(), usage.PriceInput{Input: 1_000_000, Output: 2_000_000}); err != nil {
 		t.Fatalf("set default price: %v", err)
 	}
 

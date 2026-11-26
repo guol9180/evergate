@@ -39,19 +39,19 @@ func TestPriceManagerDefaultAndOverride(t *testing.T) {
 	if _, ok := mgr.Calculate(1, "m", 1, 1); ok {
 		t.Fatal("empty pricing should be unpriced")
 	}
-	if err := mgr.SetDefault(context.Background(), 0, 0); err != nil {
+	if err := mgr.SetDefault(context.Background(), PriceInput{Input: 0, Output: 0}); err != nil {
 		t.Fatalf("set zero default: %v", err)
 	}
 	if micros, ok := mgr.Calculate(1, "m", 3, 2); !ok || micros != 0 {
 		t.Fatalf("explicit zero price = %d %v, want 0 true", micros, ok)
 	}
-	if err := mgr.SetDefault(context.Background(), 1_000_000, 2_000_000); err != nil {
+	if err := mgr.SetDefault(context.Background(), PriceInput{Input: 1_000_000, Output: 2_000_000}); err != nil {
 		t.Fatalf("set default: %v", err)
 	}
 	if micros, ok := mgr.Calculate(1, "m", 3, 2); !ok || micros != 7 {
 		t.Fatalf("default calc = %d %v, want 7 true", micros, ok)
 	}
-	if _, err := mgr.UpsertOverride(context.Background(), 1, "m", 10_000_000, 20_000_000); err != nil {
+	if _, err := mgr.UpsertOverride(context.Background(), 1, "m", PriceInput{Input: 10_000_000, Output: 20_000_000}); err != nil {
 		t.Fatalf("override: %v", err)
 	}
 	if micros, ok := mgr.Calculate(1, "m", 3, 2); !ok || micros != 70 {
@@ -217,26 +217,26 @@ func TestPriceCatalogFallbackAndApplyPreset(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 目录命中：1M 输入 gpt-4o = $2.5
-	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", 1_000_000, 0); cost != 2_500_000 || source != PriceSourceCatalog {
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", Tokens{Input: 1_000_000, Output: 0}); cost != 2_500_000 || source != PriceSourceCatalog {
 		t.Fatalf("catalog price = %d %q, want 2500000 catalog", cost, source)
 	}
-	if _, source := mgr.CalculateWithSource(preset.ID, "unknown-model", 10, 10); source != "" {
+	if _, source := mgr.CalculateWithSource(preset.ID, "unknown-model", Tokens{Input: 10, Output: 10}); source != "" {
 		t.Fatalf("model missing from catalog must stay unpriced, got %q", source)
 	}
-	if _, source := mgr.CalculateWithSource(custom.ID, "gpt-4o", 10, 10); source != "" {
+	if _, source := mgr.CalculateWithSource(custom.ID, "gpt-4o", Tokens{Input: 10, Output: 10}); source != "" {
 		t.Fatalf("custom channel must not use the preset catalog, got %q", source)
 	}
 	// 全局默认优先于目录，覆盖优先于全部
-	if err := mgr.SetDefault(context.Background(), 1_000_000, 1_000_000); err != nil {
+	if err := mgr.SetDefault(context.Background(), PriceInput{Input: 1_000_000, Output: 1_000_000}); err != nil {
 		t.Fatal(err)
 	}
-	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", 1_000_000, 0); cost != 1_000_000 || source != PriceSourceDefault {
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", Tokens{Input: 1_000_000, Output: 0}); cost != 1_000_000 || source != PriceSourceDefault {
 		t.Fatalf("default should win over catalog: %d %q", cost, source)
 	}
-	if _, err := mgr.UpsertOverride(context.Background(), preset.ID, "gpt-4o", 3_000_000, 0); err != nil {
+	if _, err := mgr.UpsertOverride(context.Background(), preset.ID, "gpt-4o", PriceInput{Input: 3_000_000, Output: 0}); err != nil {
 		t.Fatal(err)
 	}
-	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", 1_000_000, 0); cost != 3_000_000 || source != PriceSourceOverride {
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o", Tokens{Input: 1_000_000, Output: 0}); cost != 3_000_000 || source != PriceSourceOverride {
 		t.Fatalf("override should win: %d %q", cost, source)
 	}
 	prices := mgr.Effective(preset.ID, []string{"gpt-4o", "unknown-model", ""})
@@ -248,7 +248,7 @@ func TestPriceCatalogFallbackAndApplyPreset(t *testing.T) {
 	if err != nil || created != 1 {
 		t.Fatalf("apply preset = %d %v, want 1", created, err)
 	}
-	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o-mini", 1_000_000, 1_000_000); cost != 750_000 || source != PriceSourceOverride {
+	if cost, source := mgr.CalculateWithSource(preset.ID, "gpt-4o-mini", Tokens{Input: 1_000_000, Output: 1_000_000}); cost != 750_000 || source != PriceSourceOverride {
 		t.Fatalf("applied gpt-4o-mini = %d %q, want 750000 override", cost, source)
 	}
 	if created, err := mgr.ApplyPreset(context.Background(), preset.ID, "openai", []string{"gpt-4o", "gpt-4o-mini"}); err != nil || created != 0 {
@@ -257,5 +257,100 @@ func TestPriceCatalogFallbackAndApplyPreset(t *testing.T) {
 	asOf, _, entries, err := Catalog()
 	if err != nil || asOf == "" || len(entries) == 0 {
 		t.Fatalf("catalog = %q %d %v", asOf, len(entries), err)
+	}
+}
+
+func ptrOf(v int64) *int64 { return &v }
+
+// 缓存计价规则：缓存价未设置时按输入价全价计；设置后普通输入 / 缓存读 / 缓存写分别计价；
+// 更新时未提供缓存价（nil）保留原值，显式 0 才回到输入价。
+func TestCachePricingRules(t *testing.T) {
+	db := setupDB(t)
+	mgr, err := Load(db)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	ctx := context.Background()
+	if err := mgr.SetDefault(ctx, PriceInput{Input: 1_000_000, Output: 2_000_000}); err != nil {
+		t.Fatal(err)
+	}
+	tokens := Tokens{Input: 104, CacheRead: 80, CacheWrite: 4, Output: 10}
+	assertCost := func(step string, channelID int64, model string, want int64, wantSource string) {
+		t.Helper()
+		cost, source := mgr.CalculateWithSource(channelID, model, tokens)
+		if cost != want || source != wantSource {
+			t.Fatalf("%s: cost = %d %q, want %d %q", step, cost, source, want, wantSource)
+		}
+	}
+	// 未设置缓存价：104×$1 + 10×$2 = 124（缓存按全价，宁可高估）
+	assertCost("unset cache price", 7, "m", 124, PriceSourceDefault)
+	if _, err := mgr.UpsertOverride(ctx, 7, "m", PriceInput{
+		Input: 1_000_000, Output: 2_000_000, CacheRead: ptrOf(100_000), CacheWrite: ptrOf(1_250_000),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 普通 20×$1 + 缓存读 80×$0.1 + 缓存写 4×$1.25 + 输出 10×$2 = 53
+	assertCost("cache prices set", 7, "m", 53, PriceSourceOverride)
+	if _, err := mgr.UpsertOverride(ctx, 7, "m", PriceInput{Input: 2_000_000, Output: 2_000_000}); err != nil {
+		t.Fatal(err)
+	}
+	// 未提供缓存价：保留原值，仅输入价变为 $2 → 40 + 8 + 5 + 20 = 73
+	assertCost("nil keeps cache prices", 7, "m", 73, PriceSourceOverride)
+	if _, err := mgr.UpsertOverride(ctx, 7, "m", PriceInput{
+		Input: 2_000_000, Output: 2_000_000, CacheRead: ptrOf(0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// 显式 0：缓存读回到输入价 80×$2，缓存写不变 → 40 + 160 + 5 + 20 = 225
+	assertCost("explicit zero resets", 7, "m", 225, PriceSourceOverride)
+	if _, err := mgr.UpsertOverride(ctx, 7, "m", PriceInput{Input: 1, Output: 1, CacheRead: ptrOf(-1)}); err == nil {
+		t.Fatal("negative cache price must be rejected")
+	}
+
+	// 全局默认的缓存价同样生效：60×$1 + 40×$0.05 = 62
+	if err := mgr.SetDefault(ctx, PriceInput{Input: 1_000_000, Output: 2_000_000, CacheRead: ptrOf(50_000)}); err != nil {
+		t.Fatal(err)
+	}
+	if cost, source := mgr.CalculateWithSource(99, "other", Tokens{Input: 100, CacheRead: 40}); cost != 62 || source != PriceSourceDefault {
+		t.Fatalf("default cache price = %d %q, want 62 default", cost, source)
+	}
+}
+
+// 目录只在「没有全局默认价」时兜底；带缓存价的条目直接计价，一键写入时把缓存价一并落为覆盖。
+func TestCatalogCachePrices(t *testing.T) {
+	db := setupDB(t)
+	mgr, err := Load(db)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	sonnet := store.Channel{Name: "sonnet", Type: "anthropic", PresetID: "anthropic", BaseURL: "https://api.anthropic.com", Models: []string{"claude-sonnet-4-5"}}
+	flash := store.Channel{Name: "flash", Type: "gemini", PresetID: "gemini", BaseURL: "https://generativelanguage.googleapis.com", Models: []string{"gemini-2.5-flash"}}
+	if err := db.Create(&sonnet).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&flash).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.Reload(); err != nil {
+		t.Fatal(err)
+	}
+	// 10 万×$3 + 90 万×$0.3 + 1000×$15 = 585000
+	if cost, source := mgr.CalculateWithSource(sonnet.ID, "claude-sonnet-4-5", Tokens{Input: 1_000_000, CacheRead: 900_000, Output: 1000}); cost != 585_000 || source != PriceSourceCatalog {
+		t.Fatalf("catalog cache cost = %d %q, want 585000 catalog", cost, source)
+	}
+	// 目录未给缓存价的条目（Gemini）仍按输入价全价计，不静默打折。
+	if cost, source := mgr.CalculateWithSource(flash.ID, "gemini-2.5-flash", Tokens{Input: 1_000_000, CacheRead: 500_000}); cost != 300_000 || source != PriceSourceCatalog {
+		t.Fatalf("catalog without cache price = %d %q, want 300000 at full input price", cost, source)
+	}
+	created, err := mgr.ApplyPreset(context.Background(), sonnet.ID, "anthropic", []string{"claude-sonnet-4-5"})
+	if err != nil || created != 1 {
+		t.Fatalf("apply preset = %d %v, want 1", created, err)
+	}
+	if cost, source := mgr.CalculateWithSource(sonnet.ID, "claude-sonnet-4-5", Tokens{Input: 1_000_000, CacheRead: 900_000, Output: 1000}); cost != 585_000 || source != PriceSourceOverride {
+		t.Fatalf("applied preset cost = %d %q, want 585000 override", cost, source)
+	}
+	effective := mgr.Effective(sonnet.ID, []string{"claude-sonnet-4-5"})
+	if len(effective) != 1 || effective[0].CacheReadMicrosPerMillion != 300_000 || effective[0].CacheWriteMicrosPerMillion != 3_750_000 {
+		t.Fatalf("effective prices = %#v", effective)
 	}
 }

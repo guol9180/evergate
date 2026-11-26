@@ -15,6 +15,7 @@ import (
 
 	"evergate/internal/settings"
 	"evergate/internal/store"
+	"evergate/internal/usage"
 )
 
 // configExportVersion 导出文件结构版本；导入端据此拒绝未知版本。
@@ -49,6 +50,16 @@ type configPriceEntry struct {
 	Model                  string `json:"model"`
 	InputMicrosPerMillion  int64  `json:"input_micros_per_million"`
 	OutputMicrosPerMillion int64  `json:"output_micros_per_million"`
+	// 缓存价仅在导出时已设置才出现；旧版本导出文件没有这两项，导入时不触碰目标实例的现有值。
+	CacheReadMicrosPerMillion  *int64 `json:"cache_read_micros_per_million,omitempty"`
+	CacheWriteMicrosPerMillion *int64 `json:"cache_write_micros_per_million,omitempty"`
+}
+
+func (e configPriceEntry) priceInput() usage.PriceInput {
+	return usage.PriceInput{
+		Input: e.InputMicrosPerMillion, Output: e.OutputMicrosPerMillion,
+		CacheRead: e.CacheReadMicrosPerMillion, CacheWrite: e.CacheWriteMicrosPerMillion,
+	}
 }
 
 // configTokenEntry 令牌治理字段；KeyHash 永不导出，导入的令牌需用户重新创建明文。
@@ -131,6 +142,12 @@ func (a *API) exportConfig(c *gin.Context) {
 	for _, p := range prices {
 		entry := configPriceEntry{
 			Model: p.Model, InputMicrosPerMillion: p.InputMicrosPerMillion, OutputMicrosPerMillion: p.OutputMicrosPerMillion,
+		}
+		if p.CacheReadMicrosPerMillion > 0 {
+			entry.CacheReadMicrosPerMillion = &p.CacheReadMicrosPerMillion
+		}
+		if p.CacheWriteMicrosPerMillion > 0 {
+			entry.CacheWriteMicrosPerMillion = &p.CacheWriteMicrosPerMillion
 		}
 		if p.ChannelID == 0 && p.Model == "" {
 			out.PriceDefault = &entry
@@ -277,7 +294,7 @@ func (a *API) importConfig(c *gin.Context) {
 		}
 		ctx := c.Request.Context()
 		if in.PriceDefault != nil {
-			if err := a.opt.Usage.SetDefault(ctx, in.PriceDefault.InputMicrosPerMillion, in.PriceDefault.OutputMicrosPerMillion); err != nil {
+			if err := a.opt.Usage.SetDefault(ctx, in.PriceDefault.priceInput()); err != nil {
 				fail(c, http.StatusBadRequest, "price_default: "+err.Error())
 				return
 			}
@@ -290,7 +307,7 @@ func (a *API) importConfig(c *gin.Context) {
 				result.Errors = append(result.Errors, "price override skipped: channel not found: "+p.ChannelName)
 				continue
 			}
-			if _, err := a.opt.Usage.UpsertOverride(ctx, id, p.Model, p.InputMicrosPerMillion, p.OutputMicrosPerMillion); err != nil {
+			if _, err := a.opt.Usage.UpsertOverride(ctx, id, p.Model, p.priceInput()); err != nil {
 				fail(c, http.StatusBadRequest, "price_overrides: "+err.Error())
 				return
 			}

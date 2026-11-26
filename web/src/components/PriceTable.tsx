@@ -43,7 +43,15 @@ export default function PriceTable({ prices }: { prices: EffectivePrice[] }) {
                   <PriceSourceBadge source={price.source} />
                 </span>
               </Td>
-              <Td className="tabular-nums text-muted">{price.source ? fmtPriceMicros(price.input_micros_per_million) : '—'}</Td>
+              {/* 缓存价贴在输入价下方：设了才显示，未设的一侧标注「按输入价」 */}
+              <Td className="tabular-nums text-muted">
+                <span className="block">{price.source ? fmtPriceMicros(price.input_micros_per_million) : '—'}</span>
+                {price.source && (price.cache_read_micros_per_million > 0 || price.cache_write_micros_per_million > 0) && (
+                  <span className="mt-1 block text-[11px] text-subtle">
+                    {t('usage.price.cacheShort')} {cacheSide(price.cache_read_micros_per_million)} · {cacheSide(price.cache_write_micros_per_million)}
+                  </span>
+                )}
+              </Td>
               <Td className="tabular-nums text-muted">{price.source ? fmtPriceMicros(price.output_micros_per_million) : '—'}</Td>
             </tr>
           ))}
@@ -51,6 +59,11 @@ export default function PriceTable({ prices }: { prices: EffectivePrice[] }) {
       </table>
     </div>
   )
+}
+
+/** 缓存价一侧的展示：未设置（0）时如实标注按输入价计，避免被读成免费。 */
+function cacheSide(micros: number): string {
+  return micros > 0 ? fmtPriceMicros(micros) : t('usage.price.cacheFollowInput')
 }
 
 /** 选择器里的一行价格说明（输入 / 输出 USD 每百万 token）。 */

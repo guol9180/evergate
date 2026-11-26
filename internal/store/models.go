@@ -134,6 +134,7 @@ type RequestLog struct {
 	CompletionTokens int64          `json:"completion_tokens"`
 	TotalTokens      int64          `json:"total_tokens"`
 	CachedTokens     int64          `json:"cached_tokens"`
+	CacheWriteTokens int64          `json:"cache_write_tokens"`
 	ReasoningTokens  int64          `json:"reasoning_tokens"`
 	Cost             float64        `json:"cost"`
 	CostMicros       int64          `gorm:"not null;default:0" json:"cost_micros"`
@@ -155,6 +156,8 @@ type UsageDaily struct {
 	Success             int64     `gorm:"not null;default:0" json:"success"`
 	TokensIn            int64     `gorm:"not null;default:0" json:"tokens_in"`
 	TokensOut           int64     `gorm:"not null;default:0" json:"tokens_out"`
+	CacheReadTokens     int64     `gorm:"not null;default:0" json:"cache_read_tokens"`
+	CacheWriteTokens    int64     `gorm:"not null;default:0" json:"cache_write_tokens"`
 	Cost                float64   `gorm:"not null;default:0" json:"cost"`
 	CostMicros          int64     `gorm:"not null;default:0" json:"cost_micros"`
 	PricedRequests      int64     `gorm:"not null;default:0" json:"priced_requests"`
@@ -168,14 +171,17 @@ func (UsageDaily) TableName() string { return "usage_daily" }
 
 // ModelPrice 是每百万 token 的固定精度价格（micro-USD）。
 // (channel_id=0, model="") 为全局默认；非零 channel_id + 非空 model 为精确覆盖。
+// 缓存读写价为 0 表示未设置：计费时按输入价全价计，宁可高估不低估。
 type ModelPrice struct {
-	ID                     int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	ChannelID              int64     `gorm:"not null;default:0;uniqueIndex:idx_model_price_uq" json:"channel_id"`
-	Model                  string    `gorm:"size:100;not null;default:'';uniqueIndex:idx_model_price_uq" json:"model"`
-	InputMicrosPerMillion  int64     `gorm:"not null;default:0" json:"input_micros_per_million"`
-	OutputMicrosPerMillion int64     `gorm:"not null;default:0" json:"output_micros_per_million"`
-	CreatedAt              time.Time `json:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	ID                         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	ChannelID                  int64     `gorm:"not null;default:0;uniqueIndex:idx_model_price_uq" json:"channel_id"`
+	Model                      string    `gorm:"size:100;not null;default:'';uniqueIndex:idx_model_price_uq" json:"model"`
+	InputMicrosPerMillion      int64     `gorm:"not null;default:0" json:"input_micros_per_million"`
+	OutputMicrosPerMillion     int64     `gorm:"not null;default:0" json:"output_micros_per_million"`
+	CacheReadMicrosPerMillion  int64     `gorm:"not null;default:0" json:"cache_read_micros_per_million"`
+	CacheWriteMicrosPerMillion int64     `gorm:"not null;default:0" json:"cache_write_micros_per_million"`
+	CreatedAt                  time.Time `json:"created_at"`
+	UpdatedAt                  time.Time `json:"updated_at"`
 }
 
 // ModelFallback 是模型降级链：令牌余额低于阈值或原模型渠道耗尽时按序尝试。

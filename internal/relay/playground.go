@@ -55,6 +55,7 @@ type playgroundUsage struct {
 	CompletionTokens int64 `json:"completion_tokens"`
 	TotalTokens      int64 `json:"total_tokens"`
 	CachedTokens     int64 `json:"cached_tokens"`
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
 	ReasoningTokens  int64 `json:"reasoning_tokens"`
 	UsageSeen        bool  `json:"usage_seen"`
 }
@@ -125,7 +126,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 		ErrorType: errType, ErrorMessage: errMsg,
 		Usage: playgroundUsage{
 			PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
-			TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens,
+			TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, CacheWriteTokens: hit.cacheWriteTokens,
 			ReasoningTokens: hit.reasoningTokens, UsageSeen: hit.usageSeen,
 		},
 		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus,

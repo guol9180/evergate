@@ -479,11 +479,11 @@ func convertChatCompletionToGemini(body []byte, model string) ([]byte, error) {
 	}
 	usage := geminiUsage{}
 	if wire.Usage != nil {
-		prompt, completion, total, cached, _ := wire.Usage.normalize()
-		usage.PromptTokenCount = prompt
-		usage.CandidatesTokenCount = completion
-		usage.TotalTokenCount = total
-		usage.CachedContentTokenCount = cached
+		n := wire.Usage.normalize().withTotal()
+		usage.PromptTokenCount = n.Prompt
+		usage.CandidatesTokenCount = n.Completion
+		usage.TotalTokenCount = n.Total
+		usage.CachedContentTokenCount = n.CacheRead
 	}
 	response := map[string]any{
 		"candidates": []any{map[string]any{
@@ -523,14 +523,15 @@ type geminiUsage struct {
 	CachedContentTokenSnake   int64 `json:"cached_content_token_count,omitempty"`
 }
 
-func (u geminiUsage) normalize() (prompt, completion, total, cached int64) {
-	prompt = firstPositive(u.PromptTokenCount, u.PromptTokenCountSnake) +
+// normalize 输出归一化用量。Gemini 的 promptTokenCount 已含 cachedContentTokenCount（缓存部分是输入的子集）。
+func (u geminiUsage) normalize() normalizedUsage {
+	prompt := firstPositive(u.PromptTokenCount, u.PromptTokenCountSnake) +
 		firstPositive(u.ToolUsePromptTokenCount, u.ToolUsePromptTokenSnake)
-	completion = firstPositive(u.CandidatesTokenCount, u.CandidatesTokenCountSnake) +
+	completion := firstPositive(u.CandidatesTokenCount, u.CandidatesTokenCountSnake) +
 		firstPositive(u.ThoughtsTokenCount, u.ThoughtsTokenCountSnake)
-	total = firstPositive(u.TotalTokenCount, u.TotalTokenCountSnake, prompt+completion)
-	cached = firstPositive(u.CachedContentTokenCount, u.CachedContentTokenSnake)
-	return
+	total := firstPositive(u.TotalTokenCount, u.TotalTokenCountSnake)
+	cached := firstPositive(u.CachedContentTokenCount, u.CachedContentTokenSnake)
+	return normalizedUsage{Prompt: prompt, CacheRead: cached, Completion: completion, Total: total}
 }
 
 func parseGeminiUsage(data []byte, hit *hitRecord) {
@@ -548,22 +549,7 @@ func parseGeminiUsage(data []byte, hit *hitRecord) {
 	if usage == nil {
 		return
 	}
-	prompt, completion, total, cached := usage.normalize()
-	hit.usageSeen = true
-	if prompt > 0 {
-		hit.promptTokens = prompt
-	}
-	if completion > 0 {
-		hit.completionTokens = completion
-	}
-	if total > 0 {
-		hit.totalTokens = total
-	} else {
-		hit.totalTokens = hit.promptTokens + hit.completionTokens
-	}
-	if cached > 0 {
-		hit.cachedTokens = cached
-	}
+	mergeUsage(usage.normalize(), hit)
 }
 
 func geminiRaw(wire map[string]json.RawMessage, names ...string) json.RawMessage {

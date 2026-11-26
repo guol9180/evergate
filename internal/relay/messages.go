@@ -392,13 +392,14 @@ func convertChatCompletionToMessages(body []byte, model string, now time.Time) (
 			"input": messagesToolInput(call.Function.Arguments),
 		})
 	}
+	// 回写给 Anthropic 客户端的 usage 遵循 Anthropic 口径：input_tokens 不含缓存读写。
 	usage := map[string]int64{"input_tokens": 0, "output_tokens": 0}
 	if wire.Usage != nil {
-		prompt, completion, _, cached, _ := wire.Usage.normalize()
-		usage["input_tokens"] = prompt
-		usage["output_tokens"] = completion
-		if cached > 0 {
-			usage["cache_read_input_tokens"] = cached
+		n := wire.Usage.normalize()
+		usage["input_tokens"] = n.regularInput()
+		usage["output_tokens"] = n.Completion
+		if n.CacheRead > 0 {
+			usage["cache_read_input_tokens"] = n.CacheRead
 		}
 	}
 	response := map[string]any{

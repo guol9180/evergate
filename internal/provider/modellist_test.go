@@ -191,7 +191,7 @@ func TestListModelsUsesOpenCodeGoCatalogEndpoint(t *testing.T) {
 func TestListModelsParsesOpenRouterStylePricing(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"id":"m-priced","pricing":{"prompt":"0.0000015","completion":"0.000006"}},{"id":"m-free","pricing":{"prompt":"0","completion":"0"}},{"id":"m-plain"}]}`))
+		_, _ = w.Write([]byte(`{"data":[{"id":"m-priced","pricing":{"prompt":"0.0000015","completion":"0.000006"}},{"id":"m-cache","pricing":{"prompt":"0.000003","completion":"0.000015","input_cache_read":"0.0000003","input_cache_write":"0.00000375"}},{"id":"m-free","pricing":{"prompt":"0","completion":"0"}},{"id":"m-plain"}]}`))
 	}))
 	t.Cleanup(server.Close)
 	result, err := ListModels(context.Background(), server.Client(), &store.Channel{BaseURL: server.URL}, "sk")
@@ -202,13 +202,20 @@ func TestListModelsParsesOpenRouterStylePricing(t *testing.T) {
 	if !ok || price.InputMicrosPerMillion != 1_500_000 || price.OutputMicrosPerMillion != 6_000_000 {
 		t.Fatalf("pricing = %#v %v, want 1.5/6 USD per million", price, ok)
 	}
+	if price.CacheReadMicrosPerMillion != 0 || price.CacheWriteMicrosPerMillion != 0 {
+		t.Fatalf("pricing without cache fields = %#v, want zero cache prices", price)
+	}
+	cached, ok := result.Prices["m-cache"]
+	if !ok || cached.CacheReadMicrosPerMillion != 300_000 || cached.CacheWriteMicrosPerMillion != 3_750_000 {
+		t.Fatalf("cache pricing = %#v %v, want read 0.3 / write 3.75 USD per million", cached, ok)
+	}
 	if _, ok := result.Prices["m-free"]; ok {
 		t.Fatal("zero price must not be offered as a catalog price")
 	}
 	if _, ok := result.Prices["m-plain"]; ok {
 		t.Fatal("model without pricing must not appear in Prices")
 	}
-	if len(result.Models) != 3 {
+	if len(result.Models) != 4 {
 		t.Fatalf("models = %#v", result.Models)
 	}
 }

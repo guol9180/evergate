@@ -413,10 +413,18 @@ export function useUsagePrices() {
   })
 }
 
+/** 价格写入载荷：缓存价为 0 表示未设置，计费时按输入价。 */
+export interface PriceFields {
+  input_micros_per_million: number
+  output_micros_per_million: number
+  cache_read_micros_per_million: number
+  cache_write_micros_per_million: number
+}
+
 export function useSetDefaultPrice() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { input_micros_per_million: number; output_micros_per_million: number }) =>
+    mutationFn: (data: PriceFields) =>
       api<UsagePrices>('/admin/api/usage/prices/default', { method: 'PUT', body: JSON.stringify(data) }),
     onSuccess: (data) => qc.setQueryData(['usage-prices'], data),
   })
@@ -439,7 +447,7 @@ export function useApplyPresetPrice() {
 export function useUpsertPriceOverride() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { channel_id: number; model: string; input_micros_per_million: number; output_micros_per_million: number }) =>
+    mutationFn: (data: PriceFields & { channel_id: number; model: string }) =>
       api<UsagePrices>('/admin/api/usage/prices/overrides', { method: 'POST', body: JSON.stringify(data) }),
     onSuccess: (data, variables) => {
       qc.setQueryData(['usage-prices'], data)

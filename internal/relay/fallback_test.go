@@ -24,7 +24,7 @@ func TestBudgetThresholdFallsBackBeforeOriginalModel(t *testing.T) {
 	token, plain := env.addToken(t, "budget", func(token *store.Token) {
 		token.Quota, token.UsedQuota = 100, 85
 	})
-	if err := env.usage.SetDefault(t.Context(), 1_000_000, 1_000_000); err != nil {
+	if err := env.usage.SetDefault(t.Context(), usage.PriceInput{Input: 1_000_000, Output: 1_000_000}); err != nil {
 		t.Fatal(err)
 	}
 	gateway := env.authGateway(t)

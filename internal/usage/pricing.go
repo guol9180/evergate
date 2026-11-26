@@ -47,11 +47,54 @@ const (
 
 // EffectivePrice 某渠道某模型当前生效的价格及其来源（管理台展示用）。
 type EffectivePrice struct {
-	Model                  string `json:"model"`
-	InputMicrosPerMillion  int64  `json:"input_micros_per_million"`
-	OutputMicrosPerMillion int64  `json:"output_micros_per_million"`
-	Source                 string `json:"source"` // override / default / catalog / ""（未计价）
-	SourceURL              string `json:"source_url,omitempty"`
+	Model                      string `json:"model"`
+	InputMicrosPerMillion      int64  `json:"input_micros_per_million"`
+	OutputMicrosPerMillion     int64  `json:"output_micros_per_million"`
+	CacheReadMicrosPerMillion  int64  `json:"cache_read_micros_per_million"`
+	CacheWriteMicrosPerMillion int64  `json:"cache_write_micros_per_million"`
+	Source                     string `json:"source"` // override / default / catalog / ""（未计价）
+	SourceURL                  string `json:"source_url,omitempty"`
+}
+
+// Tokens 一次请求的可计费用量。Input 是输入侧总量（普通输入 + 缓存读 + 缓存写），
+// 各协议 usage 的字段差异在 relay 归一化时抹平，计价只认这一种形态。
+type Tokens struct {
+	Input, CacheRead, CacheWrite, Output int64
+}
+
+// PriceInput 一组待写入的价格（微美元 / 百万 token）。
+// 缓存价为 nil 表示本次未提供：新建落 0，更新保留原值。
+type PriceInput struct {
+	Input, Output         int64
+	CacheRead, CacheWrite *int64
+}
+
+func (p PriceInput) validate() error {
+	if p.Input < 0 || p.Output < 0 {
+		return errors.New("价格不能为负数")
+	}
+	if (p.CacheRead != nil && *p.CacheRead < 0) || (p.CacheWrite != nil && *p.CacheWrite < 0) {
+		return errors.New("缓存价格不能为负数")
+	}
+	return nil
+}
+
+// priceCostMicros 按普通输入、缓存读、缓存写、输出四类分别计价；
+// 缓存价未设置（0）时按输入价全价计，宁可高估不低估。
+func priceCostMicros(p store.ModelPrice, t Tokens) int64 {
+	regular := t.Input - t.CacheRead - t.CacheWrite
+	if regular < 0 {
+		regular = 0
+	}
+	cacheReadPrice, cacheWritePrice := p.InputMicrosPerMillion, p.InputMicrosPerMillion
+	if p.CacheReadMicrosPerMillion > 0 {
+		cacheReadPrice = p.CacheReadMicrosPerMillion
+	}
+	if p.CacheWriteMicrosPerMillion > 0 {
+		cacheWritePrice = p.CacheWriteMicrosPerMillion
+	}
+	return p.InputMicrosPerMillion*regular + cacheReadPrice*t.CacheRead + cacheWritePrice*t.CacheWrite +
+		p.OutputMicrosPerMillion*t.Output
 }
 
 func Load(db *gorm.DB) (*Manager, error) {
@@ -99,13 +142,13 @@ func (m *Manager) Reload() error {
 
 // Calculate 返回微美元成本；无匹配价格时 priced=false。
 func (m *Manager) Calculate(channelID int64, upstreamModel string, inputTokens, outputTokens int64) (int64, bool) {
-	cost, source := m.CalculateWithSource(channelID, upstreamModel, inputTokens, outputTokens)
+	cost, source := m.CalculateWithSource(channelID, upstreamModel, Tokens{Input: inputTokens, Output: outputTokens})
 	return cost, source != ""
 }
 
 // CalculateWithSource 按回退链计价：渠道+模型覆盖 → 全局默认 → 预设内置目录；返回来源便于日志标注。
-func (m *Manager) CalculateWithSource(channelID int64, upstreamModel string, inputTokens, outputTokens int64) (int64, string) {
-	if m == nil || inputTokens+outputTokens <= 0 {
+func (m *Manager) CalculateWithSource(channelID int64, upstreamModel string, t Tokens) (int64, string) {
+	if m == nil || t.Input+t.Output <= 0 {
 		return 0, ""
 	}
 	snapshot := m.current.Load()
@@ -120,14 +163,15 @@ func (m *Manager) CalculateWithSource(channelID int64, upstreamModel string, inp
 	}
 	if price == nil {
 		if entry, ok := catalogLookup(snapshot.presets[channelID], upstreamModel); ok {
-			price = &store.ModelPrice{InputMicrosPerMillion: entry.InputMicrosPerMillion, OutputMicrosPerMillion: entry.OutputMicrosPerMillion}
+			resolved := entry.price()
+			price = &resolved
 			source = PriceSourceCatalog
 		}
 	}
 	if price == nil {
 		return 0, ""
 	}
-	total := price.InputMicrosPerMillion*inputTokens + price.OutputMicrosPerMillion*outputTokens
+	total := priceCostMicros(*price, t)
 	return (total + 500_000) / 1_000_000, source
 }
 
@@ -148,12 +192,19 @@ func (m *Manager) Effective(channelID int64, models []string) []EffectivePrice {
 		item := EffectivePrice{Model: model}
 		key := priceKey{ChannelID: channelID, Model: model}
 		if row, ok := snapshot.overrides[key]; ok {
-			item.InputMicrosPerMillion, item.OutputMicrosPerMillion, item.Source = row.InputMicrosPerMillion, row.OutputMicrosPerMillion, PriceSourceOverride
+			item.InputMicrosPerMillion, item.OutputMicrosPerMillion = row.InputMicrosPerMillion, row.OutputMicrosPerMillion
+			item.CacheReadMicrosPerMillion, item.CacheWriteMicrosPerMillion = row.CacheReadMicrosPerMillion, row.CacheWriteMicrosPerMillion
+			item.Source = PriceSourceOverride
 		} else if snapshot.global != nil {
-			item.InputMicrosPerMillion, item.OutputMicrosPerMillion, item.Source = snapshot.global.InputMicrosPerMillion, snapshot.global.OutputMicrosPerMillion, PriceSourceDefault
+			item.InputMicrosPerMillion, item.OutputMicrosPerMillion = snapshot.global.InputMicrosPerMillion, snapshot.global.OutputMicrosPerMillion
+			item.CacheReadMicrosPerMillion, item.CacheWriteMicrosPerMillion = snapshot.global.CacheReadMicrosPerMillion, snapshot.global.CacheWriteMicrosPerMillion
+			item.Source = PriceSourceDefault
 		} else {
 			if entry, ok := catalogLookup(snapshot.presets[channelID], model); ok {
-				item.InputMicrosPerMillion, item.OutputMicrosPerMillion, item.Source, item.SourceURL = entry.InputMicrosPerMillion, entry.OutputMicrosPerMillion, PriceSourceCatalog, entry.SourceURL
+				entryPrice := entry.price()
+				item.InputMicrosPerMillion, item.OutputMicrosPerMillion = entryPrice.InputMicrosPerMillion, entryPrice.OutputMicrosPerMillion
+				item.CacheReadMicrosPerMillion, item.CacheWriteMicrosPerMillion = entryPrice.CacheReadMicrosPerMillion, entryPrice.CacheWriteMicrosPerMillion
+				item.Source, item.SourceURL = PriceSourceCatalog, entry.SourceURL
 			}
 		}
 		out = append(out, item)
@@ -177,7 +228,7 @@ func (m *Manager) ApplyPreset(ctx context.Context, channelID int64, presetID str
 		if count > 0 {
 			continue
 		}
-		if _, err := m.UpsertOverride(ctx, channelID, model, entry.InputMicrosPerMillion, entry.OutputMicrosPerMillion); err != nil {
+		if _, err := m.UpsertOverride(ctx, channelID, model, entry.priceInput()); err != nil {
 			return created, err
 		}
 		created++
@@ -203,35 +254,37 @@ func (m *Manager) List(ctx context.Context) (*store.ModelPrice, []store.ModelPri
 	return global, overrides, nil
 }
 
-func (m *Manager) SetDefault(ctx context.Context, inputMicros, outputMicros int64) error {
-	if inputMicros < 0 || outputMicros < 0 {
-		return errors.New("价格不能为负数")
+func (m *Manager) SetDefault(ctx context.Context, price PriceInput) error {
+	if err := price.validate(); err != nil {
+		return err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var row store.ModelPrice
 	result := m.db.WithContext(ctx).Where("channel_id = ? AND model = ?", 0, "").First(&row)
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		row = store.ModelPrice{InputMicrosPerMillion: inputMicros, OutputMicrosPerMillion: outputMicros}
+		row = store.ModelPrice{
+			InputMicrosPerMillion: price.Input, OutputMicrosPerMillion: price.Output,
+			CacheReadMicrosPerMillion: derefInt64(price.CacheRead), CacheWriteMicrosPerMillion: derefInt64(price.CacheWrite),
+		}
 		if err := m.db.WithContext(ctx).Create(&row).Error; err != nil {
 			return err
 		}
 	} else if result.Error != nil {
 		return result.Error
-	} else if err := m.db.WithContext(ctx).Model(&row).Updates(map[string]any{
-		"input_micros_per_million": inputMicros, "output_micros_per_million": outputMicros,
-	}).Error; err != nil {
+	} else if err := m.db.WithContext(ctx).Model(&row).Updates(price.updates()).Error; err != nil {
 		return err
 	}
+	price.applyTo(&row)
 	return m.Reload()
 }
 
-func (m *Manager) UpsertOverride(ctx context.Context, channelID int64, model string, inputMicros, outputMicros int64) (store.ModelPrice, error) {
+func (m *Manager) UpsertOverride(ctx context.Context, channelID int64, model string, price PriceInput) (store.ModelPrice, error) {
 	if channelID <= 0 || model == "" {
 		return store.ModelPrice{}, errors.New("渠道+模型覆盖必须指定 channel_id 与 model")
 	}
-	if inputMicros < 0 || outputMicros < 0 {
-		return store.ModelPrice{}, errors.New("价格不能为负数")
+	if err := price.validate(); err != nil {
+		return store.ModelPrice{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -240,24 +293,51 @@ func (m *Manager) UpsertOverride(ctx context.Context, channelID int64, model str
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		row = store.ModelPrice{
 			ChannelID: channelID, Model: model,
-			InputMicrosPerMillion: inputMicros, OutputMicrosPerMillion: outputMicros,
+			InputMicrosPerMillion: price.Input, OutputMicrosPerMillion: price.Output,
+			CacheReadMicrosPerMillion: derefInt64(price.CacheRead), CacheWriteMicrosPerMillion: derefInt64(price.CacheWrite),
 		}
 		if err := m.db.WithContext(ctx).Create(&row).Error; err != nil {
 			return store.ModelPrice{}, err
 		}
 	} else if result.Error != nil {
 		return store.ModelPrice{}, result.Error
-	} else if err := m.db.WithContext(ctx).Model(&row).Updates(map[string]any{
-		"input_micros_per_million": inputMicros, "output_micros_per_million": outputMicros,
-	}).Error; err != nil {
+	} else if err := m.db.WithContext(ctx).Model(&row).Updates(price.updates()).Error; err != nil {
 		return store.ModelPrice{}, err
 	}
-	row.InputMicrosPerMillion = inputMicros
-	row.OutputMicrosPerMillion = outputMicros
+	price.applyTo(&row)
 	if err := m.Reload(); err != nil {
 		return store.ModelPrice{}, err
 	}
 	return row, nil
+}
+
+// updates 只写本次提供的列：缓存价为 nil 时不触碰原值。
+func (p PriceInput) updates() map[string]any {
+	updates := map[string]any{"input_micros_per_million": p.Input, "output_micros_per_million": p.Output}
+	if p.CacheRead != nil {
+		updates["cache_read_micros_per_million"] = *p.CacheRead
+	}
+	if p.CacheWrite != nil {
+		updates["cache_write_micros_per_million"] = *p.CacheWrite
+	}
+	return updates
+}
+
+func (p PriceInput) applyTo(row *store.ModelPrice) {
+	row.InputMicrosPerMillion, row.OutputMicrosPerMillion = p.Input, p.Output
+	if p.CacheRead != nil {
+		row.CacheReadMicrosPerMillion = *p.CacheRead
+	}
+	if p.CacheWrite != nil {
+		row.CacheWriteMicrosPerMillion = *p.CacheWrite
+	}
+}
+
+func derefInt64(v *int64) int64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 func (m *Manager) DeleteOverride(ctx context.Context, id int64) error {

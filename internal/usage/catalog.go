@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"evergate/internal/store"
 )
 
 // catalog.json 随二进制内置的预设价格目录（USD / 百万 token），只作兜底：渠道+模型覆盖 → 全局默认 → 预设目录。
@@ -18,7 +20,32 @@ type CatalogEntry struct {
 	Model                  string `json:"model"`
 	InputMicrosPerMillion  int64  `json:"input_micros_per_million"`
 	OutputMicrosPerMillion int64  `json:"output_micros_per_million"`
-	SourceURL              string `json:"source_url"`
+	// 缓存价只在厂商公开了明确的缓存读写价时填写；缺省（0）计费时按输入价全价计
+	CacheReadMicrosPerMillion  int64  `json:"cache_read_micros_per_million,omitempty"`
+	CacheWriteMicrosPerMillion int64  `json:"cache_write_micros_per_million,omitempty"`
+	SourceURL                  string `json:"source_url"`
+}
+
+func (e CatalogEntry) price() store.ModelPrice {
+	return store.ModelPrice{
+		InputMicrosPerMillion: e.InputMicrosPerMillion, OutputMicrosPerMillion: e.OutputMicrosPerMillion,
+		CacheReadMicrosPerMillion: e.CacheReadMicrosPerMillion, CacheWriteMicrosPerMillion: e.CacheWriteMicrosPerMillion,
+	}
+}
+
+// priceInput 目录价只带厂商明确公开的缓存价；没有的一律不写，避免把 0 当成显式设置。
+func (e CatalogEntry) priceInput() PriceInput {
+	return PriceInput{
+		Input: e.InputMicrosPerMillion, Output: e.OutputMicrosPerMillion,
+		CacheRead: optionalPositive(e.CacheReadMicrosPerMillion), CacheWrite: optionalPositive(e.CacheWriteMicrosPerMillion),
+	}
+}
+
+func optionalPositive(v int64) *int64 {
+	if v <= 0 {
+		return nil
+	}
+	return &v
 }
 
 type catalogFile struct {

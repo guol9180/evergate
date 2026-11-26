@@ -82,15 +82,12 @@ func (a *API) setDefaultUsagePrice(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "计价配置未初始化")
 		return
 	}
-	var req struct {
-		InputMicrosPerMillion  int64 `json:"input_micros_per_million"`
-		OutputMicrosPerMillion int64 `json:"output_micros_per_million"`
-	}
+	var req priceFields
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "参数错误")
 		return
 	}
-	if err := a.opt.Usage.SetDefault(c.Request.Context(), req.InputMicrosPerMillion, req.OutputMicrosPerMillion); err != nil {
+	if err := a.opt.Usage.SetDefault(c.Request.Context(), req.input()); err != nil {
 		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -103,10 +100,9 @@ func (a *API) upsertUsagePriceOverride(c *gin.Context) {
 		return
 	}
 	var req struct {
-		ChannelID              int64  `json:"channel_id" binding:"required"`
-		Model                  string `json:"model" binding:"required"`
-		InputMicrosPerMillion  int64  `json:"input_micros_per_million"`
-		OutputMicrosPerMillion int64  `json:"output_micros_per_million"`
+		ChannelID int64  `json:"channel_id" binding:"required"`
+		Model     string `json:"model" binding:"required"`
+		priceFields
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "参数错误")
@@ -118,8 +114,7 @@ func (a *API) upsertUsagePriceOverride(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "渠道不存在")
 		return
 	}
-	if _, err := a.opt.Usage.UpsertOverride(c.Request.Context(), req.ChannelID, req.Model,
-		req.InputMicrosPerMillion, req.OutputMicrosPerMillion); err != nil {
+	if _, err := a.opt.Usage.UpsertOverride(c.Request.Context(), req.ChannelID, req.Model, req.input()); err != nil {
 		fail(c, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -145,6 +140,22 @@ func (a *API) deleteUsagePriceOverride(c *gin.Context) {
 		return
 	}
 	a.respondUsagePrices(c)
+}
+
+// priceFields 价格写入接口的公共字段。缓存价为指针：缺省表示本次未提供（新建落 0、更新保留原值），
+// 传 0 表示明确「按输入价计」。
+type priceFields struct {
+	InputMicrosPerMillion      int64  `json:"input_micros_per_million"`
+	OutputMicrosPerMillion     int64  `json:"output_micros_per_million"`
+	CacheReadMicrosPerMillion  *int64 `json:"cache_read_micros_per_million"`
+	CacheWriteMicrosPerMillion *int64 `json:"cache_write_micros_per_million"`
+}
+
+func (p priceFields) input() usage.PriceInput {
+	return usage.PriceInput{
+		Input: p.InputMicrosPerMillion, Output: p.OutputMicrosPerMillion,
+		CacheRead: p.CacheReadMicrosPerMillion, CacheWrite: p.CacheWriteMicrosPerMillion,
+	}
 }
 
 func (a *API) respondUsagePrices(c *gin.Context) {

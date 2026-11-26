@@ -18,14 +18,14 @@ func TestRequestCostUsesSnapshotAndDoesNotRewriteHistory(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"x","choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`))
 	})
 	env.addChannel(t, "cost", up.server.URL, 0, []string{"m"}, nil, "sk")
-	if err := env.usage.SetDefault(context.Background(), 1_000_000, 2_000_000); err != nil {
+	if err := env.usage.SetDefault(context.Background(), usage.PriceInput{Input: 1_000_000, Output: 2_000_000}); err != nil {
 		t.Fatalf("set default price: %v", err)
 	}
 
 	if resp, body := env.chat(t, `{"model":"m","messages":[{"role":"user","content":"hi"}]}`); resp.StatusCode != http.StatusOK {
 		t.Fatalf("first request: %d %s", resp.StatusCode, body)
 	}
-	if err := env.usage.SetDefault(context.Background(), 2_000_000, 4_000_000); err != nil {
+	if err := env.usage.SetDefault(context.Background(), usage.PriceInput{Input: 2_000_000, Output: 4_000_000}); err != nil {
 		t.Fatalf("update default price: %v", err)
 	}
 	if resp, body := env.chat(t, `{"model":"m","messages":[{"role":"user","content":"hi"}]}`); resp.StatusCode != http.StatusOK {
@@ -52,10 +52,10 @@ func TestChannelModelPriceOverridesDefault(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"x","choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}`))
 	})
 	env.addChannel(t, "override", up.server.URL, 0, []string{"m"}, nil, "sk")
-	if err := env.usage.SetDefault(context.Background(), 1_000_000, 1_000_000); err != nil {
+	if err := env.usage.SetDefault(context.Background(), usage.PriceInput{Input: 1_000_000, Output: 1_000_000}); err != nil {
 		t.Fatalf("set default: %v", err)
 	}
-	if _, err := env.usage.UpsertOverride(context.Background(), 1, "m", 10_000_000, 20_000_000); err != nil {
+	if _, err := env.usage.UpsertOverride(context.Background(), 1, "m", usage.PriceInput{Input: 10_000_000, Output: 20_000_000}); err != nil {
 		t.Fatalf("set override: %v", err)
 	}
 	if resp, body := env.chat(t, `{"model":"m","messages":[{"role":"user","content":"hi"}]}`); resp.StatusCode != http.StatusOK {
@@ -91,7 +91,7 @@ func TestChatStreamRequestsUsageForCost(t *testing.T) {
 	})
 	env.addChannel(t, "stream-cost", up.server.URL, 0, []string{"m"}, nil, "sk")
 	token, plain := env.addToken(t, "stream-cost", nil)
-	if err := env.usage.SetDefault(context.Background(), 1_000_000, 2_000_000); err != nil {
+	if err := env.usage.SetDefault(context.Background(), usage.PriceInput{Input: 1_000_000, Output: 2_000_000}); err != nil {
 		t.Fatalf("set default price: %v", err)
 	}
 
@@ -211,7 +211,7 @@ func TestRequestCostAcrossAllProtocols(t *testing.T) {
 			})
 			tc.setup(env, up.server.URL)
 			token, plain := env.addToken(t, tc.name, nil)
-			if err := env.usage.SetDefault(context.Background(), 1_000_000, 2_000_000); err != nil {
+			if err := env.usage.SetDefault(context.Background(), usage.PriceInput{Input: 1_000_000, Output: 2_000_000}); err != nil {
 				t.Fatalf("set default price: %v", err)
 			}
 			gateway := env.authGateway(t)

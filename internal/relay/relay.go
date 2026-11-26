@@ -116,8 +116,14 @@ type hitRecord struct {
 	completionTokens int64
 	totalTokens      int64
 	cachedTokens     int64
+	cacheWriteTokens int64
 	reasoningTokens  int64
 	usageSeen        bool
+}
+
+// billableTokens 命中记录 → 可计费用量；额度扣减与成本共用同一口径（输入侧含缓存读写）。
+func (h *hitRecord) billableTokens() usage.Tokens {
+	return usage.Tokens{Input: h.promptTokens, CacheRead: h.cachedTokens, CacheWrite: h.cacheWriteTokens, Output: h.completionTokens}
 }
 
 // HandleChatCompletions 处理 POST /v1/chat/completions（含 stream:true SSE）。
@@ -365,8 +371,9 @@ func (r *Relay) finishRequest(c *gin.Context, start time.Time, hit *hitRecord, t
 		RetryTrace:   trace,
 		FirstTokenMS: hit.firstTokenMS, TotalMS: total.Milliseconds(),
 		PromptTokens: hit.promptTokens, CompletionTokens: hit.completionTokens,
-		TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, ReasoningTokens: hit.reasoningTokens,
-		CostMicros: costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus, PriceSource: priceSource,
+		TotalTokens: hit.totalTokens, CachedTokens: hit.cachedTokens, CacheWriteTokens: hit.cacheWriteTokens,
+		ReasoningTokens: hit.reasoningTokens,
+		CostMicros:      costMicros, Cost: float64(costMicros) / 1_000_000, CostStatus: costStatus, PriceSource: priceSource,
 		IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
 		ConfigOverride: configSummaryFromContext(c),
 	})
@@ -462,7 +469,7 @@ func (r *Relay) requestCost(status int, hit *hitRecord) (int64, string, string) 
 	if r.opt.Usage == nil {
 		return 0, usage.CostStatusUnpriced, ""
 	}
-	costMicros, source := r.opt.Usage.CalculateWithSource(hit.channelID, hit.upstreamModel, hit.promptTokens, hit.completionTokens)
+	costMicros, source := r.opt.Usage.CalculateWithSource(hit.channelID, hit.upstreamModel, hit.billableTokens())
 	if source == "" {
 		return 0, usage.CostStatusUnpriced, ""
 	}
@@ -516,7 +523,9 @@ func (r *Relay) settleTokenUsage(c *gin.Context, hit *hitRecord) (string, string
 	if err := c.Request.Context().Err(); err != nil {
 		return "client_disconnected_no_usage_charge", "client disconnected before settlement; quota not charged"
 	}
-	charged := hit.promptTokens + hit.completionTokens
+	// 额度按输入 + 输出 token 计，输入侧含缓存读写，与成本口径同源。
+	tokens := hit.billableTokens()
+	charged := tokens.Input + tokens.Output
 	if charged <= 0 {
 		if !hit.usageSeen {
 			return "usage_missing", "upstream success response did not include usage; quota not charged"

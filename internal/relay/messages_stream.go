@@ -258,18 +258,7 @@ func parseMessagesEventUsage(data []byte, hit *hitRecord) {
 // mergeAnthropicUsage 兼容 message_start 的初始 usage 与 message_delta 的累计 usage，
 // 后到的正数覆盖先前值，避免 output_tokens 被 0 冲掉。
 func mergeAnthropicUsage(usage usageWire, hit *hitRecord) {
-	prompt, completion, _, cached, _ := usage.normalize()
-	hit.usageSeen = true
-	if prompt > 0 {
-		hit.promptTokens = prompt
-	}
-	if completion > 0 {
-		hit.completionTokens = completion
-	}
-	hit.totalTokens = hit.promptTokens + hit.completionTokens
-	if cached > 0 {
-		hit.cachedTokens = cached
-	}
+	mergeUsage(usage.normalize(), hit)
 }
 
 func writeMessagesStreamError(w *sseWriter, message string) {
@@ -333,21 +322,14 @@ func (s *messagesBridgeStream) consume(data []byte, hit *hitRecord) {
 		return
 	}
 	if chunk.Usage != nil {
-		prompt, completion, _, cached, _ := chunk.Usage.normalize()
-		if prompt > 0 {
-			s.inputTokens = prompt
-			hit.usageSeen = true
-			hit.promptTokens = prompt
+		n := chunk.Usage.normalize()
+		if n.Prompt > 0 {
+			s.inputTokens = n.Prompt
 		}
-		if completion > 0 {
-			s.outTokens = completion
-			hit.usageSeen = true
-			hit.completionTokens = completion
+		if n.Completion > 0 {
+			s.outTokens = n.Completion
 		}
-		if cached > 0 {
-			hit.cachedTokens = cached
-		}
-		hit.totalTokens = hit.promptTokens + hit.completionTokens
+		mergeUsage(n, hit)
 	}
 	for _, choice := range chunk.Choices {
 		if choice.Delta.Content != "" {

@@ -11,7 +11,7 @@ import {
   useUsagePrices,
   useUsageReport,
 } from '../api/hooks'
-import type { UsageDailyPoint, UsageDimensionRow } from '../api/types'
+import type { ModelPrice, UsageDailyPoint, UsageDimensionRow } from '../api/types'
 import { Alert, Badge, Button, Card, Empty, Field, IconButton, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import { TrendChart } from '../components/TrendChart'
@@ -97,7 +97,12 @@ export default function Usage() {
           <div className="eg-grid eg-grid-kpi">
             <Metric label={t('usage.requests')} value={fmtInt(data.totals.requests)} hint={tf('usage.successCount', { n: fmtInt(data.totals.success) })} />
             <Metric label={t('dashboard.kpi.successRate')} value={successRate == null ? '—' : `${successRate.toFixed(1)}%`} hint="2xx / 3xx" />
-            <Metric label={t('usage.tokens')} value={fmtInt(data.totals.tokens_in + data.totals.tokens_out)} hint={tf('usage.tokensHint', { input: fmtInt(data.totals.tokens_in), output: fmtInt(data.totals.tokens_out) })} />
+            <Metric
+              label={t('usage.tokens')}
+              value={fmtInt(data.totals.tokens_in + data.totals.tokens_out)}
+              hint={tf('usage.tokensHint', { input: fmtInt(data.totals.tokens_in), output: fmtInt(data.totals.tokens_out) })
+                + (data.totals.cache_read_tokens ? tf('usage.tokensHintCached', { cached: fmtInt(data.totals.cache_read_tokens) }) : '')}
+            />
             <Metric
               label={t('table.cost')}
               value={costKnown ? fmtMoney(data.totals.cost_micros) : '—'}
@@ -217,10 +222,14 @@ function PriceCard() {
   const applyPreset = useApplyPresetPrice()
   const [defaultIn, setDefaultIn] = useState('0')
   const [defaultOut, setDefaultOut] = useState('0')
+  const [defaultCacheRead, setDefaultCacheRead] = useState('')
+  const [defaultCacheWrite, setDefaultCacheWrite] = useState('')
   const [channelID, setChannelID] = useState('')
   const [model, setModel] = useState('')
   const [overrideIn, setOverrideIn] = useState('0')
   const [overrideOut, setOverrideOut] = useState('0')
+  const [overrideCacheRead, setOverrideCacheRead] = useState('')
+  const [overrideCacheWrite, setOverrideCacheWrite] = useState('')
   const [presetChannelID, setPresetChannelID] = useState('')
   const presetChannels = useMemo(
     () => (channels.data?.items ?? []).filter((ch) => ch.preset_id),
@@ -234,6 +243,8 @@ function PriceCard() {
     if (prices.data) {
       setDefaultIn(toPriceInput(prices.data.default?.input_micros_per_million))
       setDefaultOut(toPriceInput(prices.data.default?.output_micros_per_million))
+      setDefaultCacheRead(toOptionalPriceInput(prices.data.default?.cache_read_micros_per_million))
+      setDefaultCacheWrite(toOptionalPriceInput(prices.data.default?.cache_write_micros_per_million))
     }
   }, [prices.data])
   useEffect(() => {
@@ -248,7 +259,10 @@ function PriceCard() {
   const submitDefault = (e: FormEvent) => {
     e.preventDefault()
     setDefault.mutate(
-      { input_micros_per_million: toMicros(defaultIn), output_micros_per_million: toMicros(defaultOut) },
+      {
+        input_micros_per_million: toMicros(defaultIn), output_micros_per_million: toMicros(defaultOut),
+        cache_read_micros_per_million: toMicros(defaultCacheRead), cache_write_micros_per_million: toMicros(defaultCacheWrite),
+      },
       { onSuccess: () => notify.success(t('toast.price.saved')), onError: (err) => notify.error(err) },
     )
   }
@@ -258,6 +272,7 @@ function PriceCard() {
     upsert.mutate({
       channel_id: Number(channelID), model: model.trim(),
       input_micros_per_million: toMicros(overrideIn), output_micros_per_million: toMicros(overrideOut),
+      cache_read_micros_per_million: toMicros(overrideCacheRead), cache_write_micros_per_million: toMicros(overrideCacheWrite),
     }, {
       onSuccess: () => {
         notify.success(t('toast.price.saved'))
@@ -278,7 +293,10 @@ function PriceCard() {
         <div className="grid grid-cols-2 gap-2">
           <Field label={t('usage.input')}><Input type="number" min={0} step="0.000001" value={defaultIn} onChange={(e) => setDefaultIn(e.target.value)} /></Field>
           <Field label={t('usage.output')}><Input type="number" min={0} step="0.000001" value={defaultOut} onChange={(e) => setDefaultOut(e.target.value)} /></Field>
+          <Field label={t('usage.price.cacheRead')}><Input type="number" min={0} step="0.000001" value={defaultCacheRead} onChange={(e) => setDefaultCacheRead(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <Field label={t('usage.price.cacheWrite')}><Input type="number" min={0} step="0.000001" value={defaultCacheWrite} onChange={(e) => setDefaultCacheWrite(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
         </div>
+        <p className="mb-2 text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
         <Button type="submit" size="sm" className="mt-2" disabled={setDefault.isPending}>{t('usage.price.saveDefault')}</Button>
       </form>
 
@@ -295,7 +313,10 @@ function PriceCard() {
           <Field label={t('usage.price.upstreamModel')}><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('usage.price.upstreamPlaceholder')} /></Field>
           <Field label={t('usage.price.inputPrice')}><Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder={t('usage.price.useDefault')} /></Field>
           <Field label={t('usage.price.outputPrice')}><Input type="number" min={0} step="0.000001" value={overrideOut} onChange={(e) => setOverrideOut(e.target.value)} placeholder={t('usage.price.useDefault')} /></Field>
+          <Field label={t('usage.price.cacheRead')}><Input type="number" min={0} step="0.000001" value={overrideCacheRead} onChange={(e) => setOverrideCacheRead(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <Field label={t('usage.price.cacheWrite')}><Input type="number" min={0} step="0.000001" value={overrideCacheWrite} onChange={(e) => setOverrideCacheWrite(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
         </div>
+        <p className="text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
         <Button type="submit" size="sm" variant="outline" disabled={upsert.isPending || !model.trim()}><Plus size={13} /> {t('usage.price.saveOverride')}</Button>
       </form>
       <div className="mt-3 max-h-44 space-y-1 overflow-auto">
@@ -303,7 +324,7 @@ function PriceCard() {
           <div key={price.id} className="flex items-center gap-2 rounded-md bg-surface-soft px-2 py-1.5 text-xs">
             <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
             <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
-            <span className="text-muted">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}</span>
+            <span className="text-muted">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}{cacheSummary(price)}</span>
             <IconButton danger label={t('usage.price.deleteOverride')} onClick={() => remove.mutate(price.id, { onSuccess: () => notify.success(t('toast.price.deleted')), onError: (err) => notify.error(err) })}>
               <Trash2 size={13} />
             </IconButton>
@@ -373,5 +394,18 @@ function toMicros(value: string): number {
 
 function toPriceInput(micros: number | undefined): string {
   return ((micros || 0) / 1_000_000).toFixed(6).replace(/\.?0+$/, '')
+}
+
+/** 缓存价输入框初值：未设置（0）留空，对应「按输入价计」。 */
+function toOptionalPriceInput(micros: number | undefined): string {
+  return micros && micros > 0 ? toPriceInput(micros) : ''
+}
+
+/** 覆盖列表里的缓存价摘要：只列出已设置的一侧，未设置的不占位。 */
+function cacheSummary(price: ModelPrice): string {
+  const parts: string[] = []
+  if (price.cache_read_micros_per_million > 0) parts.push(`${t('usage.price.cacheRead')} ${fmtPriceMicros(price.cache_read_micros_per_million)}`)
+  if (price.cache_write_micros_per_million > 0) parts.push(`${t('usage.price.cacheWrite')} ${fmtPriceMicros(price.cache_write_micros_per_million)}`)
+  return parts.length ? ` · ${parts.join(' · ')}` : ''
 }
 
