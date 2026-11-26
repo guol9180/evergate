@@ -2,6 +2,16 @@
 
 发版描述自动取自本文件：工作流按 `## <tag>` 提取对应段落作为 GitHub Release 正文（T7b 约定）。
 
+## v0.7.0
+
+- 本版本为 `v0.7.0` 正式版（新增功能 → MINOR），发布到 npm `latest` 与 GitHub Latest
+- 渠道预设：供应商预设与自定义彻底分离；预设只开放模型列表、API 地址与 API 密钥，名称/协议/调度字段仅在「切换为自定义」后出现；自定义模式协议收敛为 Chat Completions、Responses、Anthropic Messages、Gemini API 四项（Chat Completions 固定开启）
+- 模型价格：内置预设价格目录（OpenAI / DeepSeek / Anthropic / Gemini，含来源 URL 与日期），计价回退链「渠道+模型覆盖 → 全局默认 → 预设目录」；渠道编辑弹窗展示生效价格与来源；用量页新增「按预设查看」与「一键写入为渠道覆盖」；「从上游拉取」带 OpenRouter 风格价格时可一并写入覆盖；日志详情显示价格来源
+- 下游模型目录：`GET /v1/models` 按令牌「允许模型」过滤，携带 `anthropic-version` 时返回 Anthropic 结构；新增 `GET /v1beta/models`（Gemini 结构）；令牌创建弹窗与 README 提供三协议 curl 示例
+- 首启管理员：默认不再随机生成密码打印到日志，首次启动引导到 `/setup` 设置用户名与密码（仅本机可访问），设置后回到登录页登录；容器 / 自动化仍可用 `EVERGATE_INITIAL_ADMIN_PASSWORD` 自动创建（首登强制改密）；新增 `GET /admin/api/auth/setup-status`、`POST /admin/api/auth/setup`
+- 管理台体验：修复文档层双滚动、侧栏两态与底部按钮同轴、页头按钮尺寸不一致、窄屏表格列被裁、1280/1440 横向溢出、弹窗嵌套滚动与入场动画、表单静默失败、探测错误解析、冷却剩余与「未探测」状态；英文界面补齐全部文案（上游原始错误文本按数据展示）；趋势图颜色跟随主题
+- 单实例互斥按数据目录派生，允许开发实例与已安装实例并行运行
+
 ## v0.6.0
 
 - 本版本为 `v0.6.0` 正式版，直接发布到 npm `latest` 与 GitHub Latest

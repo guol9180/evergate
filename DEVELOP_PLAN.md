@@ -70,6 +70,7 @@ P0 功能完成定义（1–10 全部通过）：
 - 状态：planned
 - 进度：
   - 2026-11-25 计划 建卡
+  - 2026-11-25 准备 全部前置卡（T88–T94、T96–T98）已 done；CHANGELOG `## v0.7.0` 与 `openapi.yaml` 0.7.0 已就绪，`make build` 通过。剩余动作需要用户确认：合并 `feat/p5-ux-presets-pricing-catalog` 到 main → 打 tag `v0.7.0` → 推送触发 CI/发布 → 真实旧版本升级一次并回写证据
 
 > 来源：P3 待复验任务（由 T73 拆分）。
 

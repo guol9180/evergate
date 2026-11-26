@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: EverGate Downstream API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     EverGate 对客户端暴露的下游接口。四种协议共用同一套下游令牌鉴权、路由调度、key 池与重试链路。
     本文件描述公共边界（鉴权、路径、流式语义、错误体），请求/响应字段以各协议官方 schema 为准，
