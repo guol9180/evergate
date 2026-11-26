@@ -1,4 +1,4 @@
-.PHONY: build build-web build-all icon run test coverage-scheduler coverage-relay fmt vet clean
+.PHONY: build build-web build-all icon run test coverage-scheduler coverage-relay fmt gofmt-check staticcheck govulncheck audit-web vet clean
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -66,7 +66,23 @@ coverage-relay:
 	node scripts/check-relay-coverage.mjs .gocache/relay-cover.txt
 
 fmt:
-	gofmt -l -w .
+	gofmt -l -w cmd internal scripts
+
+# gofmt 门禁（T106）：只检查项目 Go 源码，避免把 web/node_modules 的第三方 Go 文件算进来
+gofmt-check:
+	node scripts/check-gofmt.mjs
+
+# staticcheck 门禁（T106）：固定版本，本地与 CI 同口径
+staticcheck:
+	go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./cmd/... ./internal/...
+
+# govulncheck 门禁（T106）：只阻断代码实际可达的漏洞
+govulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./cmd/... ./internal/...
+
+# 前端依赖漏洞门禁（T106）：高危及以上阻断
+audit-web:
+	npm --prefix web audit --audit-level=high
 
 vet:
 	go vet ./...

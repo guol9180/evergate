@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
-import type { TestAllItem } from '../api/types'
 import { useChannelsTestAll } from '../api/hooks'
 import { Alert, Button, Card, Select, StatusBadge, Td, Th } from './ui'
 import { fmtMs } from '../lib/format'

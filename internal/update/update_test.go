@@ -118,7 +118,7 @@ func TestCheckerFetchesLatestRelease(t *testing.T) {
 
 func TestCheckerDevelopmentVersionDoesNotReportUpdate(t *testing.T) {
 	for _, version := range []string{"dev", "v0.1.29-dirty", "v0.1.29-9-g9370b7e"} {
-		checker := NewChecker(version, "http://127.0.0.1:1/nope", time.Now)
+		checker := NewCheckerWithOptions(Options{CurrentVersion: version, APIURL: "http://127.0.0.1:1/nope", Now: time.Now})
 		status, err := checker.Check(context.Background())
 		if err != nil {
 			t.Fatal(err)

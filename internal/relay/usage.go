@@ -2,8 +2,6 @@ package relay
 
 import (
 	"encoding/json"
-
-	"evergate/internal/usage"
 )
 
 type usageWire struct {
@@ -45,10 +43,6 @@ func (n normalizedUsage) regularInput() int64 {
 		return 0
 	}
 	return regular
-}
-
-func (n normalizedUsage) tokens() usage.Tokens {
-	return usage.Tokens{Input: n.Prompt, CacheRead: n.CacheRead, CacheWrite: n.CacheWrite, Output: n.Completion}
 }
 
 // withTotal 上游未给 total 时按输入 + 输出推导；只对完整 usage 帧调用，分片帧的推导值没有意义。

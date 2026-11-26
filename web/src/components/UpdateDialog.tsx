@@ -63,7 +63,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
     setSnapshot(null)
     setRestartTimedOut(false)
     apply.reset()
-  }, [open])
+  }, [apply, open])
 
   const stages = useMemo(
     () => ['downloading', 'verifying', 'installing', 'restarting'],

@@ -9,14 +9,18 @@ import (
 	"evergate/internal/config"
 )
 
-func TestLoadBootstrapConfigCreatesConfigAtResolvedPath(t *testing.T) {
+func TestBootstrapConfigCreatesConfigAtResolvedPath(t *testing.T) {
 	root := t.TempDir()
 	paths := appdir.Paths{
 		ConfigPath: filepath.Join(root, "config", "evergate.yml"),
 		DataDir:    filepath.Join(root, "data"),
 		Source:     appdir.SourceDefault,
 	}
-	cfg, sqlitePath, generated, err := loadBootstrapConfig(paths)
+	cfg, sqlitePath, err := resolveBootstrapConfig(paths)
+	if err != nil {
+		t.Fatalf("load bootstrap: %v", err)
+	}
+	cfg, generated, err := ensureBootstrapSecrets(paths, cfg)
 	if err != nil {
 		t.Fatalf("load bootstrap: %v", err)
 	}
@@ -40,7 +44,7 @@ func TestLoadBootstrapConfigCreatesConfigAtResolvedPath(t *testing.T) {
 	}
 }
 
-func TestLoadBootstrapConfigKeepsPortableRelativeSQLitePath(t *testing.T) {
+func TestBootstrapConfigKeepsPortableRelativeSQLitePath(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "portable", "evergate.yml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
@@ -60,7 +64,11 @@ security:
 		DataDir: filepath.Join(root, "platform-data"),
 		Source:  appdir.SourcePortable, ConfigExists: true,
 	}
-	_, sqlitePath, generated, err := loadBootstrapConfig(paths)
+	cfg, sqlitePath, err := resolveBootstrapConfig(paths)
+	if err != nil {
+		t.Fatalf("load bootstrap: %v", err)
+	}
+	_, generated, err := ensureBootstrapSecrets(paths, cfg)
 	if err != nil {
 		t.Fatalf("load bootstrap: %v", err)
 	}

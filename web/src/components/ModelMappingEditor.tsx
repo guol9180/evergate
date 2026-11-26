@@ -35,7 +35,7 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
     if (JSON.stringify(mappingFrom(rows)) !== JSON.stringify(value)) {
       setRows([...toRows(value), EMPTY_ROW])
     }
-  }, [value])
+  }, [rows, value])
 
   const commit = (next: Row[]) => {
     const withTail = next.length === 0 || next[next.length - 1].from.trim() || next[next.length - 1].to.trim() ? [...next, EMPTY_ROW] : next

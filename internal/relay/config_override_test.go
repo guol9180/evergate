@@ -175,9 +175,6 @@ func TestRequestConfigSessionAffinitySwitch(t *testing.T) {
 	if resp, body := postWithHeaders(t, gateway, "/v1/chat/completions", plain, headers, `{"model":"gpt-x","messages":[]}`); resp.StatusCode != 200 {
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
 	}
-	if env.opt.Affinity.Len() != 0 {
-		t.Fatal("session_affinity=false 不应写入亲和记录")
-	}
 	if _, ok := env.opt.Affinity.Lookup(token.ID, "gpt-x", "sess-cfg-off"); ok {
 		t.Fatal("关闭亲和的请求不得创建记录")
 	}
@@ -185,8 +182,8 @@ func TestRequestConfigSessionAffinitySwitch(t *testing.T) {
 	if resp, body := postWithSession(t, gateway, "/v1/chat/completions", plain, "sess-cfg-off", `{"model":"gpt-x","messages":[]}`); resp.StatusCode != 200 {
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
 	}
-	if env.opt.Affinity.Len() != 1 {
-		t.Fatalf("未关闭亲和的请求应恢复记录, len = %d", env.opt.Affinity.Len())
+	if _, ok := env.opt.Affinity.Lookup(token.ID, "gpt-x", "sess-cfg-off"); !ok {
+		t.Fatal("未关闭亲和的请求应恢复记录")
 	}
 }
 

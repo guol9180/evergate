@@ -57,8 +57,8 @@ func TestExpiryFallsBackAndCanRebuild(t *testing.T) {
 	if _, ok := table.Lookup(1, "m", "s"); ok {
 		t.Fatal("TTL 过期后应回退普通调度")
 	}
-	if table.Len() != 0 {
-		t.Fatalf("过期记录应在查询时清理, len = %d", table.Len())
+	if tableLen(table) != 0 {
+		t.Fatalf("过期记录应在查询时清理, len = %d", tableLen(table))
 	}
 
 	table.Remember(1, "m", "s", 3, 4)
@@ -76,8 +76,8 @@ func TestLRUCapacityBound(t *testing.T) {
 		t.Fatal("a 应存在")
 	}
 	table.Remember(1, "m", "c", 3, 3) // 容量满 → 淘汰最久未用的 b
-	if table.Len() != 2 {
-		t.Fatalf("len = %d, want 2（LRU 有界）", table.Len())
+	if tableLen(table) != 2 {
+		t.Fatalf("len = %d, want 2（LRU 有界）", tableLen(table))
 	}
 	if _, ok := table.Lookup(1, "m", "b"); ok {
 		t.Fatal("b 应被 LRU 淘汰")
@@ -124,21 +124,6 @@ func TestTableStoresOnlyFingerprint(t *testing.T) {
 	}
 }
 
-func TestForgetIfMatchesKeepsNewerRecord(t *testing.T) {
-	table := New(4, time.Minute, nil)
-	table.Remember(1, "m", "s", 1, 1)
-	table.Remember(1, "m", "s", 2, 2)
-	table.ForgetIfMatches(1, "m", "s", 1, 1) // 慢失败请求的旧记录，不该误删新记录
-	entry, ok := table.Lookup(1, "m", "s")
-	if !ok || entry.ChannelID != 2 {
-		t.Fatalf("新记录应保留, got %+v %v", entry, ok)
-	}
-	table.ForgetIfMatches(1, "m", "s", 2, 2)
-	if _, ok := table.Lookup(1, "m", "s"); ok {
-		t.Fatal("匹配时应删除")
-	}
-}
-
 func TestConcurrentAccess(t *testing.T) {
 	table := New(64, time.Minute, nil)
 	var wg sync.WaitGroup
@@ -151,13 +136,20 @@ func TestConcurrentAccess(t *testing.T) {
 				table.Remember(1, "m", session, int64(g+1), int64(i+1))
 				_, _ = table.Lookup(1, "m", session)
 				if i%17 == 0 {
-					table.ForgetIfMatches(1, "m", session, int64(g+1), int64(i+1))
+					table.Forget(1, "m", session)
 				}
 			}
 		}(g)
 	}
 	wg.Wait()
-	if table.Len() > 64 {
-		t.Fatalf("并发后容量越界: %d", table.Len())
+	if tableLen(table) > 64 {
+		t.Fatalf("并发后容量越界: %d", tableLen(table))
 	}
+}
+
+// tableLen 读取条目数；生产代码不再为诊断暴露 Len()，测试直接在同一包内取 LRU 长度。
+func tableLen(table *Table) int {
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	return table.lru.Len()
 }

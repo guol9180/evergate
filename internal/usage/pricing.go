@@ -141,12 +141,6 @@ func (m *Manager) Reload() error {
 	return nil
 }
 
-// Calculate 返回微美元成本；无匹配价格时 priced=false。
-func (m *Manager) Calculate(channelID int64, upstreamModel string, inputTokens, outputTokens int64) (int64, bool) {
-	cost, source := m.CalculateWithSource(channelID, upstreamModel, Tokens{Input: inputTokens, Output: outputTokens})
-	return cost, source != ""
-}
-
 // CalculateWithSource 按回退链计价：渠道+模型覆盖 → 全局默认 → 预设内置目录；返回来源便于日志标注。
 func (m *Manager) CalculateWithSource(channelID int64, upstreamModel string, t Tokens) (int64, string) {
 	if m == nil || t.Input+t.Output <= 0 {

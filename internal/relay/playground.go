@@ -142,9 +142,10 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	}
 
 	// 非流式（或流式请求在首包前失败）：返回 admin API 统一信封。
-	var response any = string(writer.body.Bytes())
-	if json.Valid(writer.body.Bytes()) {
-		response = json.RawMessage(append([]byte(nil), writer.body.Bytes()...))
+	raw := writer.body.Bytes()
+	var response any = string(raw)
+	if json.Valid(raw) {
+		response = json.RawMessage(append([]byte(nil), raw...))
 	}
 	httpx.OK(c, gin.H{"response": response, "meta": meta})
 }

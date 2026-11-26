@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 默认管理员用户名（任务书 4.3：首次启动若空表创建 admin 并强制首登改密）。
+// DefaultAdminUsername 是默认管理员用户名（任务书 4.3：首次启动若空表创建 admin 并强制首登改密）。
 // 初始密码不再固定：由 InitialAdminPassword 随机生成或读取 EVERGATE_INITIAL_ADMIN_PASSWORD（T75）。
 const DefaultAdminUsername = "admin"
 

@@ -96,9 +96,6 @@ func String(key, value string) Attr { return Attr{Key: key, str: value} }
 // Int 创建整数属性。
 func Int(key string, value int64) Attr { return Attr{Key: key, num: float64(value), isNum: true} }
 
-// Float 创建浮点属性。
-func Float(key string, value float64) Attr { return Attr{Key: key, num: value, isNum: true} }
-
 type spanKey struct{}
 
 type spanData struct {

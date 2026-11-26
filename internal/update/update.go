@@ -89,10 +89,6 @@ type Options struct {
 	GitHubTimeout  time.Duration
 }
 
-func NewChecker(currentVersion, apiURL string, now func() time.Time) *Checker {
-	return NewCheckerWithOptions(Options{CurrentVersion: currentVersion, APIURL: apiURL, Now: now})
-}
-
 func NewCheckerWithOptions(opt Options) *Checker {
 	apiURL := opt.APIURL
 	if apiURL == "" {

@@ -60,16 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
 
-#### T106: 工程门禁补齐与死代码清理（P2，代码审查）
-
-- 目标：把靠人守约定的规范变成 CI 可拦截的门禁，并清掉已确认的死代码
-- 验收标准：① CI 新增 gofmt、staticcheck、govulncheck、npm audit（高危及以上）步骤并全部通过；② ESLint 开启 no-explicit-any、no-unused-vars、react-hooks/exhaustive-deps，tsconfig 开启 noUnusedLocals 与 noUnusedParameters，现有代码零告警；③ deadcode 报告的 8 个生产不可达函数逐个确认后删除或接入（仅测试引用的随测试一并处置），staticcheck S1030 修复；④ npmregistry 与用量报表聚合补单测；⑤ 新增门禁写入 AGENTS.md 提交前验证与「约束-管理台与运维」
-- 边界：不引入 golangci-lint 全家桶；不改业务行为
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
-- 进度：
-  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（工程化）
-
 #### T107: 全局交互动效体系（P1，用户补充）
 
 - 目标：补齐点击后的动态反馈与全站动效体系——按钮按压与进行中状态、弹层退出动画、列表与状态变化过渡、空状态表达，全部收敛到 ui.tsx 与 index.css 的统一出处
@@ -274,6 +264,23 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-26 执行 新增 internal/httpx（OK / Fail / FailCode / TruncateRunes），管理台 ok/fail、must_change_password、配置导出与 Playground 全部改走统一信封；日志与用量筛选改 parseQueryInt64 严格校验，非法值 400 带字段名；CSV 补 source / cached / cache_write / reasoning / retry_count / price_source 列并对 = + - @ 前缀转义；配置导入渠道 / 降级链 / 设置 / 价格 / 令牌全部入单事务，settings 与 usage 提供事务内写入口、提交后 Reload；KeyCipher / KeyHash 改 json:"-"；删除 Token.Group；YAML 用 KnownFields(true)；relay / audit / CSV 截断统一按字符。下游错误文案改英文与稳定 code（model_sequence_failed / channels_unavailable / invalid_gemini_path / *_conversion_failed），数据库、解密、上游响应转换与请求体重构的原文只进日志和 retry_trace；请求侧不可桥接字段保留字段路径诊断，reqconfig 校验文案同步英文
   - 2026-11-26 验证 新增 admin t105 测试（筛选 400 带字段名、CSV 列与公式转义、导入晚失败整单回滚且设置/价格无残留、成功导入后快照发布、渠道详情与令牌列表及 store JSON 均无 cipher/hash）、httpx 截断、YAML 未知字段、relay 内部轨迹过滤；go test -p 1 ./... 24 包全 ok、gofmt/vet 干净、调度 93.3%、relay 81.1%、make build 通过；前端 lint 0 警告、unit 13 + ui 46、build 通过（类型删除后产物哈希不变）
   - 2026-11-26 验证 18787 实测：logs 与 usage 非法筛选返回 400（channel_id / start / token_id 带字段名）、CSV 首行为新列且公式单元格带前缀、渠道详情无 key_cipher、令牌列表无 key_hash、Playground 非法协议返回 ok:false 信封、下游 503 为英文 all_channels_exhausted、导入含非法令牌时渠道与 price_default 均回滚、未知 YAML 键启动即报 `field prot not found in type config.Server`
+
+#### T106: 工程门禁补齐与死代码清理（P2，代码审查）
+
+- 目标：把靠人守约定的规范变成 CI 可拦截的门禁，并清掉已确认的死代码
+- 验收标准：① CI 新增 gofmt、staticcheck、govulncheck、npm audit（高危及以上）步骤并全部通过；② ESLint 开启 no-explicit-any、no-unused-vars、react-hooks/exhaustive-deps，tsconfig 开启 noUnusedLocals 与 noUnusedParameters，现有代码零告警；③ deadcode 报告的 8 个生产不可达函数逐个确认后删除或接入（仅测试引用的随测试一并处置），staticcheck S1030 修复；④ npmregistry 与用量报表聚合补单测；⑤ 新增门禁写入 AGENTS.md 提交前验证与「约束-管理台与运维」
+- 边界：不引入 golangci-lint 全家桶；不改业务行为
+- 阻塞项：无；类型：—；重启条件：—；复查日期：—
+- 状态：done
+- 进度：
+  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（工程化）
+  - 2026-11-26 执行 开工；先跑 gofmt / staticcheck / govulncheck / deadcode / npm audit 取得基线，再逐项收口并写入 CI
+  - 2026-11-26 执行 Makefile 新增 gofmt-check / staticcheck（固定 v0.8.2）/ govulncheck（固定 v1.10.0）/ audit-web，gofmt 检查用 scripts/check-gofmt.mjs 跨平台实现；CI quality job 增加 npm audit 与三项 Go 门禁；AGENTS.md 提交前验证与「约束-管理台与运维」CI 门禁同步
+  - 2026-11-26 执行 前端门禁收口：ESLint 恢复 no-explicit-any / no-unused-vars 为 error 并启用 exhaustive-deps，tsconfig app/node 开启 noUnusedLocals / noUnusedParameters；修复 playground 载荷类型（去 any）、ModelMappingEditor / UpdateDialog / Dashboard 依赖项、无用导入；vitest 3.2.7 → 5.1.2，npm audit 由 2 critical + 1 moderate 归零
+  - 2026-11-26 执行 deadcode 8 项处置：删除 loadBootstrapConfig（测试改用 resolveBootstrapConfig + ensureBootstrapSecrets）、affinity.Table.ForgetIfMatches / Len（测试改用 Forget 与包内 tableLen）、pool.DeriveChannelStatus（语义由 health.DeriveStatus 承接并补表驱动测试）、relay.normalizedUsage.tokens、telemetry.Float、update.NewChecker、usage.Manager.Calculate；staticcheck 其余告警同步修复（S1030 playground、ST1005 大小写 22 处、ST1003 GUIDItem、ST1021/ST1022 注释）
+  - 2026-11-26 执行 漏洞修复：go.mod go 1.25.0 → 1.27.4（标准库 net/http 修复），golang.org/x/net v0.51.0 → v0.60.0、x/text v0.34.0 → v0.42.0、x/crypto v0.48.0 → v0.57.0、x/sys v0.41.0 → v0.48.0、quic-go v0.59.0 → v0.59.1
+  - 2026-11-26 执行 补测：npmregistry Default / Normalize / Host；用量报表新增按渠道 / 模型 / 令牌筛选、跨日 daily 分桶与 TopModels 名称 / 成本断言
+  - 2026-11-26 验证 make gofmt-check / staticcheck / govulncheck / audit-web 全部通过（govulncheck 0 个代码可达漏洞，npm audit 0）；ESLint + tsc 零告警；go test -p 1 ./... 全 ok、go vet 干净、调度 93.0%、relay 81.1%、make build 通过；actionlint 通过；18787 用 Go 1.27.4 构建重启后 healthz / settings / 新 bundle 均 200
 
 ## 归档索引
 

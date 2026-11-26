@@ -405,15 +405,6 @@ func shouldOpenBrowser(server config.Server, autostart bool) bool {
 	return !autostart && server.ShouldOpenBrowser()
 }
 
-func loadBootstrapConfig(paths appdir.Paths) (config.Config, string, bool, error) {
-	cfg, sqlitePath, err := resolveBootstrapConfig(paths)
-	if err != nil {
-		return config.Config{}, "", false, err
-	}
-	cfg, generated, err := ensureBootstrapSecrets(paths, cfg)
-	return cfg, sqlitePath, generated, err
-}
-
 func resolveBootstrapConfig(paths appdir.Paths) (config.Config, string, error) {
 	cfg, err := config.Load(paths.ConfigPath)
 	if err != nil {

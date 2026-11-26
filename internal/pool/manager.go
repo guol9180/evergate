@@ -141,31 +141,3 @@ func (m *Manager) ReportFailure(keyID int64, c retry.Classification) {
 
 // Reset 手动重新启用某 key（管理员操作优先）。
 func (m *Manager) Reset(keyID int64) { m.sm.Reset(keyID) }
-
-// DeriveChannelStatus 由 key 状态推导渠道健康（任务书 4.5⑦）：
-// 无可用 key 或全部不可用 → down；部分不可用 → degraded；否则 active。
-func DeriveChannelStatus(keys []*store.ChannelKey, stateFn func(int64) string) string {
-	enabled := 0
-	available := 0
-	cooldownOrDisabled := 0
-	for _, k := range keys {
-		if !k.Enabled {
-			continue
-		}
-		enabled++
-		switch state := stateFn(k.ID); state {
-		case store.KeyStateActive, store.KeyStateHalfOpen:
-			available++
-		default: // cooldown / disabled
-			cooldownOrDisabled++
-		}
-	}
-	switch {
-	case enabled == 0 || available == 0:
-		return store.ChannelStatusDown
-	case cooldownOrDisabled > 0:
-		return store.ChannelStatusDegraded
-	default:
-		return store.ChannelStatusActive
-	}
-}

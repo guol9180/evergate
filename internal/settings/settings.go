@@ -21,7 +21,6 @@ const (
 	settingRowID   = int64(1)
 )
 
-// Settings 是请求路径读取的无共享快照。
 // Values 是可经管理台更新的数值字段；Source 与时间元数据由服务端维护。
 type Values struct {
 	ConnectTimeoutMS       int64 `json:"connect_timeout_ms"`
@@ -39,6 +38,7 @@ type Values struct {
 	HealthProbeTimeoutMS   int64 `json:"health_probe_timeout_ms"`
 }
 
+// Settings 是请求路径读取的无共享快照：可编辑数值 + 来源与时间元数据。
 type Settings struct {
 	Values
 	Source        string    `json:"source"`

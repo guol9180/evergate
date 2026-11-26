@@ -337,46 +337,6 @@ func TestManagerReportFailureMapping(t *testing.T) {
 	}
 }
 
-func TestDeriveChannelStatus(t *testing.T) {
-	mkKeys := func(states ...string) []*store.ChannelKey {
-		keys := []*store.ChannelKey{}
-		for i, s := range states {
-			k := &store.ChannelKey{ID: int64(i + 1), Enabled: true}
-			keys = append(keys, k)
-			_ = s
-		}
-		return keys
-	}
-	stateFn := func(states map[int64]string) func(int64) string {
-		return func(id int64) string { return states[id] }
-	}
-	cases := []struct {
-		name   string
-		keys   []*store.ChannelKey
-		states map[int64]string
-		want   string
-	}{
-		{"全部active", mkKeys("a", "a"), map[int64]string{1: store.KeyStateActive, 2: store.KeyStateActive}, store.ChannelStatusActive},
-		{"部分cooldown", mkKeys("a", "c"), map[int64]string{1: store.KeyStateActive, 2: store.KeyStateCooldown}, store.ChannelStatusDegraded},
-		{"全部cooldown", mkKeys("c", "c"), map[int64]string{1: store.KeyStateCooldown, 2: store.KeyStateCooldown}, store.ChannelStatusDown},
-		{"全部disabled", mkKeys("d", "d"), map[int64]string{1: store.KeyStateDisabled, 2: store.KeyStateDisabled}, store.ChannelStatusDown},
-		{"half_open算可用", mkKeys("h", "c"), map[int64]string{1: store.KeyStateHalfOpen, 2: store.KeyStateCooldown}, store.ChannelStatusDegraded},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := DeriveChannelStatus(c.keys, stateFn(c.states)); got != c.want {
-				t.Fatalf("got %s, want %s", got, c.want)
-			}
-		})
-	}
-	t.Run("无启用key", func(t *testing.T) {
-		keys := []*store.ChannelKey{{ID: 1, Enabled: false}}
-		if got := DeriveChannelStatus(keys, func(int64) string { return store.KeyStateActive }); got != store.ChannelStatusDown {
-			t.Fatalf("got %s, want down", got)
-		}
-	})
-}
-
 func TestAcquirePreferred(t *testing.T) {
 	clock := &fakeClock{t: time.Unix(1000, 0)}
 	m := NewManager(3, DefaultCooldownSchedule, clock.Now)

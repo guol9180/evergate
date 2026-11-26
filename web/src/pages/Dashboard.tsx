@@ -23,7 +23,7 @@ export default function Dashboard() {
   // 成功率/延迟来自后端全量聚合，而不是最新 100 条（T75 修复口径）。
   const stats = useLogsStats({ start: todayStart })
 
-  const chs = channels.data?.items ?? []
+  const chs = useMemo(() => channels.data?.items ?? [], [channels.data?.items])
   const tokenItems = tokens.data?.items ?? []
   const s = stats.data?.stats
 

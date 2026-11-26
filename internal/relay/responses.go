@@ -357,17 +357,17 @@ func (r *responsesToolRegistry) Register(name, namespace string, custom bool) (s
 	originalKey := responsesToolOriginalKey(identity.Namespace, name, custom)
 	if existing, ok := r.upstreamByOriginal[originalKey]; ok {
 		if previous := r.byUpstream[existing]; previous != identity {
-			return "", fmt.Errorf("Responses tool %q in namespace %q has conflicting declarations", name, identity.Namespace)
+			return "", fmt.Errorf("responses tool %q in namespace %q has conflicting declarations", name, identity.Namespace)
 		}
 		return existing, nil
 	}
 
 	candidate := chatToolUpstreamName(identity.Namespace, name, custom)
 	if len(candidate) > 64 {
-		return "", fmt.Errorf("Responses tool %q in namespace %q cannot map to a valid Chat tool name", name, identity.Namespace)
+		return "", fmt.Errorf("responses tool %q in namespace %q cannot map to a valid Chat tool name", name, identity.Namespace)
 	}
 	if r.used[candidate] {
-		return "", fmt.Errorf("Responses tool %q in namespace %q maps to an already used Chat tool name %q", name, identity.Namespace, candidate)
+		return "", fmt.Errorf("responses tool %q in namespace %q maps to an already used Chat tool name %q", name, identity.Namespace, candidate)
 	}
 	identity.UpstreamName = candidate
 	r.used[candidate] = true
@@ -456,7 +456,7 @@ func appendResponsesToolsToChat(out *[]chatTool, tools []responsesTool, namespac
 			}
 		case "web_search":
 			if tool.External != nil && *tool.External {
-				return fmt.Errorf("Responses web_search tool is not supported by Chat Completions upstreams")
+				return fmt.Errorf("responses web_search tool is not supported by Chat Completions upstreams")
 			}
 		case "custom":
 			function, err := customToolChatFunction(tool)
@@ -489,14 +489,14 @@ func containsChatTool(tools []chatTool, name string) bool {
 
 func customToolChatFunction(tool responsesTool) (chatFunction, error) {
 	if tool.Async != nil && *tool.Async {
-		return chatFunction{}, fmt.Errorf("Responses async custom tool %q is not supported", tool.Name)
+		return chatFunction{}, fmt.Errorf("responses async custom tool %q is not supported", tool.Name)
 	}
 	if tool.DeferLoad != nil && *tool.DeferLoad {
-		return chatFunction{}, fmt.Errorf("Responses deferred custom tool %q is not supported", tool.Name)
+		return chatFunction{}, fmt.Errorf("responses deferred custom tool %q is not supported", tool.Name)
 	}
 	for _, caller := range tool.Callers {
 		if caller != "direct" {
-			return chatFunction{}, fmt.Errorf("Responses custom tool %q caller %q is not supported", tool.Name, caller)
+			return chatFunction{}, fmt.Errorf("responses custom tool %q caller %q is not supported", tool.Name, caller)
 		}
 	}
 	inputDescription := "Raw input for this custom tool, passed as a plain string."
@@ -512,18 +512,18 @@ func customToolChatFunction(tool responsesTool) (chatFunction, error) {
 		switch format.Type {
 		case "", "text":
 			if format.Syntax != "" || format.Definition != "" {
-				return chatFunction{}, fmt.Errorf("Responses custom tool %q text format cannot carry grammar fields", tool.Name)
+				return chatFunction{}, fmt.Errorf("responses custom tool %q text format cannot carry grammar fields", tool.Name)
 			}
 		case "grammar":
 			if format.Syntax != "lark" && format.Syntax != "regex" {
-				return chatFunction{}, fmt.Errorf("Responses custom tool %q grammar syntax %q is not supported", tool.Name, format.Syntax)
+				return chatFunction{}, fmt.Errorf("responses custom tool %q grammar syntax %q is not supported", tool.Name, format.Syntax)
 			}
 			if strings.TrimSpace(format.Definition) == "" {
-				return chatFunction{}, fmt.Errorf("Responses custom tool %q grammar definition cannot be empty", tool.Name)
+				return chatFunction{}, fmt.Errorf("responses custom tool %q grammar definition cannot be empty", tool.Name)
 			}
 			inputDescription += " It must match grammar syntax: " + format.Syntax + ".\ngrammar definition:\n" + format.Definition
 		default:
-			return chatFunction{}, fmt.Errorf("Responses custom tool %q format %q is not supported", tool.Name, format.Type)
+			return chatFunction{}, fmt.Errorf("responses custom tool %q format %q is not supported", tool.Name, format.Type)
 		}
 	}
 	strict := false

@@ -200,7 +200,7 @@ func TestSessionAffinityInvalidHeaderFallsBack(t *testing.T) {
 	env := newEnv(t)
 	up := newUpstream(t, chatOKHandler("ok"))
 	env.addChannel(t, "only", up.server.URL, 1, []string{"gpt-x"}, nil, "sk-only")
-	_, plain := env.addToken(t, "affinity-invalid", nil)
+	token, plain := env.addToken(t, "affinity-invalid", nil)
 	gateway := env.authGateway(t)
 
 	for name, session := range map[string]string{
@@ -212,8 +212,8 @@ func TestSessionAffinityInvalidHeaderFallsBack(t *testing.T) {
 			if resp, body := postWithSession(t, gateway, "/v1/chat/completions", plain, session, `{"model":"gpt-x","messages":[]}`); resp.StatusCode != 200 {
 				t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
 			}
-			if env.opt.Affinity.Len() != 0 {
-				t.Fatalf("非法 session 不应写亲和, len = %d", env.opt.Affinity.Len())
+			if _, ok := env.opt.Affinity.Lookup(token.ID, "gpt-x", session); ok {
+				t.Fatalf("非法 session 不应写亲和: %q", session)
 			}
 		})
 	}
@@ -290,7 +290,7 @@ func TestSessionAffinityConcurrentSameSession(t *testing.T) {
 	upB := newUpstream(t, chatOKHandler("b"))
 	env.addChannel(t, "a", upA.server.URL, 1, []string{"gpt-x"}, nil, "sk-a")
 	env.addChannel(t, "b", upB.server.URL, 1, []string{"gpt-x"}, nil, "sk-b")
-	_, plain := env.addToken(t, "affinity-concurrent", nil)
+	token, plain := env.addToken(t, "affinity-concurrent", nil)
 	gateway := env.authGateway(t)
 
 	var wg sync.WaitGroup
@@ -331,8 +331,8 @@ func TestSessionAffinityConcurrentSameSession(t *testing.T) {
 	if hitsA+hitsB != 20 {
 		t.Fatalf("应完成 20 次上游请求, got a=%d b=%d", hitsA, hitsB)
 	}
-	if env.opt.Affinity.Len() != 1 {
-		t.Fatalf("同一 session 只应有一条亲和记录, len = %d", env.opt.Affinity.Len())
+	if _, ok := env.opt.Affinity.Lookup(token.ID, "gpt-x", "sess-concurrent"); !ok {
+		t.Fatal("同一 session 只应有一条亲和记录")
 	}
 }
 

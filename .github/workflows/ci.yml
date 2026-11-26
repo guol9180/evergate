@@ -35,6 +35,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm --prefix web ci
 
+      - name: Audit frontend dependencies
+        run: npm --prefix web audit --audit-level=high
+
       - name: Test frontend
         run: npm --prefix web test
 
@@ -46,6 +49,15 @@ jobs:
 
       - name: Vet backend
         run: go vet ./...
+
+      - name: Check gofmt
+        run: make gofmt-check
+
+      - name: Staticcheck backend
+        run: make staticcheck
+
+      - name: Scan backend vulnerabilities
+        run: make govulncheck
 
       # -race 需要 cgo；ubuntu runner 自带 gcc。SQLite 文件锁要求 -p 1。
       - name: Test backend with race detector

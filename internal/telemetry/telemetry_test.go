@@ -97,7 +97,7 @@ func TestExportsOTLPJSONWithParentChild(t *testing.T) {
 	defer func() { _ = tr.Shutdown(context.Background()) }()
 
 	ctx, parentHandle := tr.Start(context.Background(), "relay.request", KindServer,
-		String("model", "gpt-test"), Int("stream", 1), Float("ratio", 0.5))
+		String("model", "gpt-test"), Int("stream", 1))
 	_, childHandle := tr.Start(ctx, "relay.attempt", KindClient, String("channel", "7"))
 	childHandle.End(nil)
 	parentHandle.End(errors.New("boom: upstream failed"))

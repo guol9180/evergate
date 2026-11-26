@@ -71,7 +71,7 @@ func (m *Manager) verifyArtifact(ctx context.Context, artifact []byte) error {
 		}
 		if output, err := runPlatformCommand(ctx, "/usr/sbin/spctl", "-a", "-vv", "-t", "open",
 			"--context", "context:primary-signature", file); err != nil {
-			return fmt.Errorf("Developer ID 签名校验失败: %w (%s)", err, strings.TrimSpace(string(output)))
+			return fmt.Errorf("developer ID 签名校验失败: %w (%s)", err, strings.TrimSpace(string(output)))
 		}
 	case "windows":
 		if os.Getenv("EVERGATE_REQUIRE_AUTHENTICODE") != "true" {
@@ -85,7 +85,7 @@ func (m *Manager) verifyArtifact(ctx context.Context, artifact []byte) error {
 		script := `$s=Get-AuthenticodeSignature -LiteralPath $args[0]; if ($s.Status -ne 'Valid') { Write-Error "$($s.Status): $($s.StatusMessage)"; exit 1 }`
 		if output, err := runPlatformCommand(ctx, "powershell.exe", "-NoProfile", "-NonInteractive",
 			"-Command", script, file); err != nil {
-			return fmt.Errorf("Authenticode 校验失败: %w (%s)", err, strings.TrimSpace(string(output)))
+			return fmt.Errorf("authenticode 校验失败: %w (%s)", err, strings.TrimSpace(string(output)))
 		}
 	}
 	return nil

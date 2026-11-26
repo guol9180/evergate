@@ -36,28 +36,32 @@ func TestPriceManagerDefaultAndOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if _, ok := mgr.Calculate(1, "m", 1, 1); ok {
+	calc := func(channelID, in, out int64) (int64, bool) {
+		micros, source := mgr.CalculateWithSource(channelID, "m", Tokens{Input: in, Output: out})
+		return micros, source != ""
+	}
+	if _, ok := calc(1, 1, 1); ok {
 		t.Fatal("empty pricing should be unpriced")
 	}
 	if err := mgr.SetDefault(context.Background(), PriceInput{Input: 0, Output: 0}); err != nil {
 		t.Fatalf("set zero default: %v", err)
 	}
-	if micros, ok := mgr.Calculate(1, "m", 3, 2); !ok || micros != 0 {
+	if micros, ok := calc(1, 3, 2); !ok || micros != 0 {
 		t.Fatalf("explicit zero price = %d %v, want 0 true", micros, ok)
 	}
 	if err := mgr.SetDefault(context.Background(), PriceInput{Input: 1_000_000, Output: 2_000_000}); err != nil {
 		t.Fatalf("set default: %v", err)
 	}
-	if micros, ok := mgr.Calculate(1, "m", 3, 2); !ok || micros != 7 {
+	if micros, ok := calc(1, 3, 2); !ok || micros != 7 {
 		t.Fatalf("default calc = %d %v, want 7 true", micros, ok)
 	}
 	if _, err := mgr.UpsertOverride(context.Background(), 1, "m", PriceInput{Input: 10_000_000, Output: 20_000_000}); err != nil {
 		t.Fatalf("override: %v", err)
 	}
-	if micros, ok := mgr.Calculate(1, "m", 3, 2); !ok || micros != 70 {
+	if micros, ok := calc(1, 3, 2); !ok || micros != 70 {
 		t.Fatalf("override calc = %d %v, want 70 true", micros, ok)
 	}
-	if micros, ok := mgr.Calculate(2, "m", 3, 2); !ok || micros != 7 {
+	if micros, ok := calc(2, 3, 2); !ok || micros != 7 {
 		t.Fatalf("other channel should use default: %d %v", micros, ok)
 	}
 	global, overrides, err := mgr.List(context.Background())
@@ -352,5 +356,81 @@ func TestCatalogCachePrices(t *testing.T) {
 	effective := mgr.Effective(sonnet.ID, []string{"claude-sonnet-4-5"})
 	if len(effective) != 1 || effective[0].CacheReadMicrosPerMillion != 300_000 || effective[0].CacheWriteMicrosPerMillion != 3_750_000 {
 		t.Fatalf("effective prices = %#v", effective)
+	}
+}
+
+func TestBuildReportFiltersModelsAndMultiDay(t *testing.T) {
+	db := setupDB(t)
+	day1 := time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC)
+	day2 := day1.AddDate(0, 0, 1)
+	ch1 := &store.Channel{Name: "ch-1", Type: "openai-compatible", BaseURL: "http://a", Models: []string{"m1"}, Enabled: true}
+	ch2 := &store.Channel{Name: "ch-2", Type: "openai-compatible", BaseURL: "http://b", Models: []string{"m2"}, Enabled: true}
+	if err := db.Create(ch1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(ch2).Error; err != nil {
+		t.Fatal(err)
+	}
+	tok1 := &store.Token{Name: "tok-1", KeyHash: "h1", Enabled: true}
+	tok2 := &store.Token{Name: "tok-2", KeyHash: "h2", Enabled: true}
+	if err := db.Create(tok1).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(tok2).Error; err != nil {
+		t.Fatal(err)
+	}
+	logs := []store.RequestLog{
+		{CreatedAt: day1.Add(time.Hour), ChannelID: ch1.ID, Model: "m1", TokenID: tok1.ID, StatusCode: 200, PromptTokens: 10, CompletionTokens: 5, CostMicros: 100, CostStatus: CostStatusPriced},
+		{CreatedAt: day1.Add(2 * time.Hour), ChannelID: ch2.ID, Model: "m2", TokenID: tok2.ID, StatusCode: 500, PromptTokens: 20, CostMicros: 200, CostStatus: CostStatusPriced},
+		{CreatedAt: day2.Add(time.Hour), ChannelID: ch1.ID, Model: "m1", TokenID: tok1.ID, StatusCode: 200, PromptTokens: 30, CompletionTokens: 15, CostMicros: 300, CostStatus: CostStatusPriced},
+	}
+	if err := db.Create(&logs).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, day := range []time.Time{day1, day2} {
+		if err := RecomputeDay(context.Background(), db, day); err != nil {
+			t.Fatalf("recompute %s: %v", day.Format("2006-01-02"), err)
+		}
+	}
+
+	full, err := BuildReport(db, ReportQuery{Start: day1, End: day2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(full.Daily) != 2 || full.Daily[0].Date != "2026-11-09" || full.Daily[1].Date != "2026-11-10" {
+		t.Fatalf("daily buckets = %#v", full.Daily)
+	}
+	if full.Daily[0].CostMicros != 300 || full.Daily[1].CostMicros != 300 {
+		t.Fatalf("daily cost = %#v", full.Daily)
+	}
+	if len(full.TopModels) != 2 || full.TopModels[0].Name != "m1" || full.TopModels[0].CostMicros != 400 {
+		t.Fatalf("top models = %#v", full.TopModels)
+	}
+
+	byChannel, err := BuildReport(db, ReportQuery{Start: day1, End: day2, ChannelID: ch2.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byChannel.Totals.Requests != 1 || byChannel.Totals.Success != 0 || byChannel.Totals.CostMicros != 200 {
+		t.Fatalf("channel filter totals = %#v", byChannel.Totals)
+	}
+	if len(byChannel.TopChannels) != 1 || byChannel.TopChannels[0].Name != "ch-2" {
+		t.Fatalf("channel filter rows = %#v", byChannel.TopChannels)
+	}
+
+	byModel, err := BuildReport(db, ReportQuery{Start: day1, End: day2, Model: "m1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byModel.Totals.Requests != 2 || len(byModel.TopModels) != 1 || byModel.TopModels[0].Name != "m1" {
+		t.Fatalf("model filter = %#v %#v", byModel.Totals, byModel.TopModels)
+	}
+
+	byToken, err := BuildReport(db, ReportQuery{Start: day1, End: day2, TokenID: tok2.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byToken.Totals.Requests != 1 || len(byToken.TopTokens) != 1 || byToken.TopTokens[0].Name != "tok-2" {
+		t.Fatalf("token filter = %#v %#v", byToken.Totals, byToken.TopTokens)
 	}
 }

@@ -117,7 +117,7 @@ type notifyIconData struct {
 	Version         uint32
 	InfoTitle       [64]uint16
 	InfoFlags       uint32
-	GuidItem        windows.GUID
+	GUIDItem        windows.GUID
 	BalloonIcon     windows.Handle
 }
 

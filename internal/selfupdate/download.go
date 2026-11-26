@@ -187,7 +187,7 @@ func extractNPMAssets(tarball []byte, artifactName, checksumName string) ([]byte
 // downloadReleaseAsset 精确匹配当前版本、平台和 checksums 资产；任何缺失或重名都拒绝。
 func (m *Manager) downloadReleaseAsset(ctx context.Context, target string) ([]byte, error) {
 	if m.opt.Latest == nil {
-		return nil, errors.New("Release 更新通道未配置")
+		return nil, errors.New("release 更新通道未配置")
 	}
 	status, err := m.opt.Latest(ctx)
 	if err != nil {
@@ -197,7 +197,7 @@ func (m *Manager) downloadReleaseAsset(ctx context.Context, target string) ([]by
 		return nil, errors.New("开发版本无法使用 Release 更新通道")
 	}
 	if got := strings.TrimPrefix(status.LatestVersion, "v"); got != target {
-		return nil, fmt.Errorf("Release 版本 %q 与目标版本 %q 不一致", status.LatestVersion, target)
+		return nil, fmt.Errorf("release 版本 %q 与目标版本 %q 不一致", status.LatestVersion, target)
 	}
 	artifactName, checksumName, err := releaseAssetNames(m.opt.GOOS, m.opt.GOARCH, target)
 	if err != nil {
@@ -216,7 +216,7 @@ func (m *Manager) downloadReleaseAsset(ctx context.Context, target string) ([]by
 	}
 	for _, name := range []string{artifactName, checksumName} {
 		if seen[name] != 1 {
-			return nil, fmt.Errorf("Release 资产 %s 必须精确出现一次（实际 %d 次）", name, seen[name])
+			return nil, fmt.Errorf("release 资产 %s 必须精确出现一次（实际 %d 次）", name, seen[name])
 		}
 	}
 	if err := validateAssetURL(artifactURL); err != nil {
@@ -334,13 +334,13 @@ func extractLinuxBinary(archive []byte) ([]byte, error) {
 			continue
 		}
 		if found {
-			return nil, errors.New("Linux tar.gz 包含重复 evergate")
+			return nil, errors.New("linux tar.gz 包含重复 evergate")
 		}
 		if hdr.Typeflag != tar.TypeReg {
-			return nil, errors.New("Linux tar.gz 中的 evergate 不是普通文件")
+			return nil, errors.New("linux tar.gz 中的 evergate 不是普通文件")
 		}
 		if hdr.Size <= 0 || hdr.Size > maxBinarySize {
-			return nil, errors.New("Linux tar.gz 中的 evergate 大小非法")
+			return nil, errors.New("linux tar.gz 中的 evergate 大小非法")
 		}
 		found = true
 		binary, err = io.ReadAll(io.LimitReader(tr, maxBinarySize+1))
@@ -348,11 +348,11 @@ func extractLinuxBinary(archive []byte) ([]byte, error) {
 			return nil, err
 		}
 		if int64(len(binary)) > maxBinarySize {
-			return nil, errors.New("Linux evergate 超过大小上限")
+			return nil, errors.New("linux evergate 超过大小上限")
 		}
 	}
 	if !found {
-		return nil, errors.New("Linux tar.gz 缺少 evergate")
+		return nil, errors.New("linux tar.gz 缺少 evergate")
 	}
 	return binary, nil
 }
@@ -377,7 +377,7 @@ func verifyChecksum(artifact, checksums []byte, assetName string) error {
 		sum := sha256.Sum256(artifact)
 		got := hex.EncodeToString(sum[:])
 		if got != want {
-			return errors.New("Release 安装包 SHA256 校验失败")
+			return errors.New("release 安装包 SHA256 校验失败")
 		}
 	}
 	if matches == 0 {

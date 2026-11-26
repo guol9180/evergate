@@ -1,5 +1,5 @@
 import type { RetryAttempt } from './types'
-import { extractPlaygroundDelta, extractPlaygroundText } from '../lib/playgroundProtocol'
+import { extractPlaygroundDelta, extractPlaygroundText, type PlaygroundPayload } from '../lib/playgroundProtocol'
 import { withBasePath } from '../lib/runtime'
 import { t } from '../lib/i18n'
 
@@ -111,7 +111,7 @@ async function readSSE(resp: Response, onDelta: (delta: string) => void): Promis
       streamError = t('playground.metaFailed')
           }
         } else if (data.trim() !== '[DONE]') {
-          let chunk: any
+          let chunk: PlaygroundPayload | null = null
           try {
             chunk = JSON.parse(data)
           } catch {

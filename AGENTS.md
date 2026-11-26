@@ -28,7 +28,7 @@
 - **分支**：从 `main` 切出 `feat/<简述>`、`fix/<简述>` 或 `codex/<简述>`；不在 `main` 上直接开发
 - **开发顺序**：严格按 [DEVELOP_PLAN.md · 里程碑](./DEVELOP_PLAN.md#里程碑) 当前阶段顺序执行；依赖项先完成，每步可运行、可验证后再进入下一步
 - **提交信息**：`feat:` / `fix:` / `test:` / `docs:` 前缀
-- **提交前验证**：`go test -p 1 ./...`、`go vet ./...`、`make build` 通过；涉及前端时 `npm run lint`、`npm test`、`npm run build` 通过；CI（`ci.yml`）另跑 `go test -race`、调度覆盖率 ≥90%、relay 覆盖率 ≥81%、gitleaks、actionlint、macOS cgo 编译。覆盖率报告不得把语句覆盖率表述为分支覆盖率
+- **提交前验证**：`make gofmt-check`、`make staticcheck`、`make govulncheck`、`go test -p 1 ./...`、`go vet ./...`、`make build` 通过；涉及前端时 `npm run lint`、`npm test`、`npm run build`、`make audit-web` 通过；CI（`ci.yml`）另跑 `go test -race`、调度覆盖率 ≥90%、relay 覆盖率 ≥81%、gitleaks、actionlint、macOS cgo 编译。覆盖率报告不得把语句覆盖率表述为分支覆盖率
 - **新增依赖**：须有明确理由并在提交说明中记录；先对照禁止清单。本机 Go/Node 环境事实见 [docs/agents/开发环境.md](./docs/agents/开发环境.md)
 
 ## 版本与发布规则

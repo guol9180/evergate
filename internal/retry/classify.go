@@ -31,7 +31,7 @@ const (
 	KindContentPolicy ErrorKind = "content_policy"
 )
 
-// 首个 token 超时哨兵：属于瞬时故障（relay 在可重试窗口内返回）。
+// ErrFirstTokenTimeout 是首个 token 超时哨兵：属于瞬时故障（relay 在可重试窗口内返回）。
 var ErrFirstTokenTimeout = errors.New("first token timeout")
 
 // Result 一次上游尝试的结果摘要（供分类；StatusCode 为 0 表示未拿到 HTTP 响应）。

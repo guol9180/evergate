@@ -154,35 +154,6 @@ func (t *Table) Forget(tokenID int64, model, session string) {
 	}
 }
 
-// ForgetIfMatches 仅在记录仍指向给定渠道与 key 时删除，
-// 避免慢失败请求误删其他并发请求刚写入的新亲和。
-func (t *Table) ForgetIfMatches(tokenID int64, model, session string, channelID, keyID int64) {
-	if t == nil || tokenID == 0 || session == "" {
-		return
-	}
-	key := fingerprint(tokenID, model, session)
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	el, ok := t.entries[key]
-	if !ok {
-		return
-	}
-	rec := el.Value.(*record)
-	if rec.channelID == channelID && rec.keyID == keyID {
-		t.removeLocked(el)
-	}
-}
-
-// Len 返回当前条目数（含尚未清理的过期记录），用于容量与诊断断言。
-func (t *Table) Len() int {
-	if t == nil {
-		return 0
-	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.lru.Len()
-}
-
 func (t *Table) removeLocked(el *list.Element) {
 	rec := el.Value.(*record)
 	delete(t.entries, rec.fingerprint)
