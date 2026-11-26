@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, AlertTriangle, ArrowRight, Download, KeyRound, Plug, Timer, TowerControl, Waypoints, Zap } from 'lucide-react'
 import { useChannels, useLogsStats, useTokens, useUpdateStatus } from '../api/hooks'
-import { Button, Card, Empty, PageHeader, PageSkeleton, StatusBadge, Td, Th } from '../components/ui'
+import { Alert, Button, Card, Empty, PageHeader, PageSkeleton, StatusBadge, Td, Th } from '../components/ui'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { channelStateTone, fmtInt, fmtMs, fmtTime, stateLabel, statusRank } from '../lib/format'
 import { currentBasePath } from '../lib/runtime'
@@ -42,35 +42,26 @@ export default function Dashboard() {
   const baseURL = `${window.location.origin}${currentBasePath() || ''}/v1`
 
   const updateBanner = update.data?.update_available ? (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-brand-border bg-brand-subtle px-4 py-3">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface text-brand-text shadow-sm">
-        <Download size={16} aria-hidden="true" />
-      </span>
-      <div className="min-w-56 flex-1">
-        <div className="text-sm font-semibold text-foreground">{tf('dashboard.update.available', { version: String(update.data.latest_version) })}</div>
-        <p className="text-xs text-muted">{t('dashboard.update.desc')}</p>
-      </div>
-      <Button size="sm" onClick={() => setUpdateOpen(true)}>
-        <Download size={14} /> {t('dashboard.update.now')}
-      </Button>
+    <Alert
+      tone="info"
+      title={tf('dashboard.update.available', { version: String(update.data.latest_version) })}
+      action={<Button size="sm" onClick={() => setUpdateOpen(true)}><Download size={14} /> {t('dashboard.update.now')}</Button>}
+    >
+      <p>{t('dashboard.update.desc')}</p>
       {update.data.release_url && (
-        <a href={update.data.release_url} target="_blank" rel="noreferrer" className="text-xs font-medium text-brand-text hover:underline">
+        <a href={update.data.release_url} target="_blank" rel="noreferrer" className="mt-1 inline-block font-medium underline-offset-2 hover:underline">
           {t('dashboard.update.notes')}
         </a>
       )}
-    </div>
+    </Alert>
   ) : null
 
   const quotaBanner = lowQuotaTokens.length > 0 ? (
-    <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-warning-border bg-warning-subtle px-4 py-3 text-sm text-warning-text">
-      <AlertTriangle size={16} className="shrink-0" aria-hidden="true" />
-      <span>
-        {tf('dashboard.lowQuota.title', { count: lowQuotaTokens.length })}
-        {lowQuotaTokens.slice(0, 3).map((tok) => tf('dashboard.lowQuota.item', { name: tok.name, remaining: fmtInt(tok.remaining_quota) })).join(', ')}
-        {lowQuotaTokens.length > 3 ? t('dashboard.lowQuota.more') : ''}
-      </span>
-      <Link to="/tokens" className="font-medium underline-offset-2 hover:underline">{t('dashboard.lowQuota.adjust')}</Link>
-    </div>
+    <Alert tone="warning" action={<Link to="/tokens" className="font-medium underline underline-offset-2">{t('dashboard.lowQuota.adjust')}</Link>}>
+      {tf('dashboard.lowQuota.title', { count: lowQuotaTokens.length })}
+      {lowQuotaTokens.slice(0, 3).map((tok) => tf('dashboard.lowQuota.item', { name: tok.name, remaining: fmtInt(tok.remaining_quota) })).join(', ')}
+      {lowQuotaTokens.length > 3 ? t('dashboard.lowQuota.more') : ''}
+    </Alert>
   ) : null
 
   if (channels.isPending) {
@@ -152,9 +143,10 @@ export default function Dashboard() {
 
   return (
     <div className="eg-page-stack">
+      {pageHeader}
+      {/* 横幅紧跟页头：先知道"这是哪一页"，再读"这一页有什么要注意的" */}
       {updateBanner}
       {quotaBanner}
-      {pageHeader}
       {onboarding}
 
       {/* 事实行（gpt-load HomeSummary 模式） */}

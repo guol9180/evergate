@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Check, Search } from 'lucide-react'
-import { Badge, Button, ErrorText, Input, Spinner } from './ui'
+import { Search } from 'lucide-react'
+import { Badge, Button, Checkbox, ErrorText, Input, SegmentedControl, Spinner } from './ui'
 import { t, tf } from '../lib/i18n'
 import { priceHint } from './PriceTable'
 
@@ -107,11 +107,11 @@ export default function ModelPicker({
                 key={`${option.publicModel}|${option.upstreamModel}|${option.context ?? ''}|${index}`}
                 className="flex cursor-pointer items-start gap-2.5 border-b border-line-soft px-3 py-2.5 last:border-b-0 hover:bg-surface-soft"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={checked}
-                  onChange={() => toggle(option.publicModel)}
-                  className="mt-0.5 h-4 w-4 rounded border-line-strong text-brand-text focus:ring-brand"
+                  onCheckedChange={() => toggle(option.publicModel)}
+                  aria-label={option.publicModel}
+                  className="mt-0.5"
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block break-all text-sm font-medium text-foreground-soft">{option.publicModel}</span>
@@ -121,7 +121,6 @@ export default function ModelPicker({
                     {option.price && <span className="text-success-text"> · {priceHint(option.price.input_micros_per_million, option.price.output_micros_per_million)}</span>}
                   </span>
                 </span>
-                {checked && <Check size={15} className="mt-0.5 shrink-0 text-success-text" />}
               </label>
             )
           })}
@@ -135,17 +134,20 @@ export default function ModelPicker({
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-xs text-muted">
           <span>{t('picker.writeMode')}</span>
-          <label className="inline-flex cursor-pointer items-center gap-1">
-            <input type="radio" checked={mode === 'append'} onChange={() => setMode('append')} />
-            {t('picker.append')}
-          </label>
-          <label className="inline-flex cursor-pointer items-center gap-1">
-            <input type="radio" checked={mode === 'replace'} onChange={() => setMode('replace')} />
-            {t('picker.replace')}
-          </label>
+          <SegmentedControl
+            size="sm"
+            className="w-52 grid-cols-2"
+            label={t('picker.writeMode')}
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: 'append', label: t('picker.append') },
+              { value: 'replace', label: t('picker.replace') },
+            ]}
+          />
           {hasPrices && (
-            <label className="inline-flex cursor-pointer items-center gap-1 text-success-text">
-              <input type="checkbox" checked={withPrices} onChange={(e) => setWithPrices(e.target.checked)} />
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-success-text">
+              <Checkbox checked={withPrices} onCheckedChange={(next) => setWithPrices(next === true)} aria-label={t('picker.writePrices')} />
               {t('picker.writePrices')}
             </label>
           )}

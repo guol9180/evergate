@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Download, RefreshCw, Search, ScrollText } from 'lucide-react'
 import { buildLogQuery, downloadAdminFile, useChannels, useLogs, useTokens } from '../api/hooks'
-import { Badge, Button, Card, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, Td, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, Td, Th } from '../components/ui'
+import { notify } from '../components/Toaster'
 import RetryTimeline from '../components/RetryTimeline'
 import type { RequestLog } from '../api/types'
 import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, fmtTime, kindText, statusTone } from '../lib/format'
@@ -33,7 +34,6 @@ export default function Logs() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [exporting, setExporting] = useState(false)
-  const [exportError, setExportError] = useState('')
   const [selected, setSelected] = useState<RequestLog | null>(null)
   const channels = useChannels()
   const tokens = useTokens()
@@ -54,11 +54,10 @@ export default function Logs() {
 
   const exportCsv = async () => {
     setExporting(true)
-    setExportError('')
     try {
       await downloadAdminFile(`/admin/api/logs/export?${buildLogQuery(filters)}`, 'evergate-logs.csv')
     } catch (err) {
-      setExportError((err as Error).message || t('logs.exportFailed'))
+      notify.error(err, t('logs.exportFailed'))
     } finally {
       setExporting(false)
     }
@@ -87,32 +86,45 @@ export default function Logs() {
           </>
         )}
       />
-      {exportError && <p role="alert" className="text-xs text-danger-text">{exportError}</p>}
-
       {/* 筛选栏（gpt-load LogsFilterForm 模式）：渠道/令牌用下拉而不是让用户记数字 ID */}
       <Card>
         <div className="eg-grid eg-grid-auto items-end">
           <Field label={t('logs.filter.model')}><Input placeholder={t('logs.filter.modelPlaceholder')} value={model} onChange={(e) => resetPage(setModel)(e.target.value)} /></Field>
           <Field label={t('logs.filter.status')}>
-            <Select value={status} onChange={(e) => resetPage(setStatus)(e.target.value)} aria-label={t('logs.filter.status')}>
-              <option value="">{t('logs.filter.all')}</option>
-              <option value="200">{t('logs.filter.200')}</option>
-              <option value="401">{t('logs.filter.401')}</option>
-              <option value="429">{t('logs.filter.429')}</option>
-              <option value="503">{t('logs.filter.503')}</option>
-            </Select>
+            <Select
+              value={status}
+              onValueChange={resetPage(setStatus)}
+              aria-label={t('logs.filter.status')}
+              options={[
+                { value: '', label: t('logs.filter.all') },
+                { value: '200', label: t('logs.filter.200') },
+                { value: '401', label: t('logs.filter.401') },
+                { value: '429', label: t('logs.filter.429') },
+                { value: '503', label: t('logs.filter.503') },
+              ]}
+            />
           </Field>
           <Field label={t('logs.filter.channel')}>
-            <Select value={channelId} onChange={(e) => resetPage(setChannelId)(e.target.value)} aria-label={t('logs.filter.channel')}>
-              <option value="">{t('logs.filter.allChannels')}</option>
-              {(channels.data?.items ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}（#{c.id}）</option>)}
-            </Select>
+            <Select
+              value={channelId}
+              onValueChange={resetPage(setChannelId)}
+              aria-label={t('logs.filter.channel')}
+              options={[
+                { value: '', label: t('logs.filter.allChannels') },
+                ...(channels.data?.items ?? []).map((c) => ({ value: String(c.id), label: `${c.name}（#${c.id}）` })),
+              ]}
+            />
           </Field>
           <Field label={t('logs.filter.token')}>
-            <Select value={tokenId} onChange={(e) => resetPage(setTokenId)(e.target.value)} aria-label={t('logs.filter.token')}>
-              <option value="">{t('logs.filter.allTokens')}</option>
-              {(tokens.data?.items ?? []).map((t) => <option key={t.id} value={t.id}>{t.name}（#{t.id}）</option>)}
-            </Select>
+            <Select
+              value={tokenId}
+              onValueChange={resetPage(setTokenId)}
+              aria-label={t('logs.filter.token')}
+              options={[
+                { value: '', label: t('logs.filter.allTokens') },
+                ...(tokens.data?.items ?? []).map((token) => ({ value: String(token.id), label: `${token.name}（#${token.id}）` })),
+              ]}
+            />
           </Field>
           <Field label={t('logs.filter.start')}><Input type="date" value={startDate} onChange={(e) => resetPage(setStartDate)(e.target.value)} /></Field>
           <Field label={t('logs.filter.end')}><Input type="date" value={endDate} onChange={(e) => resetPage(setEndDate)(e.target.value)} /></Field>
@@ -211,13 +223,13 @@ function LogDrawer({ log, onClose }: { log: RequestLog | null; onClose: () => vo
           </div>
 
           {log.error_message && (
-            <div className="rounded-lg bg-danger-subtle p-3" data-upstream="true">
-              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-danger-text">
+            <Alert tone="danger" data-upstream="true">
+              <div className="flex flex-wrap items-center gap-2 font-semibold">
                 <span>{kindText(log.error_type)}</span>
                 {describeUpstreamError(log.error_message).code && <Badge tone="neutral">{tf('retry.upstreamCode', { code: describeUpstreamError(log.error_message).code ?? '' })}</Badge>}
               </div>
-              <div className="mt-1 break-words text-xs text-danger-text">{describeUpstreamError(log.error_message).text}</div>
-            </div>
+              <div className="mt-1 break-words">{describeUpstreamError(log.error_message).text}</div>
+            </Alert>
           )}
 
           <div>

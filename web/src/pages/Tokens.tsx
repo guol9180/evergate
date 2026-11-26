@@ -2,7 +2,8 @@ import { type FormEvent, useId, useState } from 'react'
 import { Check, Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken } from '../api/hooks'
 import type { Token } from '../api/types'
-import { Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, Dialog, Empty, Field, IconButton, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime, tokenStatusLabel, tokenStatusTone } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
@@ -29,9 +30,7 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
   return (
     <Dialog open onClose={onClose} title={t('tokens.created.title')}>
       <div className="space-y-[var(--eg-control-gap)]">
-        <div className="rounded-md bg-warning-subtle px-3 py-2 text-xs text-warning-text" role="alert">
-          {t('tokens.created.once')}
-        </div>
+        <Alert tone="warning">{t('tokens.created.once')}</Alert>
         <div>
           <div className="mb-1.5 text-xs font-medium text-foreground-soft">{t('tokens.created.label')}</div>
           <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-soft p-3">
@@ -147,21 +146,12 @@ export default function Tokens() {
                     <Td className="text-xs">{fmtTime(tok.expired_at)}</Td>
                     <Td className="hidden text-xs text-subtle min-[1240px]:table-cell">{fmtTime(tok.created_at)}</Td>
                     <Td>
-                      <Switch checked={tok.enabled} onChange={(enabled) => update.mutate({ id: tok.id, enabled })} label={tf('tokens.enableAria', { name: tok.name })} />
+                      <Switch checked={tok.enabled} onChange={(enabled) => update.mutate({ id: tok.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('tokens.enableAria', { name: tok.name })} />
                     </Td>
                     <Td>
                       <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="ghost" aria-label={tf('tokens.editAria', { name: tok.name })} title={t('common.edit')} onClick={() => setEditing(tok)}><Pencil size={13} /></Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label={tf('tokens.deleteAria', { name: tok.name })}
-                          title={t('common.delete')}
-                          className="text-danger-text hover:bg-danger-subtle"
-                          onClick={() => setDeleteTarget(tok)}
-                        >
-                          <Trash2 size={13} />
-                        </Button>
+                        <IconButton label={tf('tokens.editAria', { name: tok.name })} onClick={() => setEditing(tok)}><Pencil size={13} /></IconButton>
+                        <IconButton label={tf('tokens.deleteAria', { name: tok.name })} danger onClick={() => setDeleteTarget(tok)}><Trash2 size={13} /></IconButton>
                       </div>
                     </Td>
                   </tr>
@@ -179,7 +169,13 @@ export default function Tokens() {
         confirmText={t('tokens.delete.title')}
         loading={del.isPending}
         message={tf('tokens.delete.message', { name: deleteTarget?.name ?? '' })}
-        onConfirm={() => deleteTarget && del.mutate(deleteTarget.id, { onSuccess: () => setDeleteTarget(null) })}
+        onConfirm={() => deleteTarget && del.mutate(deleteTarget.id, {
+          onSuccess: () => {
+            notify.success(tf('toast.token.deleted', { name: deleteTarget.name }))
+            setDeleteTarget(null)
+          },
+          onError: (err) => notify.error(err),
+        })}
         onCancel={() => setDeleteTarget(null)}
       />
     </div>
@@ -215,7 +211,12 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
       disable_fallback: disableFallback,
     }
     if (token) {
-      update.mutate({ id: token.id, ...payload, clear_expired_at: !expiredAt }, { onSuccess: onClose })
+      update.mutate({ id: token.id, ...payload, clear_expired_at: !expiredAt }, {
+        onSuccess: () => {
+          notify.success(t('toast.token.updated'))
+          onClose()
+        },
+      })
     } else {
       create.mutate(payload, { onSuccess: () => undefined })
     }
@@ -237,6 +238,9 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
       }
     >
       <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]">
+        {(create.isError || update.isError) && (
+          <Alert tone="danger">{((create.isError ? create.error : update.error) as Error).message}</Alert>
+        )}
         <div className="eg-grid eg-grid-auto-wide">
           <Field label={t('tokens.form.name')} hint={t('tokens.form.nameHint')}>
             <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="my-token" />
@@ -292,7 +296,6 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
             }}
           />
         )}
-        <ErrorText>{create.isError ? (create.error as Error).message : update.isError ? (update.error as Error).message : null}</ErrorText>
       </form>
     </Dialog>
   )

@@ -36,7 +36,8 @@ describe('Dialog accessibility', () => {
       </>,
     )
     await waitFor(() => expect(document.activeElement).not.toBe(trigger))
-    fireEvent.keyDown(window, { key: 'Escape' })
+    // Radix 在 document 上监听 Escape；真实按键从焦点元素冒泡到 document
+    fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape', bubbles: true })
     expect(onClose).toHaveBeenCalledTimes(1)
     rerender(
       <>
@@ -50,18 +51,21 @@ describe('Dialog accessibility', () => {
   it('keeps Tab focus inside the dialog', async () => {
     render(<Harness open onClose={() => {}} />)
     const dialog = screen.getByRole('dialog')
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true))
     const focusables = dialog.querySelectorAll<HTMLElement>('button, input')
     const last = focusables[focusables.length - 1]
     last.focus()
-    fireEvent.keyDown(window, { key: 'Tab' })
+    fireEvent.keyDown(last, { key: 'Tab', bubbles: true })
     expect(document.activeElement).toBe(focusables[0])
   })
 
-  it('Drawer also closes on Escape', () => {
+  it('Drawer also closes on Escape', async () => {
     const onClose = vi.fn()
     render(<Drawer open onClose={onClose} title="抽屉"><div>内容</div></Drawer>)
-    expect(screen.getByRole('dialog').getAttribute('aria-modal')).toBe('true')
-    fireEvent.keyDown(window, { key: 'Escape' })
+    const drawer = screen.getByRole('dialog')
+    expect(drawer.getAttribute('aria-modal')).toBe('true')
+    await waitFor(() => expect(drawer.contains(document.activeElement)).toBe(true))
+    fireEvent.keyDown(document.activeElement ?? document, { key: 'Escape', bubbles: true })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
@@ -124,12 +128,16 @@ describe('Pagination', () => {
     expect(onPageChange).toHaveBeenCalledWith(6)
   })
 
-  it('lets the user change page size and disables navigation at bounds', () => {
+  it('lets the user change page size and disables navigation at bounds', async () => {
     const onPageSizeChange = vi.fn()
     render(<Pagination page={1} totalPages={1} total={7} pageSize={20} onPageSizeChange={onPageSizeChange} onPageChange={() => {}} />)
     expect((screen.getByRole('button', { name: '上一页' }) as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByRole('button', { name: '下一页' }) as HTMLButtonElement).disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('每页条数'), { target: { value: '50' } })
+    // Radix Select：Enter 打开，焦点落在当前项，方向键移动，Enter 选中
+    const trigger = screen.getByRole('combobox', { name: '每页条数' })
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    const option = await screen.findByRole('option', { name: /50/ })
+    fireEvent.keyDown(option, { key: 'Enter' })
     expect(onPageSizeChange).toHaveBeenCalledWith(50)
   })
 })

@@ -1,7 +1,10 @@
 // 主题切换（T76）：light / dark / system，持久化到 localStorage；.dark 类由 index.css 的 @custom-variant 消费。
+import { useSyncExternalStore } from 'react'
+
 export type Theme = 'light' | 'dark' | 'system'
 
 const STORAGE_KEY = 'eg-theme'
+const THEME_EVENT = 'eg-theme-change'
 
 export function getTheme(): Theme {
   if (typeof window === 'undefined') return 'system'
@@ -25,6 +28,20 @@ export function resolvedTheme(theme: Theme = getTheme()): 'light' | 'dark' {
 export function applyTheme(theme: Theme = getTheme()) {
   const root = document.documentElement
   root.classList.toggle('dark', resolvedTheme(theme) === 'dark')
+  // Toast 等挂在根部的三方组件不读 localStorage，靠这个事件跟随 .dark 变化重渲染
+  window.dispatchEvent(new Event(THEME_EVENT))
+}
+
+/** 当前实际生效的浅 / 深色（含 system 解析结果），供需要显式 theme 属性的三方组件使用。 */
+export function useResolvedTheme(): 'light' | 'dark' {
+  return useSyncExternalStore(
+    (listener) => {
+      window.addEventListener(THEME_EVENT, listener)
+      return () => window.removeEventListener(THEME_EVENT, listener)
+    },
+    () => (document.documentElement.classList.contains('dark') ? 'dark' : 'light'),
+    () => 'light',
+  )
 }
 
 let listenerBound = false

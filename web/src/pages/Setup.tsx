@@ -1,13 +1,15 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useRef, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 import { useSetupAdmin, useSetupStatus } from '../api/hooks'
-import { Button, Card, ErrorText, Field, Input, Spinner } from '../components/ui'
+import { Alert, Button, Field, Input, Spinner, focusFirstInvalid } from '../components/ui'
+import AuthCard from '../components/AuthCard'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
-import { withBasePath } from '../lib/runtime'
 
 const usernamePattern = /^[A-Za-z0-9_.-]{3,32}$/
+
+type FieldErrors = { username?: string; password?: string; confirm?: string }
 
 /** 与后端 store.ValidateAdminPassword 对齐：大写 / 小写 / 数字 / 符号至少三类。 */
 function passwordClasses(value: string): number {
@@ -18,10 +20,11 @@ export default function Setup() {
   usePageTitle(t('page.setup.title'))
   const status = useSetupStatus()
   const setup = useSetupAdmin()
+  const formRef = useRef<HTMLFormElement>(null)
   const [username, setUsername] = useState('admin')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
-  const [localError, setLocalError] = useState('')
+  const [errors, setErrors] = useState<FieldErrors>({})
 
   if (status.isPending) {
     return (
@@ -37,56 +40,43 @@ export default function Setup() {
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     const name = username.trim()
-    if (!usernamePattern.test(name)) {
-      setLocalError(t('setup.usernameInvalid'))
+    // 一次性收集全部字段错误：用户不必提交 N 次才看全
+    const next: FieldErrors = {}
+    if (!usernamePattern.test(name)) next.username = t('setup.usernameInvalid')
+    if (password.length < 8) next.password = t('setup.tooShort')
+    else if (passwordClasses(password) < 3) next.password = t('setup.weak')
+    if (password !== confirm) next.confirm = t('setup.mismatch')
+    setErrors(next)
+    if (Object.keys(next).length > 0) {
+      focusFirstInvalid(formRef.current)
       return
     }
-    if (password.length < 8) {
-      setLocalError(t('setup.tooShort'))
-      return
-    }
-    if (passwordClasses(password) < 3) {
-      setLocalError(t('setup.weak'))
-      return
-    }
-    if (password !== confirm) {
-      setLocalError(t('setup.mismatch'))
-      return
-    }
-    setLocalError('')
     setup.mutate({ username: name, password })
   }
 
+  const serverError = setup.isError ? (setup.error as Error).message : status.isError ? (status.error as Error).message : ''
+
   return (
-    <div className="flex h-full items-center justify-center p-6">
-      <Card className="w-full max-w-md bg-surface/95 p-6 shadow-xl backdrop-blur sm:p-8">
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-brand-border bg-brand-subtle">
-            <img src={withBasePath('/logo.svg')} alt="" width={28} height={28} />
-          </span>
-          <h1 className="text-lg font-bold text-foreground">{t('setup.heading')}</h1>
-          <p className="text-center text-xs text-subtle">{t('setup.hint')}</p>
-        </div>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <Field label={t('setup.username')} hint={t('setup.usernameHint')}>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus />
-          </Field>
-          <Field label={t('setup.password')} hint={t('setup.passwordHint')}>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-          </Field>
-          <Field label={t('setup.confirm')}>
-            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
-          </Field>
-          <ErrorText>{localError || (setup.isError ? (setup.error as Error).message : status.isError ? (status.error as Error).message : null)}</ErrorText>
-          <Button type="submit" className="w-full" disabled={setup.isPending}>
-            {setup.isPending ? t('setup.submitting') : t('setup.submit')}
-          </Button>
-        </form>
-        <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-subtle">
-          <ShieldCheck size={13} className="shrink-0" aria-hidden="true" />
-          {t('setup.loopbackNote')}
-        </div>
-      </Card>
-    </div>
+    <AuthCard
+      title={t('setup.heading')}
+      subtitle={t('setup.hint')}
+      footer={<><ShieldCheck size={13} className="shrink-0" aria-hidden="true" /> {t('setup.loopbackNote')}</>}
+    >
+      <form ref={formRef} onSubmit={onSubmit} className="space-y-4" noValidate>
+        {serverError && <Alert tone="danger">{serverError}</Alert>}
+        <Field label={t('setup.username')} hint={t('setup.usernameHint')} error={errors.username}>
+          <Input value={username} onChange={(e) => { setUsername(e.target.value); setErrors((current) => ({ ...current, username: undefined })) }} autoComplete="username" autoFocus />
+        </Field>
+        <Field label={t('setup.password')} hint={t('setup.passwordHint')} error={errors.password}>
+          <Input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setErrors((current) => ({ ...current, password: undefined })) }} autoComplete="new-password" />
+        </Field>
+        <Field label={t('setup.confirm')} error={errors.confirm}>
+          <Input type="password" value={confirm} onChange={(e) => { setConfirm(e.target.value); setErrors((current) => ({ ...current, confirm: undefined })) }} autoComplete="new-password" />
+        </Field>
+        <Button type="submit" className="w-full" disabled={setup.isPending}>
+          {setup.isPending ? t('setup.submitting') : t('setup.submit')}
+        </Button>
+      </form>
+    </AuthCard>
   )
 }

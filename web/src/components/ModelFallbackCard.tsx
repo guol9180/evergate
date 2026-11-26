@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { GitBranch, Plus, Save, Trash2 } from 'lucide-react'
 import { useModelFallbacks, useSaveModelFallbacks } from '../api/hooks'
 import type { ModelFallback } from '../api/types'
-import { Button, Card, ErrorText, Field, Input, Spinner, Textarea } from './ui'
+import { Button, Card, ErrorText, Field, IconButton, Input, Spinner, Textarea } from './ui'
+import { notify } from './Toaster'
 import { t, tf } from '../lib/i18n'
 
 type FallbackForm = {
@@ -38,7 +39,10 @@ export default function ModelFallbackCard() {
     setRows(rows.map((row, i) => i === index ? { ...row, ...patch } : row))
   }
 
-  const submit = () => save.mutate(rows.map(toPayload).filter(item => item.model.trim() || item.fallbacks.length))
+  const submit = () => save.mutate(
+    rows.map(toPayload).filter(item => item.model.trim() || item.fallbacks.length),
+    { onSuccess: () => notify.success(t('fallback.saved')), onError: (err) => notify.error(err) },
+  )
 
   return (
     <Card>
@@ -70,26 +74,20 @@ export default function ModelFallbackCard() {
                 <Textarea rows={2} value={row.fallbacks} onChange={(e) => update(index, { fallbacks: e.target.value })} placeholder={'gpt-4o-mini\ngpt-4o-nano'} />
               </Field>
               <div className="flex items-center justify-end md:pt-7">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label={tf('fallback.deleteAria', { name: row.model || index + 1 })}
-                  title={t('fallback.delete')}
-                  className="h-7 w-7 justify-center px-0 text-danger-text hover:bg-danger-subtle"
+                <IconButton
+                  label={tf('fallback.deleteAria', { name: row.model || index + 1 })}
+                  danger
                   onClick={() => setRows(rows.filter((_, i) => i !== index))}
                 >
                   <Trash2 size={14} />
-                </Button>
+                </IconButton>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="mt-4 space-y-[var(--eg-control-gap)] border-t border-line-soft pt-4">
-        {save.isSuccess && <span className="text-xs text-success-text">{t('fallback.saved')}</span>}
-        <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
+      <div className="mt-4 border-t border-line-soft pt-4">
         <div className="flex justify-end">
           <Button type="button" onClick={submit} disabled={save.isPending}>
             <Save size={15} /> {save.isPending ? t('common.saving') : t('fallback.save')}

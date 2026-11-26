@@ -1,18 +1,18 @@
-// shadcn 风格手写最小组件集（任务书 3.2 精神：可控、无重型依赖）
+// 全站 UI 原语唯一出处：自有轻量组件 + 三方无样式原语（Radix Dialog、sonner Toast）。
 // 颜色一律走 index.css 语义 token（T76），禁止在此出现调色板类名。
 import {
-  type ButtonHTMLAttributes,
-  type InputHTMLAttributes,
+  type KeyboardEvent,
   type ReactNode,
-  type RefObject,
-  type SelectHTMLAttributes,
   cloneElement,
   isValidElement,
-  useEffect,
   useId,
   useRef,
 } from 'react'
-import { ChevronDown, X } from 'lucide-react'
+import * as DialogPrimitive from '@radix-ui/react-dialog'
+import * as SelectPrimitive from '@radix-ui/react-select'
+import * as TooltipPrimitive from '@radix-ui/react-tooltip'
+import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
+import { Check, CircleAlert, CircleCheck, ChevronDown, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
 
@@ -27,7 +27,7 @@ export const toneClass: Record<Tone, string> = {
   brand: 'bg-brand-subtle text-brand-text',
 }
 
-export function Button({ variant = 'default', size = 'md', className = '', ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'icon' }) {
+export function Button({ variant = 'default', size = 'md', className = '', ...props }: React.ComponentProps<'button'> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'icon' }) {
   const base = 'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:pointer-events-none'
   const variants = {
     default: 'bg-brand text-white hover:bg-brand-strong',
@@ -36,38 +36,140 @@ export function Button({ variant = 'default', size = 'md', className = '', ...pr
     danger: 'bg-danger-solid text-white hover:opacity-90',
   }
   const sizes = { sm: 'h-7 px-2.5 text-xs', md: 'h-9 px-4 text-sm', icon: 'h-7 w-7 px-0' }
-  return <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props} />
+  return <button type={props.type ?? 'button'} className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props} />
 }
 
-export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
+// 控件带 aria-invalid 时由 Field 置为出错态：红边 + 红色聚焦环，错误文字紧贴其下。
+const invalidRing = 'aria-invalid:border-danger-solid aria-invalid:focus:border-danger-solid aria-invalid:focus:ring-danger-subtle'
+
+export function Input({ className = '', ...props }: React.ComponentProps<'input'>) {
   return (
     <input
-      className={`h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-foreground outline-none transition-colors placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle ${className}`}
+      className={`h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-foreground outline-none transition-colors placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle ${invalidRing} ${className}`}
       {...props}
     />
   )
 }
 
-export function Textarea({ className = '', ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({ className = '', ...props }: React.ComponentProps<'textarea'>) {
   return (
     <textarea
-      className={`w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle ${className}`}
+      className={`w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle ${invalidRing} ${className}`}
       {...props}
     />
   )
 }
 
-export function Select({ className = '', children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+export interface SelectOption { value: string; label: ReactNode; disabled?: boolean }
+
+// Radix SelectItem 不接受空串；「全部 / 不限」在业务里是 value=""，内部用哨兵承载。
+const ALL_VALUE = '__eg_all__'
+const toInternal = (value: string) => (value === '' ? ALL_VALUE : value)
+const fromInternal = (value: string) => (value === ALL_VALUE ? '' : value)
+
+/**
+ * 下拉选择（Radix Select）：options 数组 API，调用点不再手写 <option>；
+ * 弹层材质与 Dialog 同源，选中项带对勾，支持键盘上下 / Enter / typeahead。
+ */
+export function Select({ value, onValueChange, options, size = 'md', className = '', disabled, id, placeholder, 'aria-label': ariaLabel, 'aria-describedby': ariaDescribedBy, 'aria-invalid': ariaInvalid }: {
+  value: string
+  onValueChange: (value: string) => void
+  options: readonly SelectOption[]
+  size?: 'sm' | 'md'
+  className?: string
+  disabled?: boolean
+  id?: string
+  placeholder?: string
+  'aria-label'?: string
+  'aria-describedby'?: string
+  'aria-invalid'?: boolean
+}) {
+  const compact = size === 'sm'
   return (
-    <div className="relative">
-      <select
-        className={`h-9 w-full appearance-none rounded-md border border-line-strong bg-surface px-3 pr-8 text-sm text-foreground outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle ${className}`}
-        {...props}
+    <SelectPrimitive.Root value={toInternal(value)} onValueChange={(next) => onValueChange(fromInternal(next))} disabled={disabled}>
+      <SelectPrimitive.Trigger
+        id={id}
+        disabled={disabled}
+        aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={ariaInvalid || undefined}
+        className={`inline-flex items-center justify-between gap-2 rounded-md border border-line-strong bg-surface text-foreground outline-none transition-colors focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle aria-invalid:border-danger-solid aria-invalid:focus:border-danger-solid aria-invalid:focus:ring-danger-subtle ${
+          compact ? 'h-7 w-auto pl-2 pr-6 text-xs' : 'h-9 w-full px-3 pr-8 text-sm'
+        } ${className}`}
       >
+        <span className="min-w-0 truncate">
+          <SelectPrimitive.Value placeholder={placeholder} />
+        </span>
+        <SelectPrimitive.Icon asChild>
+          <ChevronDown size={compact ? 12 : 14} className="shrink-0 text-subtle" aria-hidden="true" />
+        </SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+      <SelectPrimitive.Portal>
+        <SelectPrimitive.Content position="popper" sideOffset={4} className="eg-select-content eg-select-pop-in">
+          <SelectPrimitive.Viewport className="p-1">
+            {options.map((option) => (
+              <SelectPrimitive.Item
+                key={option.value}
+                value={toInternal(option.value)}
+                disabled={option.disabled}
+                className="relative flex h-8 cursor-pointer select-none items-center rounded-md pl-2.5 pr-8 text-sm text-foreground-soft outline-none data-[highlighted]:bg-surface-soft data-[highlighted]:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[state=checked]:font-medium data-[state=checked]:text-foreground"
+              >
+                <SelectPrimitive.ItemText>{option.label}</SelectPrimitive.ItemText>
+                <SelectPrimitive.ItemIndicator className="absolute right-2 inline-flex text-brand-text">
+                  <Check size={14} aria-hidden="true" />
+                </SelectPrimitive.ItemIndicator>
+              </SelectPrimitive.Item>
+            ))}
+          </SelectPrimitive.Viewport>
+        </SelectPrimitive.Content>
+      </SelectPrimitive.Portal>
+    </SelectPrimitive.Root>
+  )
+}
+
+/** 复选框（Radix Checkbox）：勾选态走品牌色，浅深色一致。 */
+export function Checkbox({ className = '', ...props }: React.ComponentProps<typeof CheckboxPrimitive.Root>) {
+  return (
+    <CheckboxPrimitive.Root
+      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 data-[state=checked]:border-brand data-[state=checked]:bg-brand data-[state=checked]:text-white ${className}`}
+      {...props}
+    >
+      <CheckboxPrimitive.Indicator className="flex items-center justify-center text-current">
+        <Check size={12} strokeWidth={3} aria-hidden="true" />
+      </CheckboxPrimitive.Indicator>
+    </CheckboxPrimitive.Root>
+  )
+}
+
+/**
+ * 控件说明 tooltip（Radix）：图标按钮 / 侧栏按钮统一走这里；数据截断预览仍用原生 title。
+ * Provider 内置在组件里：任何地方（含测试）都能直接渲染，不依赖根部装配。
+ */
+export function Tooltip({ content, side = 'top', children, className = '' }: { content?: ReactNode; side?: 'top' | 'right' | 'bottom' | 'left'; children: ReactNode; className?: string }) {
+  if (!content) return <>{children}</>
+  return (
+    <TooltipPrimitive.Provider delayDuration={200}>
+      <TooltipPrimitive.Root>
+        <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
+        <TooltipPrimitive.Portal>
+          <TooltipPrimitive.Content side={side} sideOffset={6} className={`eg-tooltip eg-tooltip-in ${className}`}>
+            {content}
+            <TooltipPrimitive.Arrow className="eg-tooltip-arrow" />
+          </TooltipPrimitive.Content>
+        </TooltipPrimitive.Portal>
+      </TooltipPrimitive.Root>
+    </TooltipPrimitive.Provider>
+  )
+}
+
+/** 图标按钮：Button + Tooltip + aria-label 只在这里组合；表格行操作 / 分页箭头 / 侧栏共用。 */
+export function IconButton({ label, danger = false, side, variant = 'ghost', className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: 'default' | 'outline' | 'ghost' | 'danger' }) {
+  return (
+    <Tooltip content={label} side={side}>
+      <Button size="icon" variant={variant} aria-label={label} className={`${danger ? 'text-danger-text hover:bg-danger-subtle' : ''} ${className}`} {...props}>
         {children}
-      </select>
-      <ChevronDown size={14} className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-subtle" />
-    </div>
+      </Button>
+    </Tooltip>
   )
 }
 
@@ -89,28 +191,48 @@ export function Switch({ checked, onChange, disabled, label, id }: { checked: bo
 }
 
 /**
- * Field：label 通过 useId 自动关联第一个控件（Input/Textarea/Select 接受 id），
- * hint 作为 aria-describedby；不再用 <label> 包裹控件，避免内含按钮时误触发。
+ * Field：label 通过 useId 自动关联第一个控件，hint / error 作为 aria-describedby；
+ * error 存在时控件置 aria-invalid 并以 FieldError 取代 hint。不再用 <label> 包裹控件，避免内含按钮时误触发。
  */
-export function Field({ label, children, hint, className = '' }: { label: ReactNode; children: ReactNode; hint?: ReactNode; className?: string }) {
+export function Field({ label, children, hint, error, className = '' }: { label: ReactNode; children: ReactNode; hint?: ReactNode; error?: ReactNode; className?: string }) {
   const id = useId()
   const hintId = `${id}-hint`
+  const errorId = `${id}-error`
+  const describedBy = [hint && !error ? hintId : '', error ? errorId : ''].filter(Boolean).join(' ') || undefined
   let control: ReactNode = children
   if (isValidElement(children)) {
     const element = children as React.ReactElement<Record<string, unknown>>
     const props = element.props ?? {}
     control = cloneElement(element, {
       id: props.id ?? id,
-      'aria-describedby': hint ? hintId : props['aria-describedby'],
+      'aria-describedby': describedBy ?? props['aria-describedby'],
+      ...(error ? { 'aria-invalid': true } : {}),
     })
   }
   return (
     <div className={`space-y-1.5 ${className}`}>
       <label className="block text-sm font-medium text-foreground-soft" htmlFor={id}>{label}</label>
       {control}
-      {hint && <span id={hintId} className="block text-xs text-subtle">{hint}</span>}
+      {error ? <FieldError id={errorId}>{error}</FieldError> : hint ? <span id={hintId} className="block text-xs text-subtle">{hint}</span> : null}
     </div>
   )
+}
+
+/** 字段级内联错误：紧贴出错控件。不用 live region，由 aria-invalid + aria-describedby 在聚焦时播报。 */
+export function FieldError({ id, children, className = '' }: { id?: string; children: ReactNode; className?: string }) {
+  return (
+    <p id={id} data-field-error="" className={`flex items-start gap-1.5 text-xs leading-5 text-danger-text ${className}`}>
+      <CircleAlert size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
+  )
+}
+
+/** 提交失败后把焦点移到第一个出错字段，读屏用户不必从头 Tab。需在状态提交后调用（内部用 rAF 等待渲染）。 */
+export function focusFirstInvalid(root: ParentNode | null) {
+  requestAnimationFrame(() => {
+    root?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  })
 }
 
 export function Badge({ tone = 'neutral', compact = false, className = '', title, children }: { tone?: Tone; compact?: boolean; className?: string; title?: string; children: ReactNode }) {
@@ -157,6 +279,57 @@ export function Spinner({ className = '' }: { className?: string }) {
   return <span aria-hidden="true" className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-line-strong border-t-brand ${className}`} />
 }
 
+type AlertTone = 'info' | 'success' | 'warning' | 'danger' | 'neutral'
+
+const alertIcons: Record<AlertTone, LucideIcon> = {
+  info: Info,
+  success: CircleCheck,
+  warning: TriangleAlert,
+  danger: CircleAlert,
+  neutral: Info,
+}
+
+const alertStyles: Record<AlertTone, string> = {
+  info: 'border-brand-border bg-brand-subtle text-brand-text',
+  success: 'border-success-border bg-success-subtle text-success-text',
+  warning: 'border-warning-border bg-warning-subtle text-warning-text',
+  danger: 'border-danger-border bg-danger-subtle text-danger-text',
+  neutral: 'border-line bg-surface-soft text-foreground-soft',
+}
+
+/**
+ * 行内提示框，只用于需要持续阅读的内容：页头下方的页面级横幅、表单 / 弹窗顶部的提交错误、详情里的上游错误。
+ * 瞬时操作结果走 Toaster；可归因到字段的校验走 Field error。危险与警告用 role=alert，其余用 status。
+ */
+export function Alert({
+  tone = 'info',
+  title,
+  action,
+  children,
+  className = '',
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & {
+  tone?: AlertTone
+  title?: ReactNode
+  action?: ReactNode
+}) {
+  const Icon = alertIcons[tone]
+  return (
+    <div
+      role={tone === 'danger' || tone === 'warning' ? 'alert' : 'status'}
+      className={`eg-alert-in flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-xs leading-5 ${alertStyles[tone]} ${className}`}
+      {...props}
+    >
+      <Icon size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        {title && <div className="font-semibold">{title}</div>}
+        {children && <div className={title ? 'mt-0.5' : ''}>{children}</div>}
+      </div>
+      {action && <div className="shrink-0 self-center">{action}</div>}
+    </div>
+  )
+}
+
 /** 骨架块：首次加载时替代 Spinner，保持布局稳定。 */
 export function Skeleton({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
   return <div aria-hidden="true" className={`eg-skeleton ${className}`} style={style} />
@@ -186,103 +359,93 @@ export function PageSkeleton() {
   )
 }
 
-export function Dialog({ open, onClose, title, children, footer, wide, role = 'dialog' }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean; role?: 'dialog' | 'alertdialog' }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const titleId = useId()
-  const descId = useId()
-  useDialogFocus(open, onClose, ref)
-  if (!open) return null
-  return (
-    <div className="eg-overlay fixed inset-0 z-50 flex items-center justify-center bg-overlay p-[var(--eg-page-x)]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} tabIndex={-1} role={role} aria-modal="true" aria-labelledby={titleId} aria-describedby={role === 'alertdialog' ? descId : undefined} className={`eg-dialog-panel flex max-h-[90vh] w-full ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-surface shadow-xl outline-none`}>
-        <div className="eg-dialog-body flex shrink-0 items-center justify-between border-b border-line-soft">
-          <h3 id={titleId} className="text-sm font-semibold text-foreground">{title}</h3>
-          <CloseButton onClick={onClose} />
-        </div>
-        <div id={descId} className="eg-dialog-body flex-1 overflow-auto">{children}</div>
-        {footer && <div className="eg-dialog-footer shrink-0 border-t border-line-soft bg-surface">{footer}</div>}
-      </div>
-    </div>
-  )
-}
-
-export function Drawer({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const titleId = useId()
-  useDialogFocus(open, onClose, ref)
-  if (!open) return null
-  return (
-    <div className="eg-overlay fixed inset-0 z-50 flex justify-end bg-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={titleId} className={`eg-drawer-panel flex h-full w-full ${wide ? 'sm:w-[min(560px,92vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-surface shadow-2xl outline-none`}>
-        <div className="eg-dialog-body flex items-center justify-between border-b border-line-soft">
-          <h3 id={titleId} className="text-sm font-semibold text-foreground">{title}</h3>
-          <CloseButton onClick={onClose} />
-        </div>
-        <div className="eg-dialog-body flex-1 overflow-auto">{children}</div>
-      </div>
-    </div>
-  )
-}
-
-function CloseButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} aria-label={t('common.close')} title={t('common.close')} className="rounded p-1 text-subtle hover:bg-surface-strong hover:text-foreground-soft">
-      <X size={16} aria-hidden="true" />
-    </button>
-  )
-}
-
-const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+const dialogBody = 'eg-dialog-body'
 
 /**
- * 对话框焦点管理：打开时焦点移入、Esc 关闭、Tab/Shift+Tab 在对话框内循环、关闭后焦点归还触发元素。
- * Dialog 与 Drawer 共用，保证两者键盘行为一致。
+ * 记录打开对话框前的焦点元素：Radix 默认把焦点还给 DialogTrigger，而这里的触发器是页面里的任意按钮
+ * （没有 Trigger 组件），所以要自己捕获。必须在 open 翻转为 true 的那次渲染里取，
+ * 等 effect 阶段焦点已经被移进对话框了。
  */
-export function useDialogFocus(open: boolean, onClose: () => void, ref: RefObject<HTMLElement | null>) {
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
-  useEffect(() => {
-    if (!open) return
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    const node = ref.current
-    // 不用 offsetParent 判可见：对话框位于 position:fixed 覆盖层内，浏览器对其后代返回 null，会导致焦点陷阱失效。
-    const focusables = () => node ? Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.hasAttribute('disabled')) : []
-    const frame = requestAnimationFrame(() => {
-      if (!node) return
-      const first = focusables()[0]
-      ;(first ?? node).focus()
-    })
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        onCloseRef.current()
-        return
-      }
-      if (e.key !== 'Tab' || !node) return
-      const items = focusables()
-      if (items.length === 0) {
-        e.preventDefault()
-        node.focus()
-        return
-      }
-      const first = items[0]
-      const last = items[items.length - 1]
-      const active = document.activeElement
-      if (e.shiftKey && (active === first || !node.contains(active))) {
-        e.preventDefault()
-        last.focus()
-      } else if (!e.shiftKey && (active === last || !node.contains(active))) {
-        e.preventDefault()
-        first.focus()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      cancelAnimationFrame(frame)
-      window.removeEventListener('keydown', onKey)
-      previouslyFocused?.focus()
-    }
-  }, [open, ref])
+function useRestoreFocus(open: boolean) {
+  const wasOpen = useRef(false)
+  const target = useRef<HTMLElement | null>(null)
+  if (open && !wasOpen.current) target.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  wasOpen.current = open
+  return (event: Event) => {
+    event.preventDefault()
+    target.current?.focus()
+  }
+}
+
+/**
+ * 模态对话框（Radix Dialog）：Portal、焦点陷阱、Esc、点击遮罩关闭、焦点归还、滚动锁由 Radix 负责；
+ * 这里只负责版式与令牌。面板用 inset-0 + margin:auto 居中，避免 transform 居中与入场动画互相覆盖。
+ */
+export function Dialog({ open, onClose, title, children, footer, wide, role = 'dialog' }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean; role?: 'dialog' | 'alertdialog' }) {
+  const descId = useId()
+  const restoreFocus = useRestoreFocus(open)
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="eg-overlay fixed inset-0 z-50 bg-overlay" />
+        <DialogPrimitive.Content
+          role={role}
+          aria-modal="true"
+          aria-describedby={descId}
+          onCloseAutoFocus={restoreFocus}
+          className={`eg-dialog-panel fixed inset-0 z-50 m-auto flex h-fit max-h-[90vh] w-[calc(100%-2*var(--eg-page-x))] ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-surface shadow-xl outline-none`}
+        >
+          <div className={`${dialogBody} flex shrink-0 items-center justify-between border-b border-line-soft`}>
+            <DialogPrimitive.Title asChild>
+              <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+            </DialogPrimitive.Title>
+            <CloseButton />
+          </div>
+          <div id={descId} className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
+          {footer && <div className="eg-dialog-footer shrink-0 border-t border-line-soft bg-surface">{footer}</div>}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  )
+}
+
+/** 右侧抽屉：与 Dialog 同一 Radix 底座，只换面板位置与入场动画。 */
+export function Drawer({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean }) {
+  const descId = useId()
+  const restoreFocus = useRestoreFocus(open)
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={(next) => { if (!next) onClose() }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="eg-overlay fixed inset-0 z-50 bg-overlay" />
+        <DialogPrimitive.Content
+          aria-modal="true"
+          aria-describedby={descId}
+          onCloseAutoFocus={restoreFocus}
+          className={`eg-drawer-panel fixed inset-y-0 right-0 z-50 flex h-full w-full ${wide ? 'sm:w-[min(560px,92vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-surface shadow-2xl outline-none`}
+        >
+          <div className={`${dialogBody} flex items-center justify-between border-b border-line-soft`}>
+            <DialogPrimitive.Title asChild>
+              <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+            </DialogPrimitive.Title>
+            <CloseButton />
+          </div>
+          <div id={descId} className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  )
+}
+
+function CloseButton() {
+  // 不包 Tooltip：Radix Tooltip 在获得焦点时也会弹出，而对话框打开时焦点正好落在关闭按钮上，
+  // 会每次打开都先冒出一个"关闭"气泡；X 图标 + aria-label 已足够
+  return (
+    <DialogPrimitive.Close asChild>
+      <button type="button" aria-label={t('common.close')} className="rounded p-1 text-subtle transition-colors hover:bg-surface-strong hover:text-foreground-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand">
+        <X size={16} aria-hidden="true" />
+      </button>
+    </DialogPrimitive.Close>
+  )
 }
 
 /** 危险/确认操作对话框：替代浏览器原生 confirm()，文案必须说明后果。 */
@@ -305,8 +468,8 @@ export function ConfirmDialog({ open, title, message, confirmText, cancelText, d
       role="alertdialog"
       footer={(
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>{cancelText ?? t('common.cancel')}</Button>
-          <Button type="button" variant={danger ? 'danger' : 'default'} onClick={onConfirm} disabled={loading} autoFocus>
+          <Button variant="outline" onClick={onCancel} disabled={loading}>{cancelText ?? t('common.cancel')}</Button>
+          <Button variant={danger ? 'danger' : 'default'} onClick={onConfirm} disabled={loading} autoFocus>
             {loading ? t('common.processing') : confirmText ?? t('common.confirm')}
           </Button>
         </div>
@@ -340,6 +503,62 @@ export function SettingRow({ title, description, checked, onChange, label, disab
   )
 }
 
+/** 分段单选（radiogroup 语义 + 方向键切换）：替代各页手写的并排切换按钮。 */
+export function SegmentedControl<T extends string>({ value, onChange, options, label, disabled, size = 'md', className = '' }: {
+  value: T
+  onChange: (value: T) => void
+  options: readonly { value: T; label: ReactNode }[]
+  label: string
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  className?: string
+}) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([])
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0
+    if (!delta) return
+    event.preventDefault()
+    const next = (index + delta + options.length) % options.length
+    onChange(options[next].value)
+    refs.current[next]?.focus()
+  }
+  return (
+    <div role="radiogroup" aria-label={label} className={`grid gap-2 ${className}`}>
+      {options.map((option, index) => {
+        const active = value === option.value
+        return (
+          <button
+            key={option.value}
+            ref={(el) => { refs.current[index] = el }}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            disabled={disabled}
+            onClick={() => onChange(option.value)}
+            onKeyDown={(event) => onKeyDown(event, index)}
+            className={`${size === 'sm' ? 'h-7 px-2' : 'h-9'} rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-60 ${
+              active ? 'border-brand-border bg-brand-subtle text-brand-text' : 'border-line-strong bg-surface text-muted hover:bg-surface-soft'
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** 进度条：更新流程等需要展示百分比的位置共用；颜色只走语义色。 */
+export function Progress({ value, tone = 'brand', className = '' }: { value: number; tone?: 'brand' | 'danger'; className?: string }) {
+  const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))
+  return (
+    <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(clamped)} className={`h-2 overflow-hidden rounded-full bg-surface-strong ${className}`}>
+      <div className={`h-full rounded-full transition-all ${tone === 'danger' ? 'bg-danger-solid' : 'bg-brand'}`} style={{ width: `${clamped}%` }} />
+    </div>
+  )
+}
+
 export function Empty({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
@@ -351,14 +570,10 @@ export function Empty({ icon, title, hint, action }: { icon?: ReactNode; title: 
   )
 }
 
+/** 加载 / 详情类错误（需要持续阅读）的简写；提交错误请用 Alert 置于表单顶部或 Field error。 */
 export function ErrorText({ children }: { children?: ReactNode }) {
   if (!children) return null
-  return <p role="alert" className="rounded-md bg-danger-subtle px-3 py-2 text-xs text-danger-text">{children}</p>
-}
-
-export function SuccessText({ children }: { children?: ReactNode }) {
-  if (!children) return null
-  return <p role="status" className="text-xs text-success-text">{children}</p>
+  return <Alert tone="danger">{children}</Alert>
 }
 
 export function Th({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
@@ -398,21 +613,17 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
       <span className="tabular-nums">{tf('pagination.summary', { total: total.toLocaleString('zh-CN'), page, pages: totalPages })}</span>
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange && (
-          <label className="flex items-center gap-1.5">
-            <span className="sr-only">{t('pagination.pageSize')}</span>
-            <select
-              aria-label={t('pagination.pageSize')}
-              value={pageSize}
-              onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className="h-7 rounded-md border border-line-strong bg-surface px-2 text-xs text-foreground-soft outline-none focus:border-brand"
-            >
-              {sizes.map((s) => <option key={s} value={s}>{tf('pagination.pageSizeOption', { n: s })}</option>)}
-            </select>
-          </label>
+          <Select
+            size="sm"
+            aria-label={t('pagination.pageSize')}
+            value={String(pageSize)}
+            onValueChange={(next) => onPageSizeChange(Number(next))}
+            options={sizes.map((s) => ({ value: String(s), label: tf('pagination.pageSizeOption', { n: s }) }))}
+          />
         )}
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="outline" aria-label={t('pagination.first')} title={t('pagination.first')} disabled={page <= 1} onClick={() => goto(1)}>«</Button>
-          <Button size="icon" variant="outline" aria-label={t('pagination.prev')} title={t('pagination.prev')} disabled={page <= 1} onClick={() => goto(page - 1)}>‹</Button>
+          <IconButton variant="outline" label={t('pagination.first')} disabled={page <= 1} onClick={() => goto(1)}>«</IconButton>
+          <IconButton variant="outline" label={t('pagination.prev')} disabled={page <= 1} onClick={() => goto(page - 1)}>‹</IconButton>
           {pages.map((p, i) => (
             p === null
               ? <span key={`gap-${i}`} className="px-1 text-subtle" aria-hidden="true">…</span>
@@ -429,8 +640,8 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
                 </Button>
               )
           ))}
-          <Button size="icon" variant="outline" aria-label={t('pagination.next')} title={t('pagination.next')} disabled={page >= totalPages} onClick={() => goto(page + 1)}>›</Button>
-          <Button size="icon" variant="outline" aria-label={t('pagination.last')} title={t('pagination.last')} disabled={page >= totalPages} onClick={() => goto(totalPages)}>»</Button>
+          <IconButton variant="outline" label={t('pagination.next')} disabled={page >= totalPages} onClick={() => goto(page + 1)}>›</IconButton>
+          <IconButton variant="outline" label={t('pagination.last')} disabled={page >= totalPages} onClick={() => goto(totalPages)}>»</IconButton>
         </div>
       </div>
     </nav>

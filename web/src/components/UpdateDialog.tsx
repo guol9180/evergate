@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, Loader2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useApplyUpdate, useCancelUpdate, useUpdateProgress } from '../api/hooks'
 import type { UpdateJob, UpdateStatus } from '../api/types'
-import { Badge, Button, Dialog, Field, Select } from './ui'
+import { Alert, Badge, Button, Dialog, Field, Progress, Select } from './ui'
 import { t, tf, type MessageKey } from '../lib/i18n'
 
 const stageKey: Record<string, MessageKey> = {
@@ -139,19 +139,20 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
         </div>
 
         {capability && !capability.available && (
-          <div className="flex gap-2 rounded-lg border border-warning-border bg-warning-subtle px-3 py-2 text-xs text-warning-text">
-            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-            <span>{capability.reason || t('update.capability.unsupported')}</span>
-          </div>
+          <Alert tone="warning">{capability.reason || t('update.capability.unsupported')}</Alert>
         )}
 
         {!started && (
           <Field label={t('update.channel')} hint={t('update.channelHint')}>
-            <Select value={source} onChange={(e) => setSource(e.target.value)}>
-              <option value="auto">{t('update.channel.auto')}</option>
-              <option value="npm">{t('update.channel.npm')}</option>
-              <option value="github">{t('update.channel.github')}</option>
-            </Select>
+            <Select
+              value={source}
+              onValueChange={setSource}
+              options={[
+                { value: 'auto', label: t('update.channel.auto') },
+                { value: 'npm', label: t('update.channel.npm') },
+                { value: 'github', label: t('update.channel.github') },
+              ]}
+            />
           </Field>
         )}
 
@@ -161,12 +162,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
               <span className="font-medium text-foreground-soft">{t(stageKey[job?.stage || 'downloading'] ?? 'update.stage.failed')}</span>
               <span className="tabular-nums">{job?.progress ?? 0}%</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-strong">
-              <div
-                className={`h-full rounded-full transition-all ${failed ? 'bg-danger-solid' : 'bg-brand'}`}
-                style={{ width: `${job?.progress ?? 0}%` }}
-              />
-            </div>
+            <Progress value={job?.progress ?? 0} tone={failed ? 'danger' : 'brand'} />
             <ol className="space-y-2">
               {stages.map((stage, index) => {
                 const failedHere = job?.stage === 'failed' && job.failed_stage === stage
@@ -199,19 +195,16 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
         )}
 
         {failed && (
-          <div className="rounded-lg border border-danger-border bg-danger-subtle px-3 py-2 text-xs text-danger-text">
-            <div className="font-medium">{t('update.incomplete')}</div>
-            <div className="mt-1 max-h-28 overflow-auto break-words">{job?.error || (apply.error as Error)?.message || t('update.unknownError')}</div>
+          <Alert tone="danger" title={t('update.incomplete')}>
+            <div className="max-h-28 overflow-auto break-words">{job?.error || (apply.error as Error)?.message || t('update.unknownError')}</div>
             {job?.backup_path && (
-              <div className="mt-1 break-all text-danger-text/80">{tf('update.backupPath', { path: job.backup_path })}</div>
+              <div className="mt-1 break-all">{tf('update.backupPath', { path: job.backup_path })}</div>
             )}
-          </div>
+          </Alert>
         )}
 
         {restartTimedOut && restarting && (
-          <div className="rounded-lg border border-warning-border bg-warning-subtle px-3 py-2 text-xs text-warning-text">
-            {t('update.restartTimeout')}
-          </div>
+          <Alert tone="warning">{t('update.restartTimeout')}</Alert>
         )}
       </div>
     </Dialog>

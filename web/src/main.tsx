@@ -8,6 +8,7 @@ import { initTheme } from './lib/theme'
 import { t } from './lib/i18n'
 import Layout from './components/Layout'
 import { PageSkeleton } from './components/ui'
+import { Toaster } from './components/Toaster'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
 import ChangePassword from './pages/ChangePassword'
@@ -52,6 +53,7 @@ createRoot(document.getElementById('root')!).render(
           </Routes>
         </Suspense>
       </BrowserRouter>
+      <Toaster />
     </QueryClientProvider>
   </StrictMode>,
 )

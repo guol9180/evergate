@@ -2,7 +2,8 @@ import { useRef, useState } from 'react'
 import { Download, Upload } from 'lucide-react'
 import { downloadAdminFile, useImportConfig } from '../api/hooks'
 import type { ConfigImportResult } from '../api/types'
-import { Button, Card, ConfirmDialog, ErrorText, SuccessText } from './ui'
+import { Alert, Button, Card, ConfirmDialog, ErrorText } from './ui'
+import { notify } from './Toaster'
 import { t, tf } from '../lib/i18n'
 
 /** 配置导出 / 导入：导出永不含上游 key 与令牌哈希；导入按名称幂等 upsert，导入前需确认。 */
@@ -17,11 +18,10 @@ export default function ConfigTransferCard() {
 
   const exportConfig = async () => {
     setBusy(true)
-    setError('')
     try {
       await downloadAdminFile('/admin/api/config/export', 'evergate-config.json')
     } catch (err) {
-      setError((err as Error).message || t('config.exportFailed'))
+      notify.error(err, t('config.exportFailed'))
     } finally {
       setBusy(false)
     }
@@ -83,16 +83,18 @@ export default function ConfigTransferCard() {
       </div>
       <ErrorText>{error}</ErrorText>
       {result && (
-        <div role="status" className="mt-3 rounded-md bg-success-subtle px-3 py-2 text-xs text-success-text">
-          {tf('config.importResult', { created: result.created, updated: result.updated, skipped: result.skipped })}
+        <Alert
+          tone={result.errors && result.errors.length > 0 ? 'warning' : 'success'}
+          title={tf('config.importResult', { created: result.created, updated: result.updated, skipped: result.skipped })}
+          className="mt-3"
+        >
           {result.errors && result.errors.length > 0 && (
-            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            <ul className="list-disc space-y-0.5 pl-4">
               {result.errors.map((line, i) => <li key={i}>{line}</li>)}
             </ul>
           )}
-        </div>
+        </Alert>
       )}
-      {result && result.errors?.length === 0 && <SuccessText>{t('config.importDone')}</SuccessText>}
 
       <ConfirmDialog
         open={pending != null}

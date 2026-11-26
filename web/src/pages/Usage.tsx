@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, BarChart3, CircleDollarSign, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { BarChart3, CircleDollarSign, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   useApplyPresetPrice,
   useChannel,
@@ -12,7 +12,8 @@ import {
   useUsageReport,
 } from '../api/hooks'
 import type { UsageDailyPoint, UsageDimensionRow } from '../api/types'
-import { Badge, Button, Card, Empty, ErrorText, Field, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, Empty, Field, IconButton, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
+import { notify } from '../components/Toaster'
 import { TrendChart } from '../components/TrendChart'
 import PriceTable, { fmtPriceMicros } from '../components/PriceTable'
 import { fmtInt, fmtMoney } from '../lib/format'
@@ -64,35 +65,29 @@ export default function Usage() {
           <Field label={t('logs.filter.start')}><Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} /></Field>
           <Field label={t('logs.filter.end')}><Input type="date" value={end} min={start} max={today()} onChange={(e) => setEnd(e.target.value)} /></Field>
           <Field label={t('logs.filter.channel')}>
-            <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
-              <option value="">{t('logs.filter.allChannels')}</option>
-              {chs.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-            </Select>
+            <Select
+              value={channelID}
+              onValueChange={setChannelID}
+              options={[{ value: '', label: t('logs.filter.allChannels') }, ...chs.map((ch) => ({ value: String(ch.id), label: ch.name }))]}
+            />
           </Field>
           <Field label={t('logs.filter.model')}><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('tokens.allModels')} /></Field>
           <Field label={t('logs.filter.token')}>
-            <Select value={tokenID} onChange={(e) => setTokenID(e.target.value)}>
-              <option value="">{t('logs.filter.allTokens')}</option>
-              {tks.map((token) => <option key={token.id} value={token.id}>{token.name}</option>)}
-            </Select>
+            <Select
+              value={tokenID}
+              onValueChange={setTokenID}
+              options={[{ value: '', label: t('logs.filter.allTokens') }, ...tks.map((token) => ({ value: String(token.id), label: token.name }))]}
+            />
           </Field>
         </div>
-        <ErrorText>{report.isError ? (report.error as Error).message : null}</ErrorText>
       </Card>
 
+      {report.isError && <Alert tone="danger">{(report.error as Error).message}</Alert>}
+
       {prices.data && !prices.data.default && prices.data.overrides.length === 0 && (
-        <Card className="border-warning-border bg-warning-subtle">
-          <div className="flex items-start gap-3 text-sm text-warning-text">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-warning-text" />
-            <div>
-              <div className="font-semibold">{t('usage.noPrice.title')}</div>
-              <p className="mt-1 text-xs leading-5 text-warning-text">
-                {t('usage.noPrice.body1')}
-                {t('usage.noPrice.body2')}
-              </p>
-            </div>
-          </div>
-        </Card>
+        <Alert tone="warning" title={t('usage.noPrice.title')}>
+          <p>{t('usage.noPrice.body1')}{t('usage.noPrice.body2')}</p>
+        </Alert>
       )}
 
       {report.isPending ? (
@@ -252,7 +247,10 @@ function PriceCard() {
 
   const submitDefault = (e: FormEvent) => {
     e.preventDefault()
-    setDefault.mutate({ input_micros_per_million: toMicros(defaultIn), output_micros_per_million: toMicros(defaultOut) })
+    setDefault.mutate(
+      { input_micros_per_million: toMicros(defaultIn), output_micros_per_million: toMicros(defaultOut) },
+      { onSuccess: () => notify.success(t('toast.price.saved')), onError: (err) => notify.error(err) },
+    )
   }
   const submitOverride = (e: FormEvent) => {
     e.preventDefault()
@@ -260,7 +258,13 @@ function PriceCard() {
     upsert.mutate({
       channel_id: Number(channelID), model: model.trim(),
       input_micros_per_million: toMicros(overrideIn), output_micros_per_million: toMicros(overrideOut),
-    }, { onSuccess: () => setModel('') })
+    }, {
+      onSuccess: () => {
+        notify.success(t('toast.price.saved'))
+        setModel('')
+      },
+      onError: (err) => notify.error(err),
+    })
   }
 
   if (prices.isPending) return <Card className="flex justify-center p-8"><Spinner /></Card>
@@ -268,6 +272,7 @@ function PriceCard() {
     <Card>
       <h3 className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign size={15} className="text-success-text" /> {t('usage.price.title')}</h3>
       <p className="mt-1 text-xs text-subtle">{t('usage.price.unit')}</p>
+      {prices.isError && <Alert tone="danger" className="mt-3">{(prices.error as Error).message}</Alert>}
       <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
         <div className="mb-2 text-xs font-medium text-muted">{t('usage.price.globalDefault')}</div>
         <div className="grid grid-cols-2 gap-2">
@@ -281,9 +286,11 @@ function PriceCard() {
         <div className="text-xs font-medium text-muted">{t('usage.price.override')}</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Field label={t('table.channel')}>
-            <Select value={channelID} onChange={(e) => setChannelID(e.target.value)}>
-              {(channels.data?.items ?? []).map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-            </Select>
+            <Select
+              value={channelID}
+              onValueChange={setChannelID}
+              options={(channels.data?.items ?? []).map((ch) => ({ value: String(ch.id), label: ch.name }))}
+            />
           </Field>
           <Field label={t('usage.price.upstreamModel')}><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('usage.price.upstreamPlaceholder')} /></Field>
           <Field label={t('usage.price.inputPrice')}><Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder={t('usage.price.useDefault')} /></Field>
@@ -297,7 +304,9 @@ function PriceCard() {
             <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
             <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
             <span className="text-muted">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}</span>
-            <button onClick={() => remove.mutate(price.id)} className="text-subtle hover:text-danger-text" title={t('usage.price.deleteOverride')}><Trash2 size={13} /></button>
+            <IconButton danger label={t('usage.price.deleteOverride')} onClick={() => remove.mutate(price.id, { onSuccess: () => notify.success(t('toast.price.deleted')), onError: (err) => notify.error(err) })}>
+              <Trash2 size={13} />
+            </IconButton>
           </div>
         ))}
       </div>
@@ -313,13 +322,12 @@ function PriceCard() {
                 <Field label={t('table.channel')}>
                   <Select
                     value={presetChannelID}
-                    onChange={(e) => {
-                      setPresetChannelID(e.target.value)
+                    onValueChange={(next) => {
+                      setPresetChannelID(next)
                       applyPreset.reset()
                     }}
-                  >
-                    {presetChannels.map((ch) => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-                  </Select>
+                    options={presetChannels.map((ch) => ({ value: String(ch.id), label: ch.name }))}
+                  />
                 </Field>
               </div>
               <Button
@@ -327,23 +335,24 @@ function PriceCard() {
                 size="sm"
                 variant="outline"
                 disabled={applyPreset.isPending || !presetChannelID}
-                onClick={() => applyPreset.mutate(Number(presetChannelID))}
+                onClick={() => applyPreset.mutate(Number(presetChannelID), {
+                  onSuccess: (resp) => {
+                    if (resp.created > 0) notify.success(tf('usage.price.applyDone', { n: resp.created }))
+                    else notify.info(t('usage.price.applyNone'))
+                  },
+                  onError: (err) => notify.error(err),
+                })}
               >
                 {applyPreset.isPending ? t('common.saving') : t('usage.price.applyPreset')}
               </Button>
             </div>
-            {applyPreset.data && (
-              <div className={`mt-2 text-xs ${applyPreset.data.created > 0 ? 'text-success-text' : 'text-subtle'}`}>
-                {applyPreset.data.created > 0
-                  ? tf('usage.price.applyDone', { n: applyPreset.data.created })
-                  : t('usage.price.applyNone')}
-              </div>
-            )}
             {prices.data?.catalog && (
               <div className="mt-2 text-[11px] text-subtle">{tf('usage.price.asOf', { asOf: prices.data.catalog.as_of })}</div>
             )}
             <div className="mt-2">
-              {presetDetail.isPending ? (
+              {presetDetail.isError ? (
+                <Alert tone="danger">{(presetDetail.error as Error).message}</Alert>
+              ) : presetDetail.isPending ? (
                 <div className="flex justify-center py-3"><Spinner /></div>
               ) : presetDetail.data && (presetDetail.data.prices?.length ?? 0) > 0 ? (
                 <PriceTable prices={presetDetail.data.prices ?? []} />
@@ -354,7 +363,6 @@ function PriceCard() {
           </>
         )}
       </div>
-      <ErrorText>{prices.isError ? (prices.error as Error).message : setDefault.isError ? (setDefault.error as Error).message : upsert.isError ? (upsert.error as Error).message : applyPreset.isError ? (applyPreset.error as Error).message : presetDetail.isError ? (presetDetail.error as Error).message : null}</ErrorText>
     </Card>
   )
 }

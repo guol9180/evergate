@@ -4,7 +4,8 @@ import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import type { SystemSettings, SystemSettingsValues } from '../api/types'
-import { Badge, Button, Card, ErrorText, Field, Input, PageHeader, Spinner } from '../components/ui'
+import { Alert, Badge, Button, Card, Field, Input, PageHeader, Spinner } from '../components/ui'
+import { notify } from '../components/Toaster'
 import ModelFallbackCard from '../components/ModelFallbackCard'
 import ConfigTransferCard from '../components/ConfigTransferCard'
 import AuditLogCard from '../components/AuditLogCard'
@@ -43,10 +44,10 @@ export default function Settings() {
   }
   if (settings.isError || !form) {
     return (
-      <Card className="p-6">
-        <h1 className="text-lg font-bold">{t('page.settings.title')}</h1>
-        <ErrorText>{settings.isError ? (settings.error as Error).message : t('common.settingsMissing')}</ErrorText>
-      </Card>
+      <div className="eg-page-stack">
+        <PageHeader title={t('page.settings.title')} description={t('page.settings.desc')} />
+        <Alert tone="danger">{settings.isError ? (settings.error as Error).message : t('common.settingsMissing')}</Alert>
+      </div>
     )
   }
 
@@ -55,7 +56,10 @@ export default function Settings() {
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
-    save.mutate(toSettings(form))
+    save.mutate(toSettings(form), {
+      onSuccess: () => notify.success(t('settings.saved')),
+      onError: (err) => notify.error(err),
+    })
   }
 
   return (
@@ -123,14 +127,10 @@ export default function Settings() {
           </div>
         </Card>
 
-        <div className="space-y-[var(--eg-control-gap)]">
-          {save.isSuccess && <span className="text-xs text-success-text">{t('settings.saved')}</span>}
-          <ErrorText>{save.isError ? (save.error as Error).message : null}</ErrorText>
-          <div className="flex justify-end">
-            <Button type="submit" disabled={save.isPending}>
-              <Save size={15} /> {save.isPending ? t('common.saving') : t('settings.save')}
-            </Button>
-          </div>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={save.isPending}>
+            <Save size={15} /> {save.isPending ? t('common.saving') : t('settings.save')}
+          </Button>
         </div>
       </form>
 

@@ -1,10 +1,10 @@
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useRef, useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useLogin, useSetupStatus } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
-import { Button, Card, ErrorText, Field, Input } from '../components/ui'
-import { withBasePath } from '../lib/runtime'
+import { Alert, Button, Field, Input } from '../components/ui'
+import AuthCard from '../components/AuthCard'
 
 export default function Login() {
   usePageTitle(t('page.login.title'))
@@ -15,6 +15,7 @@ export default function Login() {
   const prefill = (location.state as { username?: string } | null)?.username ?? ''
   const [username, setUsername] = useState(prefill)
   const [password, setPassword] = useState('')
+  const passwordRef = useRef<HTMLInputElement>(null)
 
   // 尚未创建管理员时先走首启设置
   if (setup.data?.setup_required) return <Navigate to="/setup" replace />
@@ -25,33 +26,27 @@ export default function Login() {
       { username, password },
       {
         onSuccess: (data) => navigate(data.must_change_password ? '/change-password' : '/', { replace: true }),
+        // 凭据错误最常见的原因是密码：选中密码框，直接重输即可
+        onError: () => passwordRef.current?.select(),
       },
     )
   }
 
   return (
-    <div className="flex h-full items-center justify-center p-6">
-      <Card className="w-full max-w-md bg-surface/95 p-6 shadow-xl backdrop-blur sm:p-8">
-        <div className="mb-6 flex flex-col items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-brand-border bg-brand-subtle">
-            <img src={withBasePath('/logo.svg')} alt="" width={28} height={28} />
-          </span>
-          <h1 className="text-lg font-bold text-foreground">{t('login.heading')}</h1>
-          <p className="text-xs text-subtle">One gate, every model, zero interruption</p>
-        </div>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <Field label={t('login.username')}>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" autoComplete="username" />
-          </Field>
-          <Field label={t('login.password')}>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
-          </Field>
-          <ErrorText>{login.isError ? (login.error as Error).message : null}</ErrorText>
-          <Button type="submit" className="w-full" disabled={login.isPending}>
-            {login.isPending ? t('login.submitting') : t('login.submit')}
-          </Button>
-        </form>
-      </Card>
-    </div>
+    <AuthCard title={t('login.heading')} subtitle="One gate, every model, zero interruption">
+      <form onSubmit={onSubmit} className="space-y-4">
+        {/* 提交错误放在表单顶部：先读原因再扫字段，而不是夹在密码框和按钮之间 */}
+        {login.isError && <Alert tone="danger">{(login.error as Error).message}</Alert>}
+        <Field label={t('login.username')}>
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" autoComplete="username" />
+        </Field>
+        <Field label={t('login.password')}>
+          <Input ref={passwordRef} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+        </Field>
+        <Button type="submit" className="w-full" disabled={login.isPending}>
+          {login.isPending ? t('login.submitting') : t('login.submit')}
+        </Button>
+      </form>
+    </AuthCard>
   )
 }

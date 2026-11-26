@@ -1,7 +1,8 @@
-import { type FormEvent, useId, useState } from 'react'
-import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
+import { type FormEvent, useId, useRef, useState } from 'react'
+import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
-import { Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, Input, PageHeader, PageSkeleton, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, PageSkeleton, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, focusFirstInvalid } from '../components/ui'
+import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel, EffectivePrice } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset, uniquePresetName } from '../lib/channelPresets'
@@ -97,8 +98,10 @@ export default function Channels() {
         onConfirm={() => deleteTarget && delChannel.mutate(deleteTarget.id, {
           onSuccess: () => {
             if (expanded === deleteTarget.id) setExpanded(null)
+            notify.success(tf('toast.channel.deleted', { name: deleteTarget.name }))
             setDeleteTarget(null)
           },
+          onError: (err) => notify.error(err),
         })}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -111,7 +114,13 @@ export default function Channels() {
         message={tf('channels.deleteKey.message', { label: deleteKeyTarget?.label ?? '' })}
         onConfirm={() => deleteKeyTarget && delKey.mutate(
           { id: deleteKeyTarget.id, channelId: deleteKeyTarget.channelId },
-          { onSuccess: () => setDeleteKeyTarget(null) },
+          {
+            onSuccess: () => {
+              notify.success(t('toast.key.deleted'))
+              setDeleteKeyTarget(null)
+            },
+            onError: (err) => notify.error(err),
+          },
         )}
         onCancel={() => setDeleteKeyTarget(null)}
       />
@@ -130,9 +139,9 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
     <>
       <tr className="hover:bg-surface-soft">
         <Td>
-        <button onClick={onToggleExpand} aria-label={expanded ? t('channels.collapseKeys') : t('channels.expandKeys')} className="rounded p-1 text-subtle hover:bg-surface-strong">
+          <IconButton label={expanded ? t('channels.collapseKeys') : t('channels.expandKeys')} onClick={onToggleExpand}>
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
+          </IconButton>
         </Td>
         <Td className="max-w-[170px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
         <Td>
@@ -168,7 +177,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
           )}
         </Td>
         <Td>
-          <Switch checked={c.enabled} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={tf('channels.enableAria', { name: c.name })} />
+          <Switch checked={c.enabled} onChange={(enabled) => toggle.mutate({ id: c.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableAria', { name: c.name })} />
         </Td>
         <Td>
           {test.isPending && test.variables === c.id ? (
@@ -182,17 +191,15 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
               {result.result === 'success' ? tf('channels.test.success', { ms: result.latency_ms }) : result.result === 'inconclusive' ? t('channels.test.inconclusive') : t('channels.test.failed')}
             </Badge>
           ) : (
-            <Button size="sm" variant="outline" aria-label={tf('channels.testAria', { name: c.name })} title={t('channels.test.title')} onClick={() => test.mutate(c.id)}>
+            <IconButton variant="outline" label={tf('channels.testAria', { name: c.name })} onClick={() => test.mutate(c.id, { onError: (err) => notify.error(err) })}>
               <Plug size={13} />
-            </Button>
+            </IconButton>
           )}
         </Td>
         <Td>
           <div className="flex justify-end gap-1 whitespace-nowrap">
-            <Button size="sm" variant="ghost" aria-label={tf('channels.editAria', { name: c.name })} title={t('common.edit')} onClick={onEdit}><Pencil size={13} /></Button>
-            <Button size="sm" variant="ghost" aria-label={tf('channels.deleteAria', { name: c.name })} title={t('common.delete')} className="text-danger-text hover:bg-danger-subtle" onClick={onDelete}>
-              <Trash2 size={13} />
-            </Button>
+            <IconButton label={tf('channels.editAria', { name: c.name })} onClick={onEdit}><Pencil size={13} /></IconButton>
+            <IconButton label={tf('channels.deleteAria', { name: c.name })} danger onClick={onDelete}><Trash2 size={13} /></IconButton>
           </div>
         </Td>
       </tr>
@@ -241,14 +248,13 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                   <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
                   <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1360px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
-                    <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
+                    <Switch checked={k.enabled} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
                   </Td>
                   <Td>
                     <div className="flex justify-end">
-                      <Button size="sm" variant="ghost" aria-label={tf('channels.deleteKeyAria', { n: i + 1 })} title={t('common.delete')} className="text-danger-text hover:bg-danger-subtle"
-                        onClick={() => onDeleteKey(k.id, tf('channels.deleteKeyLabel', { n: i + 1 }))}>
+                      <IconButton label={tf('channels.deleteKeyAria', { n: i + 1 })} danger onClick={() => onDeleteKey(k.id, tf('channels.deleteKeyLabel', { n: i + 1 }))}>
                         <Trash2 size={13} />
-                      </Button>
+                      </IconButton>
                     </div>
                   </Td>
                 </tr>
@@ -263,11 +269,16 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
         <div className="mt-2 flex items-center gap-3">
           <Button size="sm" disabled={!keysText.trim() || addKeys.isPending} onClick={() => addKeys.mutate(
             { channelId, keys: keysText },
-            { onSuccess: () => setKeysText('') },
+            {
+              onSuccess: (resp) => {
+                notify.success(tf('channels.import.done', { n: resp.added }))
+                setKeysText('')
+              },
+              onError: (err) => notify.error(err),
+            },
           )}>
             {addKeys.isPending ? t('channels.importing') : t('channels.import.button')}
           </Button>
-          {addKeys.data && <span className="text-xs text-success-text">{tf('channels.import.done', { n: addKeys.data.added })}</span>}
         </div>
       </div>
     </Card>
@@ -285,6 +296,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const upsertPrice = useUpsertPriceOverride()
   const formID = 'channel-form'
   const modelsId = useId()
+  const formRef = useRef<HTMLFormElement>(null)
   const [presetId, setPresetId] = useState(channel?.preset_id || CUSTOM_CHANNEL_PRESET)
   const [name, setName] = useState(channel?.name ?? '')
   const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? '')
@@ -296,7 +308,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [models, setModels] = useState((channel?.models || []).join('\n'))
   const [mapping, setMapping] = useState<Record<string, string>>(channel?.model_mapping ?? {})
   const [showModelPicker, setShowModelPicker] = useState(false)
-  const [formError, setFormError] = useState('')
+  const [timeoutErrors, setTimeoutErrors] = useState<{ connect?: string; firstToken?: string; overall?: string }>({})
   // 新建时可内联导入 key：省去"保存 → 回列表 → 展开 → 粘贴 key → 再编辑"的四次往返（T77）。
   const [keysText, setKeysText] = useState('')
   const addKeys = useBatchAddKeys()
@@ -348,16 +360,22 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const onSubmit = (e: FormEvent) => {
     e.preventDefault()
     const timeouts: Record<string, number> = {}
+    const invalid = (value: string) => value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) <= 0)
+    const nextErrors = {
+      connect: invalid(connectSec) ? t('channels.form.timeoutInt') : undefined,
+      firstToken: invalid(firstTokenSec) ? t('channels.form.timeoutInt') : undefined,
+      overall: invalid(overallSec) ? t('channels.form.timeoutInt') : undefined,
+    }
+    setTimeoutErrors(nextErrors)
+    if (nextErrors.connect || nextErrors.firstToken || nextErrors.overall) {
+      focusFirstInvalid(formRef.current)
+      return
+    }
     if (connectSec.trim()) timeouts.connect_sec = Number(connectSec)
     if (firstTokenSec.trim()) timeouts.first_token_sec = Number(firstTokenSec)
     if (overallSec.trim()) timeouts.overall_timeout = Number(overallSec)
     if (overallSec.trim()) timeouts.overall_sec = Number(overallSec)
     delete timeouts.overall_timeout
-    if (Object.values(timeouts).some((v) => !Number.isFinite(v) || v <= 0)) {
-    setFormError(t('channels.form.timeoutInt'))
-      return
-    }
-    setFormError('')
     // 预设模式新建：名称由预设默认名自动生成，重名追加 -2 / -3
     const finalName = presetMode && !channel
       ? uniquePresetName(preset.defaultName, (channels.data?.items ?? []).map((item) => item.name))
@@ -380,6 +398,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       },
       {
         onSuccess: (saved) => {
+          notify.success(t('toast.channel.saved'))
           const keys = keysText.trim()
           if (!channel && keys) {
             addKeys.mutate({ channelId: saved.id, keys }, { onSuccess: onClose, onError: () => onClose() })
@@ -404,36 +423,47 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         </div>
       }
     >
-      <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]">
+      <form id={formID} ref={formRef} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]" noValidate>
+        {/* 提交错误放弹窗正文顶部：打开即见，不藏在「保存」按钮上方 */}
+        {save.isError
+          ? <Alert tone="danger">{(save.error as Error).message}</Alert>
+          : addKeys.isError
+            ? <Alert tone="danger">{tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message })}</Alert>
+            : null}
         <div className="space-y-2">
           <Field label={t('channels.form.preset')} hint={t('channels.form.presetHint')}>
-            <Select value={presetId} onChange={(e) => applyPreset(e.target.value)}>
-              <option value={CUSTOM_CHANNEL_PRESET}>{t('preset.custom.label')}</option>
-              {CHANNEL_PRESETS.map((p) => <option key={p.id} value={p.id}>{t(p.labelKey)}</option>)}
-            </Select>
+            <Select
+              value={presetId}
+              onValueChange={applyPreset}
+              options={[
+                { value: CUSTOM_CHANNEL_PRESET, label: t('preset.custom.label') },
+                ...CHANNEL_PRESETS.map((p) => ({ value: p.id, label: t(p.labelKey) })),
+              ]}
+            />
           </Field>
           {preset && (
-            <div className={`rounded-lg border px-3 py-2.5 ${preset.warningKey ? 'border-warning-border bg-warning-subtle' : 'border-line bg-surface-soft'}`}>
-              <div className={`text-xs ${preset.warningKey ? 'text-warning-text' : 'text-muted'}`}>{t(preset.descKey)}</div>
-              <div className="mt-1 font-mono text-[11px] text-muted">{preset.baseUrl}</div>
+            <Alert tone={preset.warningKey ? 'warning' : 'neutral'}>
+              <div>{t(preset.descKey)}</div>
+              <div className="mt-1 font-mono text-[11px] opacity-80">{preset.baseUrl}</div>
               {preset.warningKey && (
-                <div className="mt-1.5 flex gap-1.5 text-xs font-medium text-warning-text">
-                  <TriangleAlert size={13} className="mt-0.5 shrink-0" />
-                  <span>{t(preset.warningKey)}</span>
-                </div>
+                <div className="mt-1.5 font-medium">{t(preset.warningKey)}</div>
               )}
-            </div>
+            </Alert>
           )}
         </div>
         {presetMode && (
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface-soft px-3 py-2 text-xs">
-            <span className="text-muted">{t('channels.form.protocolReadonly')}</span>
-            <Badge tone="brand">Chat Completions</Badge>
-            {supportsResponses && <Badge tone="info">Responses</Badge>}
-            {supportsAnthropic && <Badge tone="brand">Messages</Badge>}
-            {supportsGemini && <Badge tone="success">Gemini</Badge>}
-            <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={switchToCustom}>{t('channels.form.switchToCustom')}</Button>
-          </div>
+          <Alert
+            tone="neutral"
+            action={<Button type="button" size="sm" variant="ghost" onClick={switchToCustom}>{t('channels.form.switchToCustom')}</Button>}
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted">{t('channels.form.protocolReadonly')}</span>
+              <Badge tone="brand">Chat Completions</Badge>
+              {supportsResponses && <Badge tone="info">Responses</Badge>}
+              {supportsAnthropic && <Badge tone="brand">Messages</Badge>}
+              {supportsGemini && <Badge tone="success">Gemini</Badge>}
+            </div>
+          </Alert>
         )}
         {!presetMode && (
           <Field label={t('channels.form.name')}><Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="openai-main" /></Field>
@@ -491,9 +521,15 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         )}
         {!presetMode && (
           <div className="eg-grid eg-grid-auto-wide">
-            <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')}><Input type="number" min={1} max={300} value={connectSec} onChange={(e) => setConnectSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
-            <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')}><Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => setFirstTokenSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
-            <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')}><Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => setOverallSec(e.target.value)} placeholder={t('common.blankPlaceholder')} /></Field>
+            <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')} error={timeoutErrors.connect}>
+              <Input type="number" min={1} max={300} value={connectSec} onChange={(e) => { setConnectSec(e.target.value); setTimeoutErrors((current) => ({ ...current, connect: undefined })) }} placeholder={t('common.blankPlaceholder')} />
+            </Field>
+            <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')} error={timeoutErrors.firstToken}>
+              <Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => { setFirstTokenSec(e.target.value); setTimeoutErrors((current) => ({ ...current, firstToken: undefined })) }} placeholder={t('common.blankPlaceholder')} />
+            </Field>
+            <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')} error={timeoutErrors.overall}>
+              <Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => { setOverallSec(e.target.value); setTimeoutErrors((current) => ({ ...current, overall: undefined })) }} placeholder={t('common.blankPlaceholder')} />
+            </Field>
           </div>
         )}
         <div className="space-y-2">
@@ -583,8 +619,6 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           </div>
         )}
         {!presetMode && <ModelMappingEditor value={mapping} onChange={setMapping} />}
-        <ErrorText>{formError}</ErrorText>
-        <ErrorText>{save.isError ? (save.error as Error).message : addKeys.isError ? tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message }) : null}</ErrorText>
       </form>
     </Dialog>
   )

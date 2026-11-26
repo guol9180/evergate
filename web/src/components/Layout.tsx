@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical, UserRound, Sun, Moon, Monitor, Languages } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
-import { PageSkeleton } from './ui'
+import { PageSkeleton, Tooltip } from './ui'
 import { withBasePath } from '../lib/runtime'
 import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
 import { getLocale, setLocale, t, tf, useLocale, type MessageKey } from '../lib/i18n'
+import { useMediaQuery } from '../lib/useMediaQuery'
 
 const nav: { to: string; label: MessageKey; end?: boolean; icon: typeof LayoutDashboard }[] = [
   { to: '/', label: 'nav.dashboard', icon: LayoutDashboard, end: true },
@@ -32,6 +33,8 @@ export default function Layout() {
   const location = useLocation()
   const [theme, setThemeState] = useState<Theme>(() => getTheme())
   const mainRef = useRef<HTMLElement>(null)
+  // 与 index.css 的侧栏断点一致：≥1200px 显示文字标签，此时退出按钮不需要 tooltip
+  const sidebarExpanded = useMediaQuery('(min-width: 1200px)')
   // 订阅语言：setLocale 后本组件与所有调用 useLocale 的页面一起重渲染
   useLocale()
 
@@ -94,11 +97,12 @@ export default function Layout() {
           ))}
         </nav>
         <div className="space-y-3 border-t border-line-soft p-3">
-          <div className="eg-sidebar-meta flex items-center gap-2 px-2 text-xs text-muted">
-            <UserRound size={14} aria-hidden="true" className="shrink-0" />
+          {/* 与导航项同缩进：px-3 + 16px 图标，保证图标中心与文字左缘都和菜单对齐 */}
+          <div className="eg-sidebar-meta flex items-center gap-2.5 px-3 text-xs text-muted">
+            <UserRound size={16} aria-hidden="true" className="shrink-0" />
             <span className="truncate">{me.data?.username}</span>
           </div>
-          <div className="eg-sidebar-meta px-2 text-[11px] leading-4 text-subtle">
+          <div className="eg-sidebar-meta px-3 text-[11px] leading-4 text-subtle">
             {update.isPending
               ? t('update.checking')
               : update.isError
@@ -113,36 +117,41 @@ export default function Layout() {
             )}
           </div>
           <div className="eg-sidebar-actions">
-            <button
-              type="button"
-              onClick={() => setLocale(getLocale() === 'en' ? 'zh-CN' : 'en')}
-              aria-label={t('locale.switch')}
-              title={t('locale.switch')}
-              className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-            >
-              <Languages size={16} className="shrink-0" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setThemeState(cycleTheme(theme))}
-              aria-label={tf('theme.aria', { current: t(themeLabelKey[theme]), next: t(themeLabelKey[nextTheme[theme]]) })}
-              title={tf('theme.title', { current: t(themeLabelKey[theme]) })}
-              className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-            >
-              <ThemeIcon size={16} className="shrink-0" aria-hidden="true" />
-            </button>
-            <button
-              onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
-              title={t('nav.logout')}
-              className="eg-nav-link eg-icon-btn eg-sidebar-logout gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-            >
-              <LogOut size={16} className="shrink-0" aria-hidden="true" /> <span className="eg-sidebar-label">{t('nav.logout')}</span>
-            </button>
+            <Tooltip content={t('locale.switch')} side="right">
+              <button
+                type="button"
+                onClick={() => setLocale(getLocale() === 'en' ? 'zh-CN' : 'en')}
+                aria-label={t('locale.switch')}
+                className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <Languages size={16} className="shrink-0" aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <Tooltip content={tf('theme.title', { current: t(themeLabelKey[theme]) })} side="right">
+              <button
+                type="button"
+                onClick={() => setThemeState(cycleTheme(theme))}
+                aria-label={tf('theme.aria', { current: t(themeLabelKey[theme]), next: t(themeLabelKey[nextTheme[theme]]) })}
+                className="eg-nav-link eg-icon-btn text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <ThemeIcon size={16} className="shrink-0" aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <Tooltip content={sidebarExpanded ? undefined : t('nav.logout')} side="right">
+              <button
+                type="button"
+                onClick={() => logout.mutate(undefined, { onSuccess: () => navigate('/login') })}
+                className="eg-nav-link eg-icon-btn eg-sidebar-logout gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+              >
+                <LogOut size={16} className="shrink-0" aria-hidden="true" /> <span className="eg-sidebar-label">{t('nav.logout')}</span>
+              </button>
+            </Tooltip>
           </div>
         </div>
       </aside>
       <main ref={mainRef} className="min-w-0 flex-1 overflow-auto" id="main-content">
-        <div className="eg-page">
+        {/* key 绑定路径：切换页面时重挂内容区以触发入场动画（页面本身在路由切换时就会重挂） */}
+        <div key={location.pathname} className="eg-page eg-page-in">
           <Outlet />
         </div>
       </main>

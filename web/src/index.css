@@ -211,11 +211,61 @@ body {
 @keyframes eg-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes eg-pop-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes eg-slide-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes eg-rise-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes eg-page-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes eg-fade-only-in { from { opacity: 0; } to { opacity: 1; } }
 .eg-overlay { animation: eg-fade-in 150ms ease-out; }
 .eg-dialog-panel { animation: eg-pop-in 180ms ease-out; }
 .eg-drawer-panel { animation: eg-slide-in 200ms ease-out; }
+/* Alert 出现时从上方 4px 轻落，读起来像"提示在表单顶部展开"而不是突然弹出一块色块 */
+.eg-alert-in { animation: eg-rise-in 180ms ease-out; }
+/* 路由切换：内容区 160ms 淡入上浮，替代硬切；不引入动画库 */
+.eg-page-in { animation: eg-page-in 160ms ease-out; }
+.eg-tooltip-in { animation: eg-fade-only-in 120ms ease-out; }
+.eg-select-pop-in { animation: eg-pop-in 140ms ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .eg-overlay, .eg-dialog-panel, .eg-drawer-panel { animation: none; }
+  .eg-overlay, .eg-dialog-panel, .eg-drawer-panel, .eg-alert-in, .eg-page-in, .eg-tooltip-in, .eg-select-pop-in { animation: none; }
+}
+
+/* Tooltip（Radix）：反转色小卡片，浮在弹窗（z-50）之上；箭头与气泡同色。 */
+.eg-tooltip {
+  @apply z-[70] rounded-md px-2 py-1 text-xs font-medium text-surface shadow-md;
+  background: var(--eg-foreground);
+}
+.eg-tooltip-arrow { fill: var(--eg-foreground); }
+
+/* Select 弹层（Radix）：与 Dialog 同一套面板材质，宽度至少与触发器一致。 */
+.eg-select-content {
+  @apply z-[60] overflow-hidden rounded-lg border border-line bg-surface shadow-lg;
+  min-width: var(--radix-select-trigger-width);
+  max-height: min(360px, var(--radix-select-content-available-height));
+}
+
+/* Toast（sonner）：颜色映射到语义 token，浅深色随 .dark 自动切换；
+   选择器需压过 sonner 运行时注入的 [data-sonner-theme] 规则（同特异性时后注入者胜出）。 */
+body [data-sonner-toaster][data-sonner-theme] {
+  font-family: inherit;
+  --normal-bg: var(--eg-surface);
+  --normal-bg-hover: var(--eg-surface-soft);
+  --normal-border: var(--eg-line);
+  --normal-border-hover: var(--eg-line-strong);
+  --normal-text: var(--eg-foreground-soft);
+  --success-bg: var(--eg-success-subtle);
+  --success-border: var(--eg-success-border);
+  --success-text: var(--eg-success-text);
+  --info-bg: var(--eg-info-subtle);
+  --info-border: var(--eg-info-border);
+  --info-text: var(--eg-info-text);
+  --warning-bg: var(--eg-warning-subtle);
+  --warning-border: var(--eg-warning-border);
+  --warning-text: var(--eg-warning-text);
+  --error-bg: var(--eg-danger-subtle);
+  --error-border: var(--eg-danger-border);
+  --error-text: var(--eg-danger-text);
+}
+body [data-sonner-toaster] [data-sonner-toast][data-styled='true']:hover [data-close-button]:hover {
+  background: var(--eg-surface-strong);
+  border-color: var(--eg-line-strong);
 }
 
 @media (max-width: 1023px) {

@@ -44,7 +44,10 @@ describe('Setup', () => {
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'short' } })
     fireEvent.click(screen.getByRole('button', { name: '创建并前往登录' }))
 
-    expect(screen.getByRole('alert').textContent).toContain('至少 8 位')
+    // 字段级错误：落在密码框下方，并标记 aria-invalid；不再是按钮上方的大色块
+    expect(screen.getByText('密码至少 8 位')).toBeTruthy()
+    expect(screen.getByLabelText('密码').getAttribute('aria-invalid')).toBe('true')
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(state.mutate).not.toHaveBeenCalled()
   })
 
@@ -57,12 +60,13 @@ describe('Setup', () => {
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'Admin1234!' } })
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'Admin1234!' } })
     fireEvent.click(screen.getByRole('button', { name: '创建并前往登录' }))
-    expect(screen.getByRole('alert').textContent).toContain('用户名')
+    expect(screen.getByText(/用户名需为/)).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'Admin1234?' } })
     fireEvent.click(screen.getByRole('button', { name: '创建并前往登录' }))
-    expect(screen.getByRole('alert').textContent).toContain('不一致')
+    expect(screen.getByText('两次输入的密码不一致')).toBeTruthy()
+    expect(screen.queryByText(/用户名需为/)).toBeNull()
     expect(state.mutate).not.toHaveBeenCalled()
   })
 

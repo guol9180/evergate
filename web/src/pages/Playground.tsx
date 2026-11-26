@@ -3,18 +3,25 @@ import { FlaskConical, Play, Square } from 'lucide-react'
 import { useChannels } from '../api/hooks'
 import { runPlayground, type PlaygroundMeta } from '../api/playground'
 import RetryTimeline from '../components/RetryTimeline'
-import { Badge, Button, Card, Empty, PageHeader, Select, SettingRow, Spinner, Textarea } from '../components/ui'
+import { Alert, Badge, Button, Card, Empty, Field, PageHeader, SegmentedControl, Select, SettingRow, Spinner, Textarea } from '../components/ui'
 import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, httpStatusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 
 const MAX_PROMPT = 16000
 const MAX_SYSTEM = 8000
+type Protocol = 'chat' | 'responses' | 'anthropic' | 'gemini'
+const PROTOCOLS: readonly { value: Protocol; label: string }[] = [
+  { value: 'chat', label: 'Chat' },
+  { value: 'responses', label: 'Responses' },
+  { value: 'anthropic', label: 'Messages' },
+  { value: 'gemini', label: 'Gemini' },
+]
 
 export default function Playground() {
   usePageTitle(t('page.playground.title'))
   const channels = useChannels()
-  const [protocol, setProtocol] = useState<'chat' | 'responses' | 'anthropic' | 'gemini'>('chat')
+  const [protocol, setProtocol] = useState<Protocol>('chat')
   const [model, setModel] = useState('')
   const [system, setSystem] = useState('')
   const [prompt, setPrompt] = useState('')
@@ -79,6 +86,9 @@ export default function Playground() {
     abortRef.current?.abort()
   }
 
+  // 非流式失败时服务端把错误放进 response.error，extractPlaygroundText 会把它当正文返回；顶部已有横幅，正文区不再重复
+  const outputIsErrorOnly = !!error && output === tf('playground.upstreamError', { message: describeUpstreamError(error).text })
+
   return (
     <div className="eg-page-stack">
       <PageHeader
@@ -91,49 +101,25 @@ export default function Playground() {
         <Card className="min-w-0 self-start">
           <div className="space-y-[var(--eg-control-gap)]">
             <div>
-              <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                <span className="text-sm font-medium text-foreground-soft">{t('playground.protocol')}</span>
-                <span className="text-[11px] text-subtle">Chat / Responses / Messages / Gemini</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
-                {([
-                  ['chat', 'Chat'],
-                  ['responses', 'Responses'],
-                  ['anthropic', 'Messages'],
-                  ['gemini', 'Gemini'],
-                ] as const).map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setProtocol(value)}
-                    disabled={running}
-                    className={`h-9 rounded-md border text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-60 ${
-                      protocol === value
-                        ? 'border-brand-border bg-brand-subtle text-brand-text'
-                        : 'border-line-strong bg-surface text-muted hover:bg-surface-soft'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <div className="mb-1.5 text-sm font-medium text-foreground-soft">{t('playground.protocol')}</div>
+              <SegmentedControl
+                label={t('playground.protocol')}
+                value={protocol}
+                onChange={setProtocol}
+                options={PROTOCOLS}
+                disabled={running}
+                className="grid-cols-2 sm:grid-cols-4 xl:grid-cols-2"
+              />
             </div>
 
-            <div className="space-y-1.5">
-              <span className="text-sm font-medium text-foreground-soft">{t('playground.model')}</span>
+            <Field label={t('playground.model')} hint={models.length === 0 ? t('playground.noModelsHint') : undefined}>
               <Select
                 value={model}
-                onChange={(e) => setModel(e.target.value)}
+                onValueChange={setModel}
                 disabled={running || models.length === 0}
-                aria-label={t('playground.model')}
-              >
-                {models.length === 0 && <option value="">{t('playground.noModels')}</option>}
-                {models.map((item) => <option key={item} value={item}>{item}</option>)}
-              </Select>
-              {models.length === 0 && (
-                <p className="text-xs text-warning-text">{t('playground.noModelsHint')}</p>
-              )}
-            </div>
+                options={models.length === 0 ? [{ value: '', label: t('playground.noModels') }] : models.map((item) => ({ value: item, label: item }))}
+              />
+            </Field>
 
             <div className="space-y-1.5">
               <div className="flex items-baseline justify-between">
@@ -147,6 +133,7 @@ export default function Playground() {
                 onChange={(e) => setSystem(e.target.value)}
               placeholder={t('playground.systemPlaceholder')}
                 disabled={running}
+                aria-label={t('playground.system')}
               />
             </div>
 
@@ -162,6 +149,7 @@ export default function Playground() {
                 onChange={(e) => setPrompt(e.target.value)}
               placeholder={t('playground.userPlaceholder')}
                 disabled={running}
+                aria-label={t('playground.user')}
               />
             </div>
 
@@ -199,23 +187,26 @@ export default function Playground() {
           </div>
 
           <div ref={outputRef} aria-live="polite" className="max-h-[58vh] min-h-[120px] overflow-auto" style={{ padding: 'var(--eg-card-pad)' }}>
-            {output ? (
+            {/* 错误放在响应区顶部、正文之前：先看到"为什么失败"再看已生成的部分输出，不再贴卡片底边 */}
+            {error && (
+              <Alert tone="danger" className="mb-3" data-upstream="true">
+                <span className="break-words" title={error}>{describeUpstreamError(error).text}</span>
+              </Alert>
+            )}
+            {output && !outputIsErrorOnly ? (
               <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-foreground-soft">
                 {output}
                 {running && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-brand align-middle" />}
               </pre>
             ) : running ? (
               <div className="flex items-center gap-2 py-12 text-sm text-muted"><Spinner /> {t('playground.waiting')}</div>
+            ) : error ? (
+              // 纯错误响应没有正文可看：顶部横幅已经说清楚，不再在正文区重复一遍
+              null
             ) : (
               <Empty icon={<FlaskConical size={34} />} title={t('empty.playground.title')} hint={t('empty.playground.hint')} />
             )}
           </div>
-
-          {error && (
-            <div className="border-t border-danger-border bg-danger-subtle text-xs leading-5 text-danger-text" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }} data-upstream="true">
-              <span className="break-words" title={error}>{describeUpstreamError(error).text}</span>
-            </div>
-          )}
 
           {meta && (
             <div className="border-t border-line-soft bg-surface-soft" style={{ padding: 'var(--eg-card-pad)' }}>

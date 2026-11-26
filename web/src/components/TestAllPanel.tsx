@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import type { TestAllItem } from '../api/types'
 import { useChannelsTestAll } from '../api/hooks'
-import { Button, Card, StatusBadge } from './ui'
+import { Alert, Button, Card, Select, StatusBadge, Td, Th } from './ui'
 import { fmtMs } from '../lib/format'
 import { t, tf } from '../lib/i18n'
 
@@ -46,7 +46,7 @@ export default function TestAllPanel() {
     )
   }
   if (testAll.isError && !testAll.data) {
-    return <div role="alert"><Card className="eg-card-fluid text-sm text-danger-text">{tf('testAll.failed', { message: (testAll.error as Error).message })}</Card></div>
+    return <Alert tone="danger">{tf('testAll.failed', { message: (testAll.error as Error).message })}</Alert>
   }
   if (!testAll.data) {
     return (
@@ -63,18 +63,18 @@ export default function TestAllPanel() {
         {t('testAll.title')} <span className="ml-2 text-xs font-normal text-muted">{tf('testAll.summary', { ok: okCount, total: items.length })}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1.5 text-xs text-muted">
-          {t('testAll.sort')}
-          <select
-            value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as SortKey)}
-            className="h-7 rounded-md border border-line-strong bg-surface px-2 text-xs text-foreground-soft outline-none focus:border-brand"
-          >
-            <option value="latency">{t('testAll.sort.latency')}</option>
-            <option value="name">{t('testAll.sort.name')}</option>
-            <option value="result">{t('testAll.sort.result')}</option>
-          </select>
-        </label>
+        <span className="text-xs text-muted">{t('testAll.sort')}</span>
+        <Select
+          size="sm"
+          aria-label={t('testAll.sort')}
+          value={sortKey}
+          onValueChange={(next) => setSortKey(next as SortKey)}
+          options={[
+            { value: 'latency', label: t('testAll.sort.latency') },
+            { value: 'name', label: t('testAll.sort.name') },
+            { value: 'result', label: t('testAll.sort.result') },
+          ]}
+        />
         <Button size="sm" variant="outline" onClick={() => testAll.mutate()} disabled={testAll.isPending}>
           <RefreshCw size={14} className={testAll.isPending ? 'animate-spin' : ''} /> {t('testAll.retry')}
         </Button>
@@ -93,19 +93,19 @@ export default function TestAllPanel() {
         <table className="w-full min-w-[560px]">
           <thead className="border-b border-line-soft bg-surface-soft">
             <tr>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('table.channel')}</th>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('testAll.sort.result')}</th>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('testAll.col.latency')}</th>
-              <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('testAll.col.error')}</th>
+              <Th>{t('table.channel')}</Th>
+              <Th>{t('testAll.sort.result')}</Th>
+              <Th>{t('testAll.col.latency')}</Th>
+              <Th>{t('testAll.col.error')}</Th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line-soft">
             {items.map((item) => (
               <tr key={item.channel_id}>
-                <td className="eg-cell-x eg-cell-y text-sm font-medium text-foreground">{item.name}</td>
-                <td className="eg-cell-x eg-cell-y"><StatusBadge tone={item.ok ? 'success' : item.result === 'inconclusive' ? 'neutral' : 'danger'}>{item.ok ? t('testAll.ok') : item.result === 'inconclusive' ? t('keyState.inconclusive') : t('testAll.fail')}</StatusBadge></td>
-                <td className="eg-cell-x eg-cell-y text-sm tabular-nums text-foreground-soft">{item.latency_ms ? fmtMs(item.latency_ms) : '—'}</td>
-                <td className="eg-cell-x eg-cell-y max-w-md truncate text-xs text-muted" title={item.error}>{item.error || '—'}</td>
+                <Td className="font-medium text-foreground">{item.name}</Td>
+                <Td><StatusBadge tone={item.ok ? 'success' : item.result === 'inconclusive' ? 'neutral' : 'danger'}>{item.ok ? t('testAll.ok') : item.result === 'inconclusive' ? t('keyState.inconclusive') : t('testAll.fail')}</StatusBadge></Td>
+                <Td className="tabular-nums">{item.latency_ms ? fmtMs(item.latency_ms) : '—'}</Td>
+                <Td className="max-w-md truncate text-xs text-muted" title={item.error}>{item.error || '—'}</Td>
               </tr>
             ))}
           </tbody>

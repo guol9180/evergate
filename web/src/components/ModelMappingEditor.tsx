@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { Button, ErrorText, Textarea } from './ui'
+import { Button, FieldError, IconButton, Input, Textarea } from './ui'
 import { t, tf } from '../lib/i18n'
 
 type Mapping = Record<string, string>
@@ -102,30 +102,30 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
                   return (
                     <tr key={i}>
                       <td className="eg-cell-x eg-cell-y">
-                        <input
+                        <Input
                           aria-label={isNew ? t('mapping.newPublicAria') : tf('mapping.publicAria', { n: i + 1 })}
                           value={row.from}
                           placeholder={isNew ? t('mapping.publicPlaceholder') : ''}
                           onChange={(e) => updateRow(i, 'from', e.target.value)}
-                          className="h-8 w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-foreground outline-none focus:border-brand"
+                          className="h-8 px-2"
                         />
                       </td>
                       <td className="eg-cell-x eg-cell-y">
-                        <input
+                        <Input
                           aria-label={isNew ? t('mapping.newUpstreamAria') : tf('mapping.upstreamAria', { n: i + 1 })}
                           value={row.to}
                           placeholder={isNew ? t('mapping.upstreamPlaceholder') : ''}
                           onChange={(e) => updateRow(i, 'to', e.target.value)}
-                          className="h-8 w-full rounded-md border border-line-strong bg-surface px-2 text-sm text-foreground outline-none focus:border-brand"
+                          className="h-8 px-2"
                         />
                       </td>
                       <td className="eg-cell-x eg-cell-y text-right">
                         {isNew ? (
                           <span className="inline-block whitespace-nowrap text-xs text-subtle" title={t('mapping.addRowTitle')}>{t('mapping.addRow')}</span>
                         ) : (
-                          <button type="button" onClick={() => removeRow(i)} aria-label={tf('mapping.deleteRowAria', { n: i + 1 })} title={t('common.delete')} className="rounded p-1 text-subtle hover:bg-danger-subtle hover:text-danger-text">
+                          <IconButton danger onClick={() => removeRow(i)} label={tf('mapping.deleteRowAria', { n: i + 1 })}>
                             <Trash2 size={13} aria-hidden="true" />
-                          </button>
+                          </IconButton>
                         )}
                       </td>
                     </tr>
@@ -139,7 +139,7 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
       ) : (
         <>
           <Textarea rows={4} value={jsonText} onChange={(e) => applyJson(e.target.value)} placeholder='{"gpt-4": "gpt-4o-2024"}' aria-invalid={jsonError ? true : undefined} className="font-mono text-xs" />
-          <ErrorText>{jsonError}</ErrorText>
+          {jsonError && <FieldError>{jsonError}</FieldError>}
         </>
       )}
     </div>
