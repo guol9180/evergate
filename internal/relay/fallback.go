@@ -198,57 +198,18 @@ func (r *Relay) dispatchModel(
 	}
 
 	bridgeBody := originalBody
-	if isGeminiRequest(c) {
-		clearGeminiBridgeBody(c)
-		candidates = preferGeminiNative(candidates)
-		if isGeminiCountTokens(c) {
-			candidates = filterGeminiNative(candidates)
-			if len(candidates) == 0 {
-				const msg = "countTokens can only be routed to channels with native Gemini support"
-				return modelDispatchResult{status: http.StatusBadRequest, errType: "gemini_native_required", errMsg: msg}
-			}
-		} else if !anyGeminiNative(candidates) {
-			converted, cerr := geminiToChat(geminiOriginalBody(c), model, isGeminiStreamRequest(c))
-			if cerr != nil {
-				return modelDispatchResult{status: http.StatusBadRequest, errType: "invalid_request_error", errMsg: cerr.Error()}
-			}
-			bridgeBody = converted
-			setGeminiBridgeBody(c, converted)
+	spec := bridgeSpecFor(c)
+	if spec != nil {
+		prep := r.prepareBridge(c, spec, candidates, originalBody, model)
+		if prep.failure != nil {
+			return *prep.failure
 		}
-	}
-	if isMessagesRequest(c) {
-		clearMessagesBridgeBody(c)
-		candidates = preferAnthropicNative(candidates)
-		if isMessagesCountTokens(c) {
-			candidates = filterAnthropicNative(candidates)
-			if len(candidates) == 0 {
-				const msg = "count_tokens can only be routed to channels with native Anthropic support"
-				return modelDispatchResult{status: http.StatusBadRequest, errType: "messages_native_required", errMsg: msg}
-			}
-		} else if !anyAnthropicNative(candidates) {
-			converted, cerr := messagesToChat(originalBody)
-			if cerr != nil {
-				return modelDispatchResult{status: http.StatusBadRequest, errType: "invalid_request_error", errMsg: cerr.Error()}
-			}
-			bridgeBody = converted
-			setMessagesBridgeBody(c, converted)
+		if prep.nativeRequired {
+			return modelDispatchResult{nativeRequired: true}
 		}
-	}
-	if isResponsesRequest(c) {
-		setResponsesOriginalBody(c, originalBody)
-		clearResponsesBridgeBody(c)
-		candidates = preferResponsesNative(candidates)
-		if !anyResponsesNative(candidates) {
-			if responsesNeedsNativeBridge(originalBody) {
-				return modelDispatchResult{nativeRequired: true}
-			}
-			converted, toolRegistry, cerr := responsesToChat(originalBody)
-			if cerr != nil {
-				return modelDispatchResult{status: http.StatusBadRequest, errType: "invalid_request_error", errMsg: cerr.Error()}
-			}
-			bridgeBody = converted
-			c.Set(responsesToolIdentitiesKey, toolRegistry)
-			setResponsesBridgeBody(c, converted)
+		candidates = prep.candidates
+		if prep.bridgeBody != nil {
+			bridgeBody = prep.bridgeBody
 		}
 	}
 
@@ -278,81 +239,15 @@ loop:
 			}
 			usedKeys[key.ID] = true
 			attemptBody := bridgeBody
-			if isResponsesRequest(c) {
-				if cand.Channel.SupportsResponses {
-					attemptBody = responsesOriginalBody(c)
-					c.Set(responsesNativeKey, true)
-				} else {
-					converted, cached := responsesBridgeBody(c)
-					if !cached {
-						var cerr error
-						var registry *responsesToolRegistry
-						converted, registry, cerr = responsesToChat(responsesOriginalBody(c))
-						if cerr != nil {
-							start := r.opt.Now()
-							*trace = append(*trace, store.RetryAttempt{
-								ChannelID: cand.Channel.ID, ChannelName: cand.Channel.Name, KeyID: key.ID,
-								Attempt: len(*trace) + 1, ErrorType: "responses_bridge", ErrorMessage: cerr.Error(),
-								ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
-							})
-							continue loop
-						}
-						c.Set(responsesToolIdentitiesKey, registry)
-						setResponsesBridgeBody(c, converted)
-					}
-					attemptBody = converted
-					c.Set(responsesNativeKey, false)
+			if spec != nil {
+				body, skip, failure := r.bridgeAttemptBody(c, spec, cand.Channel, key.ID, model, trace)
+				if failure != nil {
+					return *failure
 				}
-			}
-			if isMessagesRequest(c) {
-				if cand.Channel.SupportsAnthropic {
-					attemptBody = messagesOriginalBody(c)
-					c.Set(messagesNativeKey, true)
-				} else {
-					converted, cached := messagesBridgeBody(c)
-					if !cached {
-						var cerr error
-						converted, cerr = messagesToChat(messagesOriginalBody(c))
-						if cerr != nil {
-							start := r.opt.Now()
-							*trace = append(*trace, store.RetryAttempt{
-								ChannelID: cand.Channel.ID, ChannelName: cand.Channel.Name, KeyID: key.ID,
-								Attempt: len(*trace) + 1, ErrorType: "messages_bridge", ErrorMessage: cerr.Error(),
-								ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
-							})
-							return modelDispatchResult{status: http.StatusBadRequest, errType: "invalid_request_error", errMsg: cerr.Error()}
-						}
-						setMessagesBridgeBody(c, converted)
-						bridgeBody = converted
-					}
-					attemptBody = converted
-					c.Set(messagesNativeKey, false)
+				if skip {
+					continue loop
 				}
-			}
-			if isGeminiRequest(c) {
-				if cand.Channel.SupportsGemini {
-					attemptBody = geminiOriginalBody(c)
-					c.Set(geminiNativeKey, true)
-				} else {
-					converted, cached := geminiBridgeBody(c)
-					if !cached {
-						var cerr error
-						converted, cerr = geminiToChat(geminiOriginalBody(c), model, isGeminiStreamRequest(c))
-						if cerr != nil {
-							start := r.opt.Now()
-							*trace = append(*trace, store.RetryAttempt{
-								ChannelID: cand.Channel.ID, ChannelName: cand.Channel.Name, KeyID: key.ID,
-								Attempt: len(*trace) + 1, ErrorType: "gemini_bridge", ErrorMessage: cerr.Error(),
-								ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
-							})
-							return modelDispatchResult{status: http.StatusBadRequest, errType: "invalid_request_error", errMsg: cerr.Error()}
-						}
-						setGeminiBridgeBody(c, converted)
-						bridgeBody = converted
-					}
-					attemptBody = converted
-					c.Set(geminiNativeKey, false)
-				}
+				attemptBody = body
 			}
 			out := r.attemptOne(c, cand, key, attemptBody, model, stream, trace, hit, override.Timeouts)
 			if out == outcomeDone {

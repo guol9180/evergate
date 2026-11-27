@@ -71,7 +71,9 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（可维护性）
   - 2026-11-27 执行 ③ admin.go 1500 行按领域拆为 auth / update / settings / channels / keys / tokens / logs，路由改公开组 + 会话组（中间件只声明一次），SetupRoutes 入参改 gin.IRouter；④ 用量报表 totals 与计价计数合并为一次 SELECT，审计摘要只在审计写路由按 json 标签反射取值（不再每个响应做 JSON 往返），key 删除与渠道删除回收状态机内存条目（新增 StateMachine.Forget + Manager.ForgetKey + 表驱动测试）；⑤ TokenAuth 去掉变参（logWriter 显式可 nil），管理台会话校验与令牌 DTO 改用注入时钟，删除重构后无引用的 utcTodayFrom
   - 2026-11-27 验证 已做项：go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、调度覆盖率 92.8%（≥90%）、relay 81.1%（≥81%）、make build 通过；仓库无 openapi.yaml，接口契约以测试断言为准
-  - 2026-11-27 备注 剩余：① dispatchModel 桥接体表驱动、② run() 拆引导 / 装配 / 生命周期，两项需通读 relay 分派与 cmd 装配后独立提交
+  - 2026-11-27 执行 ① 协议桥接改表驱动：新增 `internal/relay/bridge.go`，把 Responses / Messages / Gemini 的候选偏好、原生计数约束、桥接体缓存与转换失败分支收敛为 `bridgeSpecs` 表 + `prepareBridge` / `bridgeAttemptBody` 两个入口，`dispatchModel` 去掉三段近乎相同的分支，fallback.go 388 → 283 行；补 `TestBridgeSpecForMatchesExactlyOneProtocol` 锁定「每类请求恰好命中一项、chat 不命中」
+  - 2026-11-27 验证 ① 后：go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、relay 语句覆盖率 81.5%（≥81%）
+  - 2026-11-27 备注 剩余：② run() 拆引导 / 装配 / 生命周期，独立提交
 
 #### T112: 转发热路径与服务生命周期优化（P2，代码审查）
 
