@@ -236,6 +236,10 @@ loop:
 				continue loop
 			}
 			usedKeys[key.ID] = true
+			// 上游 key 的 RPM 上限：该 key 本轮不参与调度，换下一个 key / 渠道。
+			if _, ok := r.opt.KeyLimiter.AllowRPM(key.ID, key.RPMLimit); !ok {
+				continue
+			}
 			attemptBody := bridgeBody
 			if spec != nil {
 				body, skip, failure := r.bridgeAttemptBody(c, spec, cand.Channel, key.ID, model, trace)

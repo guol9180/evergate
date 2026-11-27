@@ -225,6 +225,9 @@ export interface Token {
   allowed_models: string[] | null
   allowed_ips: string[] | null
   disable_fallback: boolean
+  /** 0 = 不限；单进程内存计数 */
+  rpm_limit: number
+  concurrency_limit: number
   created_at: string
 }
 

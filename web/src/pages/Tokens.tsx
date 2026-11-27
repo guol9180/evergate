@@ -94,8 +94,8 @@ export default function Tokens() {
             <table className="w-full min-w-[700px] lg:min-w-0">
               <thead className="border-b border-line-soft bg-surface-soft">
                 <tr>
-                  <Th>{t('table.name')}</Th><Th>{t('table.status')}</Th><Th>{t('table.quota')}</Th><Th>{t('table.allowedModels')}</Th><Th className="hidden min-[1180px]:table-cell">{t('table.allowedIPs')}</Th>
-                  <Th>{t('table.expiresAt')}</Th><Th className="hidden min-[1240px]:table-cell">{t('table.createdAt')}</Th><Th>{t('table.enabled')}</Th>
+                  <Th>{t('table.name')}</Th><Th>{t('table.status')}</Th><Th>{t('table.quota')}</Th><Th className="hidden min-[1180px]:table-cell">{t('table.rateLimit')}</Th><Th>{t('table.allowedModels')}</Th><Th className="hidden min-[1320px]:table-cell">{t('table.allowedIPs')}</Th>
+                  <Th>{t('table.expiresAt')}</Th><Th className="hidden min-[1400px]:table-cell">{t('table.createdAt')}</Th><Th>{t('table.enabled')}</Th>
                   <Th className="w-24"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
                 </tr>
               </thead>
@@ -116,19 +116,27 @@ export default function Tokens() {
                         <span className="text-subtle">{t('tokens.unlimited')}</span>
                       )}
                     </Td>
+                    <Td className="hidden text-xs text-muted min-[1180px]:table-cell">
+                      {tok.rpm_limit > 0 || tok.concurrency_limit > 0
+                        ? tf('tokens.rateLimitSummary', {
+                          rpm: tok.rpm_limit > 0 ? fmtInt(tok.rpm_limit) : '∞',
+                          concurrency: tok.concurrency_limit > 0 ? fmtInt(tok.concurrency_limit) : '∞',
+                        })
+                        : <span className="text-subtle">{t('tokens.unlimited')}</span>}
+                    </Td>
                     <Td className="max-w-40 text-xs text-muted">
                       <div className="truncate" title={(tok.allowed_models || []).join(', ')}>
                         {(tok.allowed_models || []).join(', ') || t('tokens.allModels')}
                       </div>
                       {tok.disable_fallback && <Badge tone="warning">{t('tokens.fallbackDisabled')}</Badge>}
                     </Td>
-                    <Td className="hidden max-w-40 text-xs text-muted min-[1180px]:table-cell">
+                    <Td className="hidden max-w-40 text-xs text-muted min-[1320px]:table-cell">
                       <div className="truncate" title={(tok.allowed_ips || []).join(', ')}>
                         {(tok.allowed_ips || []).join(', ') || t('tokens.allIPs')}
                       </div>
                     </Td>
                     <Td className="text-xs">{fmtTime(tok.expired_at)}</Td>
-                    <Td className="hidden text-xs text-subtle min-[1240px]:table-cell">{fmtTime(tok.created_at)}</Td>
+                    <Td className="hidden text-xs text-subtle min-[1400px]:table-cell">{fmtTime(tok.created_at)}</Td>
                     <Td>
             <Switch checked={tok.enabled} disabled={update.isPending && update.variables?.id === tok.id} onChange={(enabled) => update.mutate({ id: tok.id, enabled })} label={tf('tokens.enableAria', { name: tok.name })} />
                     </Td>
@@ -176,6 +184,8 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   const schema = z.object({
     name: z.string().trim().min(1, t('tokens.form.nameRequired')),
     quota: z.string().refine((value) => value === '' || (!Number.isNaN(Number(value)) && Number(value) >= 0), t('tokens.form.quotaInvalid')),
+    rpm_limit: z.string().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= 0), t('tokens.form.rpmInvalid')),
+    concurrency_limit: z.string().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= 0), t('tokens.form.concurrencyInvalid')),
     expired_at: z.string(),
     modelsText: z.string(),
     ipsText: z.string(),
@@ -186,6 +196,8 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
     defaultValues: {
       name: token?.name ?? '',
       quota: String(token?.quota ?? 0),
+      rpm_limit: String(token?.rpm_limit ?? 0),
+      concurrency_limit: String(token?.concurrency_limit ?? 0),
       expired_at: toLocalInput(token?.expired_at),
       modelsText: (token?.allowed_models || []).join('\n'),
       ipsText: (token?.allowed_ips || []).join('\n'),
@@ -206,6 +218,8 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
     const payload = {
       name: values.name.trim(),
       quota: Number(values.quota) || 0,
+      rpm_limit: Number(values.rpm_limit) || 0,
+      concurrency_limit: Number(values.concurrency_limit) || 0,
       expired_at: values.expired_at ? new Date(values.expired_at).toISOString() : null,
       allowed_models: splitLines(values.modelsText),
       allowed_ips: splitLines(values.ipsText),
@@ -248,6 +262,14 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
           </Field>
           <Field label={t('tokens.form.quota')} hint={t('tokens.form.quotaHint')} error={formState.errors.quota?.message}>
             <Input type="number" min={0} {...register('quota')} />
+          </Field>
+        </div>
+        <div className="eg-grid eg-grid-auto-wide">
+          <Field label={t('tokens.form.rpm')} hint={t('tokens.form.rpmHint')} error={formState.errors.rpm_limit?.message}>
+            <Input type="number" min={0} {...register('rpm_limit')} />
+          </Field>
+          <Field label={t('tokens.form.concurrency')} hint={t('tokens.form.concurrencyHint')} error={formState.errors.concurrency_limit?.message}>
+            <Input type="number" min={0} {...register('concurrency_limit')} />
           </Field>
         </div>
         <Field label={t('tokens.form.expiresAt')} hint={t('tokens.form.expiresHint')}>

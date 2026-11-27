@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -230,7 +230,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
             <tr>
               <Th>#</Th><Th>{t('table.status')}</Th><Th>{t('table.weight')}</Th><Th>{t('table.consecutiveFails')}</Th>
               <Th className="hidden min-[1180px]:table-cell">{t('table.backoffLevel')}</Th><Th>{t('table.cooldownRemaining')}</Th>
-              <Th className="hidden min-[1220px]:table-cell">{t('table.successFail')}</Th><Th className="hidden min-[1360px]:table-cell">{t('table.lastError')}</Th>
+                  <Th className="hidden min-[1220px]:table-cell">{t('table.successFail')}</Th><Th className="hidden min-[1260px]:table-cell">{t('channels.keys.rpm')}</Th><Th className="hidden min-[1360px]:table-cell">{t('table.lastError')}</Th>
               <Th>{t('table.enabled')}</Th><Th className="w-16"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
             </tr>
           </thead>
@@ -250,6 +250,14 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                   <Td className="hidden min-[1180px]:table-cell">L{k.level}</Td>
                   <Td>{cooling ? <span className="text-warning-text">{formatRemainingSeconds(k.cooldown_remaining_sec)}</span> : '—'}</Td>
                   <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
+                  <Td className="hidden min-[1260px]:table-cell">
+                    <KeyRpmInput
+                      value={k.rpm_limit}
+                      disabled={updateKey.isPending && updateKey.variables?.id === k.id}
+                      label={tf('channels.keys.rpmAria', { n: i + 1 })}
+                      onCommit={(rpm_limit) => updateKey.mutate({ id: k.id, rpm_limit })}
+                    />
+                  </Td>
                   <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1360px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
                   <Switch checked={k.enabled} disabled={updateKey.isPending && updateKey.variables?.id === k.id} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
@@ -291,6 +299,38 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
 
 // 新建/编辑渠道弹窗：预设模式只开放模型列表 / API 地址 / API 密钥三项，其余由预设决定；
 // 名称、上游协议、优先级 / 权重 / 超时、模型映射只在「切换为自定义」后出现（T91）。
+/** key 的每分钟请求上限：失焦或回车提交，0 表示不限。 */
+function KeyRpmInput({ value, disabled, label, onCommit }: { value: number; disabled: boolean; label: string; onCommit: (value: number) => void }) {
+  const [draft, setDraft] = useState(String(value))
+  useEffect(() => setDraft(String(value)), [value])
+  const commit = () => {
+    const next = Number(draft)
+    if (!Number.isInteger(next) || next < 0 || next === value) {
+      setDraft(String(value))
+      return
+    }
+    onCommit(next)
+  }
+  return (
+    <Input
+      type="number"
+      min={0}
+      className="h-8 w-20 text-xs"
+      value={draft}
+      disabled={disabled}
+      aria-label={label}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          commit()
+        }
+      }}
+    />
+  )
+}
+
 function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: () => void }) {
   const save = useSaveChannel()
   const preview = usePreviewChannelModels()

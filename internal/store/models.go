@@ -88,9 +88,12 @@ type Token struct {
 	AllowedModels []string   `gorm:"serializer:json" json:"allowed_models"`
 	AllowedIPs    []string   `gorm:"serializer:json" json:"allowed_ips"`
 	// DisableFallback 为 true 时该令牌不参与模型降级，保持原模型失败语义。
-	DisableFallback bool      `gorm:"not null;default:false" json:"disable_fallback"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	DisableFallback bool `gorm:"not null;default:false" json:"disable_fallback"`
+	// RPMLimit / ConcurrencyLimit 为 0 表示不限；只做单进程内存计数，不跨实例。
+	RPMLimit         int       `gorm:"not null;default:0" json:"rpm_limit"`
+	ConcurrencyLimit int       `gorm:"not null;default:0" json:"concurrency_limit"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // RetryAttempt 是重试轨迹中的一次尝试（存于 RequestLog.RetryTrace）。

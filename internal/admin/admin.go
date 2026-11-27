@@ -234,7 +234,10 @@ type tokenDTO struct {
 	AllowedModels   []string   `json:"allowed_models"`
 	AllowedIPs      []string   `json:"allowed_ips"`
 	DisableFallback bool       `json:"disable_fallback"`
-	CreatedAt       time.Time  `json:"created_at"`
+	// RPMLimit / ConcurrencyLimit 为 0 表示不限。
+	RPMLimit         int       `json:"rpm_limit"`
+	ConcurrencyLimit int       `json:"concurrency_limit"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 func ok(c *gin.Context, data any) {

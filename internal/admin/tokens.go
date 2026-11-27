@@ -39,7 +39,9 @@ func toTokenDTO(t *store.Token, now time.Time) tokenDTO {
 		ID: t.ID, Name: t.Name, Enabled: t.Enabled, Quota: t.Quota, UsedQuota: t.UsedQuota,
 		RemainingQuota: remaining, Status: status,
 		ExpiredAt: t.ExpiredAt, AllowedModels: t.AllowedModels, AllowedIPs: t.AllowedIPs,
-		DisableFallback: t.DisableFallback, CreatedAt: t.CreatedAt,
+		DisableFallback: t.DisableFallback,
+		RPMLimit:        t.RPMLimit, ConcurrencyLimit: t.ConcurrencyLimit,
+		CreatedAt: t.CreatedAt,
 	}
 }
 
@@ -96,12 +98,14 @@ func normalizeTokenRules(models, ips []string) ([]string, []string, error) {
 
 func (a *API) createToken(c *gin.Context) {
 	var req struct {
-		Name            string     `json:"name" binding:"required"`
-		Quota           *int64     `json:"quota"`
-		ExpiredAt       *time.Time `json:"expired_at" time_format:"2006-01-02T15:04:05Z07:00"`
-		AllowedModels   []string   `json:"allowed_models"`
-		AllowedIPs      []string   `json:"allowed_ips"`
-		DisableFallback bool       `json:"disable_fallback"`
+		Name             string     `json:"name" binding:"required"`
+		Quota            *int64     `json:"quota"`
+		ExpiredAt        *time.Time `json:"expired_at" time_format:"2006-01-02T15:04:05Z07:00"`
+		AllowedModels    []string   `json:"allowed_models"`
+		AllowedIPs       []string   `json:"allowed_ips"`
+		DisableFallback  bool       `json:"disable_fallback"`
+		RPMLimit         *int       `json:"rpm_limit"`
+		ConcurrencyLimit *int       `json:"concurrency_limit"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
@@ -120,6 +124,12 @@ func (a *API) createToken(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "negative_quota", "额度不能为负数")
 		return
 	}
+	rpmLimit := derefInt(req.RPMLimit, 0)
+	concurrencyLimit := derefInt(req.ConcurrencyLimit, 0)
+	if rpmLimit < 0 || concurrencyLimit < 0 {
+		fail(c, http.StatusBadRequest, "invalid_param", "限流值不能为负数")
+		return
+	}
 	allowedModels, allowedIPs, err := normalizeTokenRules(req.AllowedModels, req.AllowedIPs)
 	if err != nil {
 		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
@@ -130,6 +140,7 @@ func (a *API) createToken(c *gin.Context) {
 		Quota: quota, ExpiredAt: req.ExpiredAt,
 		AllowedModels: allowedModels, AllowedIPs: allowedIPs,
 		DisableFallback: req.DisableFallback,
+		RPMLimit:        rpmLimit, ConcurrencyLimit: concurrencyLimit,
 	}
 	if err := a.opt.DB.Create(t).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "create_failed", "创建失败")
@@ -151,14 +162,16 @@ func (a *API) updateToken(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Name            *string    `json:"name"`
-		Enabled         *bool      `json:"enabled"`
-		Quota           *int64     `json:"quota"`
-		ExpiredAt       *time.Time `json:"expired_at"`
-		ClearExpiredAt  bool       `json:"clear_expired_at"`
-		AllowedModels   *[]string  `json:"allowed_models"`
-		AllowedIPs      *[]string  `json:"allowed_ips"`
-		DisableFallback *bool      `json:"disable_fallback"`
+		Name             *string    `json:"name"`
+		Enabled          *bool      `json:"enabled"`
+		Quota            *int64     `json:"quota"`
+		ExpiredAt        *time.Time `json:"expired_at"`
+		ClearExpiredAt   bool       `json:"clear_expired_at"`
+		AllowedModels    *[]string  `json:"allowed_models"`
+		AllowedIPs       *[]string  `json:"allowed_ips"`
+		DisableFallback  *bool      `json:"disable_fallback"`
+		RPMLimit         *int       `json:"rpm_limit"`
+		ConcurrencyLimit *int       `json:"concurrency_limit"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
@@ -192,6 +205,20 @@ func (a *API) updateToken(c *gin.Context) {
 	}
 	if req.DisableFallback != nil {
 		updates["disable_fallback"] = *req.DisableFallback
+	}
+	if req.RPMLimit != nil {
+		if *req.RPMLimit < 0 {
+			fail(c, http.StatusBadRequest, "invalid_param", "限流值不能为负数")
+			return
+		}
+		updates["rpm_limit"] = *req.RPMLimit
+	}
+	if req.ConcurrencyLimit != nil {
+		if *req.ConcurrencyLimit < 0 {
+			fail(c, http.StatusBadRequest, "invalid_param", "限流值不能为负数")
+			return
+		}
+		updates["concurrency_limit"] = *req.ConcurrencyLimit
 	}
 	if req.AllowedModels != nil || req.AllowedIPs != nil {
 		models := t.AllowedModels

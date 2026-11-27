@@ -15,6 +15,7 @@ import (
 	"evergate/internal/health"
 	"evergate/internal/metrics"
 	"evergate/internal/pool"
+	"evergate/internal/ratelimit"
 	"evergate/internal/relay"
 	"evergate/internal/router"
 	"evergate/internal/selfupdate"
@@ -161,13 +162,17 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		Metrics:  metricsReg,
 		Tracer:   b.tracer,
 		SetupRoutes: func(r gin.IRouter) {
-			r.POST("/v1/chat/completions", relay.TokenAuth(db, logWriter), relayHandler.HandleChatCompletions)
-			r.POST("/v1/responses", relay.TokenAuth(db, logWriter), relayHandler.HandleResponses)
-			r.POST("/v1/messages", relay.TokenAuth(db, logWriter), relayHandler.HandleMessages)
-			r.POST("/v1/messages/count_tokens", relay.TokenAuth(db, logWriter), relayHandler.HandleMessagesCountTokens)
-			r.POST("/v1beta/models/*action", relay.RejectQueryKey(), relay.TokenAuth(db, logWriter), relayHandler.HandleGemini)
-			r.GET("/v1/models", relay.TokenAuth(db, logWriter), relayHandler.HandleModels)
-			r.GET("/v1beta/models", relay.RejectQueryKey(), relay.TokenAuth(db, logWriter), relayHandler.HandleGeminiModels)
+			// 下游令牌限流：RPM 与并发上限只在单进程内存计数（0 = 不限）。
+			tokenLimiter := ratelimit.New(nowFn)
+			auth := relay.TokenAuth(db, logWriter)
+			limits := relay.TokenLimits(tokenLimiter, logWriter)
+			r.POST("/v1/chat/completions", auth, limits, relayHandler.HandleChatCompletions)
+			r.POST("/v1/responses", auth, limits, relayHandler.HandleResponses)
+			r.POST("/v1/messages", auth, limits, relayHandler.HandleMessages)
+			r.POST("/v1/messages/count_tokens", auth, limits, relayHandler.HandleMessagesCountTokens)
+			r.POST("/v1beta/models/*action", relay.RejectQueryKey(), auth, limits, relayHandler.HandleGemini)
+			r.GET("/v1/models", auth, limits, relayHandler.HandleModels)
+			r.GET("/v1beta/models", relay.RejectQueryKey(), auth, limits, relayHandler.HandleGeminiModels)
 			adminAPI.RegisterRoutes(r)
 		},
 		WebFS: web.DistFS,

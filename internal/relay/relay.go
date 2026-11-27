@@ -26,6 +26,7 @@ import (
 	"evergate/internal/httpx"
 	"evergate/internal/metrics"
 	"evergate/internal/pool"
+	"evergate/internal/ratelimit"
 	"evergate/internal/reqconfig"
 	"evergate/internal/retry"
 	"evergate/internal/router"
@@ -58,6 +59,8 @@ type Options struct {
 	Affinity  *affinity.Table   // 可为 nil：New 时创建默认进程内亲和表
 	Metrics   *metrics.Registry // 可为 nil：New 时创建默认注册表
 	Tracer    *telemetry.Tracer // 可为 nil：禁用链路导出
+	// KeyLimiter 是上游 key 的 RPM 计数器；nil 时 New 创建默认实例。
+	KeyLimiter *ratelimit.Limiter
 }
 
 // Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
@@ -94,6 +97,9 @@ func New(opt Options) *Relay {
 	}
 	if opt.Tracer == nil {
 		opt.Tracer = telemetry.New(telemetry.Config{}, opt.Logger)
+	}
+	if opt.KeyLimiter == nil {
+		opt.KeyLimiter = ratelimit.New(opt.Now)
 	}
 	rel := &Relay{opt: opt, transports: make(map[time.Duration]*transportEntry)}
 	if opt.DB != nil {

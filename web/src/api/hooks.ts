@@ -227,7 +227,7 @@ export function useBatchAddKeys() {
 export function useUpdateKey() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { id: number; enabled?: boolean; weight?: number }) =>
+    mutationFn: (data: { id: number; enabled?: boolean; weight?: number; rpm_limit?: number }) =>
       api<{ updated: boolean }>(`/admin/api/keys/${data.id}`, {
         method: 'PUT',
         body: JSON.stringify({ enabled: data.enabled, weight: data.weight }),
@@ -270,6 +270,8 @@ export interface TokenGovernanceInput {
   expired_at?: string | null
   allowed_models?: string[]
   allowed_ips?: string[]
+  rpm_limit?: number
+  concurrency_limit?: number
 }
 
 export function useUpdateToken() {

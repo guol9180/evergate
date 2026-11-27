@@ -114,8 +114,9 @@ func (a *API) updateKey(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Enabled *bool `json:"enabled"`
-		Weight  *int  `json:"weight"`
+		Enabled  *bool `json:"enabled"`
+		Weight   *int  `json:"weight"`
+		RPMLimit *int  `json:"rpm_limit"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
@@ -131,6 +132,13 @@ func (a *API) updateKey(c *gin.Context) {
 	}
 	if req.Weight != nil {
 		updates["weight"] = *req.Weight
+	}
+	if req.RPMLimit != nil {
+		if *req.RPMLimit < 0 {
+			fail(c, http.StatusBadRequest, "invalid_param", "限流值不能为负数")
+			return
+		}
+		updates["rpm_limit"] = *req.RPMLimit
 	}
 	if len(updates) > 0 {
 		if err := a.opt.DB.Model(&key).Updates(updates).Error; err != nil {

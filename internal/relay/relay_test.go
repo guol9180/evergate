@@ -77,7 +77,6 @@ func newEnv(t *testing.T) *testEnv {
 	}
 	logs := NewLogWriter(db, 256, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rel := New(Options{DB: db, Router: router.New(42), Pool: pl, MasterKey: master, Defaults: d, Now: clock.Now, LogWriter: logs, Usage: usageMgr})
-	t.Cleanup(rel.Close)
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	e.POST("/v1/chat/completions", rel.HandleChatCompletions)
@@ -92,6 +91,8 @@ func newEnv(t *testing.T) *testEnv {
 			_ = sqlDB.Close() // Windows 下未关闭会阻塞 TempDir 清理
 		}
 	})
+	// 注册在最后 → 最先执行：先停掉异步统计刷盘，再关库。
+	t.Cleanup(rel.Close)
 	return &testEnv{Relay: rel, db: db, masterKey: master, engine: e, pool: pl, clock: clock, gateway: gw, logWriter: logs, usage: usageMgr}
 }
 
