@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -112,58 +111,64 @@ func (a *API) logStatsHandler(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
-	var rows []struct {
-		StatusCode int   `gorm:"column:status_code"`
-		TotalMS    int64 `gorm:"column:total_ms"`
+	var agg struct {
+		Total      int64 `gorm:"column:total"`
+		Success    int64 `gorm:"column:success"`
+		LatencyN   int64 `gorm:"column:latency_n"`
+		LatencySum int64 `gorm:"column:latency_sum"`
 	}
-	if err := q.Select("status_code, total_ms").Find(&rows).Error; err != nil {
+	// 计数、成功率与均值一次聚合完成；2xx/3xx 计为成功，与筛选栏的 success 分组同口径。
+	if err := q.Select(`COUNT(*) AS total,
+		SUM(CASE WHEN status_code >= 200 AND status_code < 400 THEN 1 ELSE 0 END) AS success,
+		SUM(CASE WHEN total_ms > 0 THEN 1 ELSE 0 END) AS latency_n,
+		COALESCE(SUM(CASE WHEN total_ms > 0 THEN total_ms END), 0) AS latency_sum`).Scan(&agg).Error; err != nil {
 		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
-	ok(c, gin.H{"stats": computeLogStats(rows)})
-}
-
-// computeLogStats 纯函数便于表驱动测试；success = 2xx/3xx。
-func computeLogStats(rows []struct {
-	StatusCode int   `gorm:"column:status_code"`
-	TotalMS    int64 `gorm:"column:total_ms"`
-}) logStats {
-	stats := logStats{Total: int64(len(rows))}
-	latencies := make([]int64, 0, len(rows))
-	var sum int64
-	for _, r := range rows {
-		if r.StatusCode >= 200 && r.StatusCode < 400 {
-			stats.Success++
-		}
-		if r.TotalMS > 0 {
-			latencies = append(latencies, r.TotalMS)
-			sum += r.TotalMS
-		}
-	}
-	if len(rows) > 0 {
-		rate := float64(stats.Success) / float64(len(rows)) * 100
+	stats := logStats{Total: agg.Total, Success: agg.Success}
+	if agg.Total > 0 {
+		rate := float64(agg.Success) / float64(agg.Total) * 100
 		stats.SuccessRate = &rate
 	}
-	if len(latencies) > 0 {
-		sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
-		p50 := percentile(latencies, 50)
-		p95 := percentile(latencies, 95)
-		avg := sum / int64(len(latencies))
-		stats.P50MS, stats.P95MS, stats.AvgTotalMS = &p50, &p95, &avg
+	if agg.LatencyN > 0 {
+		avg := agg.LatencySum / agg.LatencyN
+		stats.AvgTotalMS = &avg
+		p50, err := a.logPercentile(c, percentileRank(agg.LatencyN, 50))
+		if err != nil {
+			fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
+			return
+		}
+		p95, err := a.logPercentile(c, percentileRank(agg.LatencyN, 95))
+		if err != nil {
+			fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
+			return
+		}
+		stats.P50MS, stats.P95MS = &p50, &p95
 	}
-	return stats
+	ok(c, gin.H{"stats": stats})
 }
 
-// percentile 最近秩法：rank = ceil(p% × N)，取第 rank-1 个（sorted 升序且非空）。
-func percentile(sorted []int64, p float64) int64 {
-	if len(sorted) == 0 {
-		return 0
+// logPercentile 用 ORDER BY + LIMIT 1 OFFSET 取第 rank 小值，
+// 让分位数在 SQL 内完成，不再把整表延迟读进内存排序。
+func (a *API) logPercentile(c *gin.Context, rank int) (int64, error) {
+	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	if err != nil {
+		return 0, err
 	}
-	rank := int(math.Ceil(p / 100 * float64(len(sorted))))
+	var ms int64
+	if err := q.Where("total_ms > 0").Order("total_ms ASC").Limit(1).Offset(rank-1).Pluck("total_ms", &ms).Error; err != nil {
+		return 0, err
+	}
+	return ms, nil
+}
+
+// percentileRank 最近秩法：rank = ceil(p% × N)，对应升序第 rank 个（1-based）。
+func percentileRank(n int64, p float64) int {
+	rank := int(math.Ceil(p / 100 * float64(n)))
 	if rank < 1 {
 		rank = 1
 	}
-	return sorted[rank-1]
+	return rank
 }
 
 func (a *API) exportLogs(c *gin.Context) {

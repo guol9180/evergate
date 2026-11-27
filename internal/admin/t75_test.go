@@ -30,39 +30,26 @@ func readyCookie(t *testing.T, env *testEnv) string {
 	return cookie
 }
 
-func TestComputeLogStatsTableDriven(t *testing.T) {
-	type row = struct {
-		StatusCode int   `gorm:"column:status_code"`
-		TotalMS    int64 `gorm:"column:total_ms"`
-	}
+// 分位数在 SQL 内按最近秩法取第 rank 小值，rank 的计算单独用表驱动锁定。
+func TestPercentileRankTableDriven(t *testing.T) {
 	cases := []struct {
-		name           string
-		rows           []row
-		total, success int64
-		rate           *float64
-		p50, p95, avg  *int64
+		n    int64
+		p    float64
+		want int
 	}{
-		{name: "empty", rows: nil, total: 0, success: 0},
-		{
-			name: "mixed", rows: []row{{200, 100}, {200, 300}, {503, 200}, {200, 0}},
-			total: 4, success: 3, rate: fptr(75), p50: iptr(200), p95: iptr(300), avg: iptr(200),
-		},
-		{
-			name: "all failed", rows: []row{{500, 50}, {429, 70}},
-			total: 2, success: 0, rate: fptr(0), p50: iptr(50), p95: iptr(70), avg: iptr(60),
-		},
+		{1, 50, 1},
+		{2, 95, 2},
+		{3, 50, 2},
+		{3, 95, 3},
+		{4, 50, 2},
+		{10, 95, 10},
+		{100, 95, 95},
+		{0, 50, 1},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := computeLogStats(tc.rows)
-			if got.Total != tc.total || got.Success != tc.success {
-				t.Fatalf("total/success = %d/%d, want %d/%d", got.Total, got.Success, tc.total, tc.success)
-			}
-			assertFloat(t, "rate", got.SuccessRate, tc.rate)
-			assertInt(t, "p50", got.P50MS, tc.p50)
-			assertInt(t, "p95", got.P95MS, tc.p95)
-			assertInt(t, "avg", got.AvgTotalMS, tc.avg)
-		})
+		if got := percentileRank(tc.n, tc.p); got != tc.want {
+			t.Fatalf("percentileRank(%d, %v) = %d, want %d", tc.n, tc.p, got, tc.want)
+		}
 	}
 }
 
@@ -346,31 +333,6 @@ func TestChannelsTestAllReportsEveryEnabledChannel(t *testing.T) {
 }
 
 // ---------- 断言辅助 ----------
-
-func fptr(v float64) *float64 { return &v }
-func iptr(v int64) *int64     { return &v }
-
-func assertFloat(t *testing.T, name string, got, want *float64) {
-	t.Helper()
-	switch {
-	case got == nil && want == nil:
-	case got == nil || want == nil:
-		t.Fatalf("%s = %v, want %v", name, got, want)
-	case *got != *want:
-		t.Fatalf("%s = %v, want %v", name, *got, *want)
-	}
-}
-
-func assertInt(t *testing.T, name string, got, want *int64) {
-	t.Helper()
-	switch {
-	case got == nil && want == nil:
-	case got == nil || want == nil:
-		t.Fatalf("%s = %v, want %v", name, got, want)
-	case *got != *want:
-		t.Fatalf("%s = %v, want %v", name, *got, *want)
-	}
-}
 
 func readAll(t *testing.T, resp *http.Response) string {
 	t.Helper()
