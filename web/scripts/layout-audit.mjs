@@ -169,13 +169,18 @@ try {
     ])
   }
   if (profileDir) {
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       try {
         await rm(profileDir, { recursive: true, force: true })
         break
       } catch (error) {
-        if (error?.code !== 'EBUSY' || i === 4) throw error
-        await new Promise((resolve) => setTimeout(resolve, 300))
+        // Chrome 拼写词典 (.bdic) 在高负载下可能延迟释放：审计结论已出，临时目录留给系统清理，不让清理失败盖掉结果
+        if (error?.code !== 'EBUSY' || i === 9) {
+          if (error?.code === 'EBUSY') console.warn(`layout-audit: temp profile left behind (${profileDir})`)
+          else throw error
+          break
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500))
       }
     }
   }

@@ -60,26 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
 
-#### T110: 表单体系与 UI 细节收尾（P2，代码审查）
-
-- 目标：用成熟表单方案替换手写表单状态，并收掉审查中剩余的 UI 不一致
-- 验收标准：① 引入 react-hook-form + zod，渠道 / 令牌 / 价格 / 降级链 / 设置 / 登录表单迁移，校验文案走 i18n，保存入参强类型；② 表单有未保存更改时关闭需确认，Esc 与点遮罩不丢输入；③ Switch 改用 Radix Switch，侧栏收起态导航项改用 Tooltip 与底部操作一致，Dialog / Drawer 仅在有描述时设置 aria-describedby；④ 图表与弹层颜色全部走语义 token，分页器图标统一为 lucide；⑤ 此前两个未决观察项（新建渠道默认选中项、设置页长表单分区）在本卡内定案并落地；⑥ audit:layout 全绿，18787 逐表单复验，单测覆盖脏数据保护与校验
-- 边界：新增依赖 react-hook-form、zod、@hookform/resolvers、@radix-ui/react-switch，实施前告知用户；不改表单字段集合
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：in-progress
-- 进度：
-  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（可维护性 / UI 细节）
-  - 2026-11-26 决策 用户同意新增 react-hook-form、zod、@hookform/resolvers、@radix-ui/react-switch
-  - 2026-11-27 执行 开工；依赖已向用户告知后安装，按 ③ Switch / Tooltip / aria → ① 表单迁移（登录 → 设置 → 令牌 → 渠道 → 价格 → 降级链）→ ② 脏数据保护 → ④⑤ 的顺序分步提交
-  - 2026-11-27 执行 ③④ 完成：Switch 改 Radix Switch、侧栏收起态导航项 Tooltip、Dialog / Drawer 可选 description；分页器 lucide 图标、图表激活点语义 token 类；① 登录与令牌表单迁移 RHF + zod（校验文案 i18n、入参强类型、失败聚焦首错字段）；② 新增 useUnsavedGuard 并接入令牌弹窗（Esc / 遮罩 / 取消按钮有脏数据先确认）。验证：lint 0 警告、unit 16 + ui 73 通过（Login 按异步 resolver 调整，新增 guard 两例与令牌脏数据 / 校验两例）、audit:layout 907/1440 浅中 + 深英通过、make build 通过
-  - 2026-11-27 执行 ② 渠道弹窗接入脏数据保护（字段快照与初始值比较 → useUnsavedGuard，Esc / 遮罩 / 取消先确认）；⑤ 定案并落地：新建渠道默认选中第一个供应商预设（预设自带模型与价格，自定义接入保留为显式选项，编辑沿用原预设）；设置页三个分区改为 Disclosure（上游超时 / 重试与冷却默认展开，维护任务默认折叠）。验证：lint 0 警告、unit 16 + ui 73 通过、make build 通过、audit:layout 907/1440 浅中 + 深英通过，18787 设置页截图复验
-  - 2026-11-27 执行 ① 改密与首启表单迁移 RHF + zod：对象级 refine（两次密码一致落到确认字段）、密码强度三类校验、失败聚焦首错字段；对应测试按异步 resolver 调整，脏数据测试加长等待避免并发下的偶发超时。验证：lint 0 警告、unit 16 + ui 73 通过、make build 通过
-  - 2026-11-27 验证 18787 headless 端到端：令牌弹窗空提交内联「请输入令牌名称」→ 输入后 Esc 弹「放弃未保存的更改？」→ 放弃后关闭；改密页两次不一致落到确认字段；audit:layout 907/1440 浅中 + 深英通过
-  - 2026-11-27 执行 ① 渠道弹窗迁移 RHF + zod：schema 覆盖名称（仅自定义必填，superRefine）/ Base URL http(s) / 优先级与权重范围 / 三个超时 1–300 / 1–3600 / 1–86400 可空正整数；预设切换、协议开关、目录选择器、映射编辑器都经 setValue(shouldDirty) 写回表单，脏数据改由 formState.isDirty 驱动；删除手写 timeoutErrors / 快照比较 / 无用 overall_timeout 写法。验证：lint 0 警告、unit 16 + ui 73 通过、make build 通过；18787 headless 复验：新建默认「OpenAI 官方」预设且隐藏名称字段、非法 Base URL 内联报错、Esc 有改动弹放弃确认、编辑既有渠道预填名称与地址
-  - 2026-11-27 执行 ① 设置页迁移 RHF + zod：13 个字段按字符串编辑、提交时转数字，正数校验文案走 i18n，服务端数据经 values 选项回填（删除手动 useEffect 回填），失败聚焦首错字段。验证：lint 0 警告、unit 16 + ui 73 通过、make build 通过；18787 headless：13 个数字框预填 10 / 30 / 300…，置为 -5 提交内联「必须是大于 0 的数字」
-  - 2026-11-27 执行 ① 价格表单迁移 RHF + zod：全局默认价经 values 回填，覆盖表单的渠道下拉走 Controller，价格为非负数字（缓存价可空）、渠道 / 上游模型必填，成功后只清空模型字段；删除 9 个受控 state 与回填 effect。验证：lint 0 警告、unit 16 + ui 73 通过、make build 通过；18787 headless：默认价预填 0 / 0 / 空 / 空，覆盖表单空提交内联「请填写上游模型名」
-  - 2026-11-27 备注 剩余：降级链（ModelFallbackCard，行数组编辑）迁移到 RHF useFieldArray + zod，完成后归档
-
 #### T111: 可维护性重构（P2，代码审查）
 
 - 目标：在测试全绿的前提下做行为不变的结构重构，降低后续改动成本
@@ -203,7 +183,7 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 最近完成 / 已取消
 
-> 本批次已 done 的卡（T103–T109、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
+> 本批次已 done 的卡（T103–T110、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
 
 ## 归档索引
 
