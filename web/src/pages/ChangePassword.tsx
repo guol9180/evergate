@@ -1,6 +1,7 @@
 import { type FormEvent, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useChangePassword } from '../api/hooks'
+import { safeNext } from '../lib/session'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
 import { Alert, Button, Field, Input, focusFirstInvalid } from '../components/ui'
@@ -13,6 +14,9 @@ export default function ChangePassword() {
   usePageTitle(t('page.changePassword.title'))
   const change = useChangePassword()
   const navigate = useNavigate()
+  const location = useLocation()
+  // 会话过期 → 登录 → 强制改密：改完仍回到最初要去的页面
+  const nextPath = safeNext((location.state as { next?: string } | null)?.next)
   const formRef = useRef<HTMLFormElement>(null)
   const [oldPwd, setOldPwd] = useState('')
   const [newPwd, setNewPwd] = useState('')
@@ -34,7 +38,7 @@ export default function ChangePassword() {
       {
         onSuccess: () => {
           notify.success(t('toast.password.changed'))
-          navigate('/', { replace: true })
+          navigate(nextPath, { replace: true })
         },
       },
     )

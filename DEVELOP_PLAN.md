@@ -66,10 +66,17 @@ P0 功能完成定义（1–10 全部通过）：
 - 验收标准：① 仅 401 跳转登录并携带回跳地址，登录后回到原页；网络抖动 / 5xx 留在原页提示重试，不再被踢出；② 全局 MutationCache 统一错误反馈，页面不再逐处手写 onError，需要内联 Alert 的可显式 opt-out；③ 管理台全部错误带稳定 code，前端按 code 本地化，英文界面无中文后端文案；④ 日期、数字、标点跟随当前语言，首次访问按浏览器语言选择界面语言；⑤ 「今天」口径统一：UTC 小时聚合 + 展示层按本地日分桶，概览与用量两页在同一时刻包含同一批请求，历史日数据迁移后报表总量不变；⑥ 数据层不再写入展示文案（降级轨迹、设置说明），英文界面与 CSV 无中文残留
 - 边界：不引入后端 i18n 库，不改请求日志 schema；决策项：第 ⑤ 条若不做小时聚合，退路是保持 UTC 日并在界面明确标注时区
 - 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
+- 状态：in-progress
 - 进度：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（体验 / i18n）
   - 2026-11-26 决策 用户确认方案 A：UTC 小时聚合 + 展示层按本地日分桶
+  - 2026-11-27 执行 开工；按 ① 会话 → ② 错误反馈 → ④ 语言 → ⑥ 数据层文案 → ③ 错误码 → ⑤ 小时聚合 的顺序分步提交
+  - 2026-11-27 执行 ① 会话：client.ts 注册 401 处理器（登录 / 首启接口自身的 401 除外），任何接口 401 整页跳 `/login?next=`；Layout 只在 401 时跳转并带原路径，网络抖动 / 5xx 留在原页、顶部横幅 + 重试；Login 读取 next（safeNext 只收站内路径，拒绝 // 与外域）并提示「登录已过期」，强制改密后仍回原页
+  - 2026-11-27 执行 ② 错误反馈：lib/mutationCache.ts 全局 MutationCache onError 弹 Toast，页面逐处手写的 onError 全部删除；登录 / 改密 / 配置导入以 meta.silentError 退出（Register mutationMeta 类型声明）
+  - 2026-11-27 执行 ④ 语言：首次访问按 navigator.language 选字典（localeFor：中文系 → zh-CN，其余 → en），fmtTime / fmtInt 跟随语言（hourCycle h23 避免午夜 24:00），详情里的全角冒号 / 括号改走 colon() 与 idSuffix / lastAttemptOf 字典；测试 setup 固定中文避免 jsdom en-US 翻转字典
+  - 2026-11-27 执行 ⑥ 数据层：降级边界不再写「模型降级」渠道名与中文原因文案，只落 reason / from / to（展示由前端按分类字典本地化）；settings scope.runtime_source 改英文
+  - 2026-11-27 验证 新增 tests/ui/t109.test.tsx（全局 Toast 与 silentError、safeNext），Layout 测试改为 401 带 next 跳转 / 网络错误留页重试，Login 测试补回跳与非法 next 两例，i18n 单测补 localeFor；前端 lint 0 警告、unit 14 + ui 66 通过、build 通过；gofmt / vet 干净、relay + admin 包测试 ok、make build 通过；audit:layout 907/1440 × 浅深 × 中英四组全绿（英文日期已为 en-US 格式）；18787 headless 端到端：删 cookie 后点刷新 → `/login?next=%2Flogs` 且显示「登录已过期」→ 重新登录回到 /logs 列表 20 行
+  - 2026-11-27 备注 ③ 全量稳定错误码与 ⑤ UTC 小时聚合尚未动工，下一步从 ③ 开始
 
 #### T110: 表单体系与 UI 细节收尾（P2，代码审查）
 

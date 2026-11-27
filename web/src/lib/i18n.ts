@@ -414,6 +414,7 @@ export const dict = {
     'logs.detail.filterToken': '按此令牌筛选',
     'logs.detail.filterModel': '按此模型筛选',
     'logs.detail.lastAttempt': '最后尝试',
+    'logs.detail.lastAttemptOf': '{channel}（{note}）',
     'logs.detail.retryCount': '重试次数',
     'logs.list.lastAttempt': '最后尝试的渠道',
     'logs.autoRefresh': '自动刷新',
@@ -504,6 +505,10 @@ export const dict = {
     'common.confirm': '确认',
     'common.processing': '处理中…',
 'common.clearFilters': '清除筛选',
+    'common.retry': '重试',
+    'common.idSuffix': '（#{id}）',
+    'session.loadFailed': '无法连接到管理台，请检查服务是否运行后重试。',
+    'session.expired': '登录已过期，请重新登录后继续。',
     'settings.source': '来源',
     'settings.source.database': '管理台数据库',
     'settings.initialized': '初始化：{init} · 更新：{updated}',
@@ -1098,6 +1103,7 @@ export const dict = {
     'logs.detail.filterToken': 'Filter by token',
     'logs.detail.filterModel': 'Filter by model',
     'logs.detail.lastAttempt': 'Last attempt',
+    'logs.detail.lastAttemptOf': '{channel} ({note})',
     'logs.detail.retryCount': 'Retries',
     'logs.list.lastAttempt': 'Last attempted channel',
     'logs.autoRefresh': 'Auto refresh',
@@ -1188,6 +1194,10 @@ export const dict = {
     'common.confirm': 'Confirm',
     'common.processing': 'Processing…',
 'common.clearFilters': 'Clear filters',
+    'common.retry': 'Retry',
+    'common.idSuffix': ' (#{id})',
+    'session.loadFailed': 'Cannot reach the console. Check that the service is running and retry.',
+    'session.expired': 'Your session has expired. Sign in again to continue.',
     'settings.source': 'Source',
     'settings.source.database': 'Console database',
     'settings.initialized': 'Initialized: {init} · Updated: {updated}',
@@ -1388,11 +1398,24 @@ const listeners = new Set<() => void>()
 
 function detect(): Locale {
   if (typeof window === 'undefined') return 'zh-CN'
-  return window.localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'zh-CN'
+  const stored = window.localStorage.getItem(STORAGE_KEY)
+  if (stored === 'en' || stored === 'zh-CN') return stored
+  // 首次访问跟随浏览器语言
+  return localeFor(navigator.language)
+}
+
+/** 浏览器语言 → 界面语言：中文系进中文，其余进英文。 */
+export function localeFor(language: string | null | undefined): Locale {
+  return language?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
 }
 
 export function getLocale(): Locale {
   return current
+}
+
+/** 跟随语言的标点：中文用全角冒号，英文用半角加空格。 */
+export function colon(): string {
+  return current === 'en' ? ': ' : '：'
 }
 
 export function setLocale(locale: Locale) {

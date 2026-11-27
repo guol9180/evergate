@@ -1,6 +1,7 @@
 import { type FormEvent, useRef, useState } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLogin, useSetupStatus } from '../api/hooks'
+import { safeNext } from '../lib/session'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
 import { Alert, Button, Field, Input, focusFirstInvalid } from '../components/ui'
@@ -14,6 +15,10 @@ export default function Login() {
   const setup = useSetupStatus()
   const navigate = useNavigate()
   const location = useLocation()
+  const [params] = useSearchParams()
+  // 会话过期跳来时带回跳地址；只接受站内路径
+  const nextPath = safeNext(params.get('next'))
+  const redirected = nextPath !== '/'
   const prefill = (location.state as { username?: string } | null)?.username ?? ''
   const [username, setUsername] = useState(prefill)
   const [password, setPassword] = useState('')
@@ -38,7 +43,7 @@ export default function Login() {
     login.mutate(
       { username: username.trim(), password },
       {
-        onSuccess: (data) => navigate(data.must_change_password ? '/change-password' : '/', { replace: true }),
+        onSuccess: (data) => navigate(data.must_change_password ? '/change-password' : nextPath, { replace: true, state: { next: nextPath } }),
         // 凭据错误最常见的原因是密码：选中密码框，直接重输即可
         onError: () => passwordRef.current?.select(),
       },
@@ -48,6 +53,7 @@ export default function Login() {
   return (
     <AuthCard title={t('login.heading')} subtitle="One gate, every model, zero interruption">
       <form ref={formRef} onSubmit={onSubmit} className="space-y-4" noValidate>
+        {redirected && <Alert tone="info">{t('session.expired')}</Alert>}
         {/* 提交错误放在表单顶部：先读原因再扫字段，而不是夹在密码框和按钮之间 */}
         {login.isError && <Alert tone="danger">{(login.error as Error).message}</Alert>}
         <Field label={t('login.username')} error={errors.username}>

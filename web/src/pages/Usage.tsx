@@ -263,7 +263,7 @@ function PriceCard() {
         input_micros_per_million: toMicros(defaultIn), output_micros_per_million: toMicros(defaultOut),
         cache_read_micros_per_million: toMicros(defaultCacheRead), cache_write_micros_per_million: toMicros(defaultCacheWrite),
       },
-      { onSuccess: () => notify.success(t('toast.price.saved')), onError: (err) => notify.error(err) },
+      { onSuccess: () => notify.success(t('toast.price.saved')) },
     )
   }
   const submitOverride = (e: FormEvent) => {
@@ -277,8 +277,7 @@ function PriceCard() {
       onSuccess: () => {
         notify.success(t('toast.price.saved'))
         setModel('')
-      },
-      onError: (err) => notify.error(err),
+      }
     })
   }
 
@@ -325,7 +324,7 @@ function PriceCard() {
             <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
             <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
             <span className="text-muted">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}{cacheSummary(price)}</span>
-            <IconButton danger label={t('usage.price.deleteOverride')} loading={remove.isPending && remove.variables === price.id} onClick={() => remove.mutate(price.id, { onSuccess: () => notify.success(t('toast.price.deleted')), onError: (err) => notify.error(err) })}>
+            <IconButton danger label={t('usage.price.deleteOverride')} loading={remove.isPending && remove.variables === price.id} onClick={() => remove.mutate(price.id, { onSuccess: () => notify.success(t('toast.price.deleted')) })}>
               <Trash2 size={13} />
             </IconButton>
           </div>
@@ -361,8 +360,7 @@ function PriceCard() {
                   onSuccess: (resp) => {
                     if (resp.created > 0) notify.success(tf('usage.price.applyDone', { n: resp.created }))
                     else notify.info(t('usage.price.applyNone'))
-                  },
-                  onError: (err) => notify.error(err),
+                  }
                 })}
               >
                 {t('usage.price.applyPreset')}

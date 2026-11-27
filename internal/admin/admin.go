@@ -367,7 +367,7 @@ func (a *API) getSystemSettings(c *gin.Context) {
 			"config_source": a.opt.ConfigSource,
 		},
 		"scope": gin.H{
-			"runtime_source":     "SQLite runtime_settings（首次初始化来自 evergate.yml）",
+			"runtime_source":     "sqlite_runtime_settings (seeded from evergate.yml on first start)",
 			"hot_update_enabled": true,
 		},
 	})

@@ -17,6 +17,8 @@ export function useLogin() {
   return useMutation({
     mutationFn: (data: { username: string; password: string }) =>
       api<AdminInfo>('/admin/api/auth/login', jsonBody(data)),
+    // 登录页在表单顶部内联展示错误，不走全局 Toast
+    meta: { silentError: true },
   })
 }
 
@@ -130,6 +132,7 @@ export function useChangePassword() {
   return useMutation({
     mutationFn: (data: { old_password: string; new_password: string }) =>
       api<{ changed: boolean }>('/admin/api/auth/password', { method: 'PUT', body: JSON.stringify(data) }),
+    meta: { silentError: true },
     onSuccess: () => {
       // 路由守卫读取 ['me'] 缓存；必须同步清除强制改密标记，否则成功后会被旧缓存弹回改密页。
       qc.setQueryData<AdminInfo>(['me'], (current) =>
@@ -351,6 +354,8 @@ export function useImportConfig() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: unknown) => api<{ result: ConfigImportResult }>('/admin/api/config/import', jsonBody(payload)),
+    // ConfigTransferCard 把导入结果（含错误）内联渲染在卡片里
+    meta: { silentError: true },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['channels'] })
       qc.invalidateQueries({ queryKey: ['tokens'] })

@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical, UserRound, Sun, Moon, Monitor, Languages } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
-import { PageSkeleton, Spinner, Tooltip } from './ui'
+import { ApiError } from '../api/client'
+import { Alert, Button, PageSkeleton, Spinner, Tooltip } from './ui'
 import { withBasePath } from '../lib/runtime'
+import { loginUrl } from '../lib/session'
 import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
 import { getLocale, setLocale, t, tf, useLocale, type MessageKey } from '../lib/i18n'
 import { useMediaQuery } from '../lib/useMediaQuery'
@@ -42,9 +44,11 @@ export default function Layout() {
     initTheme()
   }, [])
 
+  // 只有 401（会话失效）才离开页面并带回跳地址；网络抖动 / 5xx 留在原页，顶部横幅提示重试
+  const unauthorized = me.error instanceof ApiError && me.error.status === 401
   useEffect(() => {
-    if (me.isError) navigate('/login', { replace: true })
-  }, [me.isError, navigate])
+    if (unauthorized) navigate(loginUrl(`${location.pathname}${location.search}`), { replace: true })
+  }, [unauthorized, location.pathname, location.search, navigate])
 
   useEffect(() => {
     if (me.data?.must_change_password && location.pathname !== '/change-password') {
@@ -160,6 +164,11 @@ export default function Layout() {
       <main ref={mainRef} className="min-w-0 flex-1 overflow-auto" id="main-content">
         {/* key 绑定路径：切换页面时重挂内容区以触发入场动画（页面本身在路由切换时就会重挂） */}
         <div key={location.pathname} className="eg-page eg-page-in">
+          {me.isError && !unauthorized && (
+            <Alert tone="danger" className="mb-[var(--eg-section-gap)]" action={<Button size="sm" variant="outline" onClick={() => void me.refetch()}>{t('common.retry')}</Button>}>
+              {t('session.loadFailed')} {(me.error as Error).message}
+            </Alert>
+          )}
           <Outlet />
         </div>
       </main>

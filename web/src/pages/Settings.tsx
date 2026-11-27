@@ -58,7 +58,6 @@ export default function Settings() {
     e.preventDefault()
     save.mutate(toSettings(form), {
       onSuccess: () => notify.success(t('settings.saved')),
-      onError: (err) => notify.error(err),
     })
   }
 

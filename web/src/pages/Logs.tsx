@@ -9,7 +9,7 @@ import { PriceSourceBadge } from '../components/PriceTable'
 import type { RequestLog } from '../api/types'
 import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, fmtTime, httpStatusTone, kindText, statusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
-import { t, tf } from '../lib/i18n'
+import { colon, t, tf } from '../lib/i18n'
 
 const AUTO_REFRESH_MS = 5000
 
@@ -132,7 +132,7 @@ export default function Logs() {
               aria-label={t('logs.filter.channel')}
               options={[
                 { value: '', label: t('logs.filter.allChannels') },
-                ...(channels.data?.items ?? []).map((c) => ({ value: String(c.id), label: `${c.name}（#${c.id}）` })),
+                ...(channels.data?.items ?? []).map((c) => ({ value: String(c.id), label: `${c.name}${tf('common.idSuffix', { id: c.id })}` })),
               ]}
             />
           </Field>
@@ -143,7 +143,7 @@ export default function Logs() {
               aria-label={t('logs.filter.token')}
               options={[
                 { value: '', label: t('logs.filter.allTokens') },
-                ...(tokens.data?.items ?? []).map((token) => ({ value: String(token.id), label: `${token.name}（#${token.id}）` })),
+                ...(tokens.data?.items ?? []).map((token) => ({ value: String(token.id), label: `${token.name}${tf('common.idSuffix', { id: token.id })}` })),
               ]}
             />
           </Field>
@@ -254,7 +254,7 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
   const priced = log.cost_status === 'priced'
   const attempts = log.retry_trace ?? []
   const tint = tone === 'success' ? 'border-success-border bg-success-subtle' : tone === 'warning' ? 'border-warning-border bg-warning-subtle' : 'border-danger-border bg-danger-subtle'
-  const channelLabel = log.channel_name || (last?.channel_name ? `${last.channel_name}（${t('logs.detail.lastAttempt')}）` : '')
+  const channelLabel = log.channel_name || (last?.channel_name ? tf('logs.detail.lastAttemptOf', { channel: last.channel_name, note: t('logs.detail.lastAttempt') }) : '')
 
   return (
     <div className="space-y-[var(--eg-control-gap)]">
@@ -275,9 +275,9 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
           <CopyButton compact value={log.upstream_model || log.model} label={t('common.copy')} side="bottom" />
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <span>{t('table.channel')}：<span className="font-medium text-foreground-soft">{channelName || '—'}</span></span>
+          <span>{t('table.channel')}{colon()}<span className="font-medium text-foreground-soft">{channelName || '—'}</span></span>
           <span>{t('log.field.keyId')} <span className="font-medium text-foreground-soft">{keyID ? `#${keyID}` : '—'}</span></span>
-          <span>{t('table.token')}：<span className="font-medium text-foreground-soft">{log.token_name || '—'}</span></span>
+          <span>{t('table.token')}{colon()}<span className="font-medium text-foreground-soft">{log.token_name || '—'}</span></span>
         </div>
         <dl className="mt-3 grid grid-cols-3 gap-2">
           <SummaryStat label={t('table.firstToken')} value={fmtMs(log.first_token_ms || undefined)} />

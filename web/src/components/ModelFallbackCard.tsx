@@ -41,7 +41,7 @@ export default function ModelFallbackCard() {
 
   const submit = () => save.mutate(
     rows.map(toPayload).filter(item => item.model.trim() || item.fallbacks.length),
-    { onSuccess: () => notify.success(t('fallback.saved')), onError: (err) => notify.error(err) },
+    { onSuccess: () => notify.success(t('fallback.saved')) },
   )
 
   return (

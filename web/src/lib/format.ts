@@ -2,13 +2,14 @@
 // 错误类别人话映射参照 gpt-load credential-failure-presenter 模式
 import type { Tone } from './tone'
 // 带 .ts 后缀：node --experimental-strip-types 跑单测时不做扩展名解析
-import { t, tf, type MessageKey } from './i18n.ts'
+import { colon, getLocale, t, tf, type MessageKey } from './i18n.ts'
 
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
   if (isNaN(d.getTime())) return '—'
-  return d.toLocaleString('zh-CN', { hour12: false })
+  // hourCycle h23 而不是 hour12:false：后者在部分引擎的 en-US 下会把午夜显示成 24:00
+  return d.toLocaleString(getLocale(), { hourCycle: 'h23' })
 }
 
 export function fmtMs(ms: number | null | undefined): string {
@@ -19,7 +20,7 @@ export function fmtMs(ms: number | null | undefined): string {
 
 export function fmtInt(n: number | null | undefined): string {
   if (n == null) return '—'
-  return n.toLocaleString('zh-CN')
+  return n.toLocaleString(getLocale())
 }
 
 /** 微美元 → 美元展示；去掉末尾多余的 0。 */
@@ -89,7 +90,7 @@ export function describeUpstreamError(message: string | null | undefined): { cod
     const text = parsed.error?.message ?? parsed.message
     if (!text) return { code: null, text: raw }
     const prefix = raw.slice(0, start).replace(/:\s*$/, '').trim()
-    return { code: parsed.error?.code != null ? String(parsed.error.code) : null, text: prefix ? `${prefix}：${text}` : text }
+    return { code: parsed.error?.code != null ? String(parsed.error.code) : null, text: prefix ? `${prefix}${colon()}${text}` : text }
   } catch {
     return { code: null, text: raw }
   }

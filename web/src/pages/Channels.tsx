@@ -99,8 +99,7 @@ export default function Channels() {
             if (expanded === deleteTarget.id) setExpanded(null)
             notify.success(tf('toast.channel.deleted', { name: deleteTarget.name }))
             setDeleteTarget(null)
-          },
-          onError: (err) => notify.error(err),
+          }
         })}
         onCancel={() => setDeleteTarget(null)}
       />
@@ -117,8 +116,7 @@ export default function Channels() {
             onSuccess: () => {
               notify.success(t('toast.key.deleted'))
               setDeleteKeyTarget(null)
-            },
-            onError: (err) => notify.error(err),
+            }
           },
         )}
         onCancel={() => setDeleteKeyTarget(null)}
@@ -176,7 +174,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
           )}
         </Td>
         <Td>
-          <Switch checked={c.enabled} disabled={toggle.isPending && toggle.variables?.id === c.id} onChange={(enabled) => toggle.mutate({ id: c.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableAria', { name: c.name })} />
+          <Switch checked={c.enabled} disabled={toggle.isPending && toggle.variables?.id === c.id} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={tf('channels.enableAria', { name: c.name })} />
         </Td>
         <Td>
           {test.isPending && test.variables === c.id ? (
@@ -192,7 +190,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
               {result.result === 'success' ? tf('channels.test.success', { ms: result.latency_ms }) : result.result === 'inconclusive' ? t('channels.test.inconclusive') : t('channels.test.failed')}
             </Badge>
           ) : (
-            <IconButton variant="outline" label={tf('channels.testAria', { name: c.name })} onClick={() => test.mutate(c.id, { onError: (err) => notify.error(err) })}>
+            <IconButton variant="outline" label={tf('channels.testAria', { name: c.name })} onClick={() => test.mutate(c.id)}>
               <Plug size={13} />
             </IconButton>
           )}
@@ -249,7 +247,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                   <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
                   <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1360px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
                   <Td>
-                  <Switch checked={k.enabled} disabled={updateKey.isPending && updateKey.variables?.id === k.id} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
+                  <Switch checked={k.enabled} disabled={updateKey.isPending && updateKey.variables?.id === k.id} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
                   </Td>
                   <Td>
                     <div className="flex justify-end">
@@ -275,8 +273,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                 const result = keyImportMessage(resp)
                 notify[result.tone](result.text)
                 setKeysText('')
-              },
-              onError: (err) => notify.error(err),
+              }
             },
           )}>
             {t('channels.import.button')}

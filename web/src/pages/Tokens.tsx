@@ -125,7 +125,7 @@ export default function Tokens() {
                     <Td className="text-xs">{fmtTime(tok.expired_at)}</Td>
                     <Td className="hidden text-xs text-subtle min-[1240px]:table-cell">{fmtTime(tok.created_at)}</Td>
                     <Td>
-            <Switch checked={tok.enabled} disabled={update.isPending && update.variables?.id === tok.id} onChange={(enabled) => update.mutate({ id: tok.id, enabled }, { onError: (err) => notify.error(err) })} label={tf('tokens.enableAria', { name: tok.name })} />
+            <Switch checked={tok.enabled} disabled={update.isPending && update.variables?.id === tok.id} onChange={(enabled) => update.mutate({ id: tok.id, enabled })} label={tf('tokens.enableAria', { name: tok.name })} />
                     </Td>
                     <Td>
                       <div className="flex justify-end gap-1">
@@ -153,8 +153,7 @@ export default function Tokens() {
           onSuccess: () => {
             notify.success(tf('toast.token.deleted', { name: deleteTarget.name }))
             setDeleteTarget(null)
-          },
-          onError: (err) => notify.error(err),
+          }
         })}
         onCancel={() => setDeleteTarget(null)}
       />

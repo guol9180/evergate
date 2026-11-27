@@ -4,8 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import './index.css'
 import { currentBasePath } from './lib/runtime'
+import { currentRoute, loginHref } from './lib/session'
+import { createMutationCache } from './lib/mutationCache'
 import { initTheme } from './lib/theme'
 import { t } from './lib/i18n'
+import { setUnauthorizedHandler } from './api/client'
 import Layout from './components/Layout'
 import { PageSkeleton } from './components/ui'
 import { Toaster } from './components/Toaster'
@@ -25,7 +28,11 @@ const Usage = lazy(() => import('./pages/Usage'))
 // 首帧前应用主题，避免暗色用户看到白闪。
 initTheme()
 
+// 会话过期（任何接口 401）：整页跳到登录并带回跳地址，登录后回到原页
+setUnauthorizedHandler(() => window.location.assign(loginHref(currentRoute())))
+
 const queryClient = new QueryClient({
+  mutationCache: createMutationCache(),
   defaultOptions: {
     queries: { retry: 1, refetchOnWindowFocus: false },
   },

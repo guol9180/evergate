@@ -72,9 +72,10 @@ func (r *Relay) dispatchWithFallbacks(c *gin.Context, hit *hitRecord, body []byt
 	for _, entry := range entries {
 		if entry.model != originalModel {
 			start := r.opt.Now()
+			// 边界只落结构化字段（reason / from / to），展示文案由前端按 reason 本地化，数据层不写中文
 			trace = append(trace, store.RetryAttempt{
-				ChannelName: "模型降级", Attempt: len(trace) + 1,
-				ErrorType: entry.reason, ErrorMessage: fallbackReasonText(entry.reason),
+				Attempt:   len(trace) + 1,
+				ErrorType: entry.reason,
 				ElapsedMS: r.opt.Now().Sub(start).Milliseconds(),
 				Reason:    entry.reason, FromModel: originalModel, ToModel: entry.model,
 			})
@@ -377,13 +378,6 @@ func filterChannelsByIDAndModel(channels []*store.Channel, model string, ids []i
 		}
 	}
 	return out
-}
-
-func fallbackReasonText(reason string) string {
-	if reason == fallbackReasonBudget {
-		return "令牌剩余额度低于阈值，按降级链切换模型"
-	}
-	return "原模型渠道耗尽，按降级链切换模型"
 }
 
 func errorKind(errType string) string {

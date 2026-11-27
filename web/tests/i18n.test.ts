@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import test from 'node:test'
-import { dictionaryDiff, dict, getLocale, setLocale, t } from '../src/lib/i18n.ts'
+import { dictionaryDiff, dict, getLocale, localeFor, setLocale, t } from '../src/lib/i18n.ts'
 
 const CJK = /[\u4e00-\u9fff]/
 
@@ -44,4 +44,12 @@ test('t() follows the active locale and falls back to zh-CN', () => {
   assert.equal(t('nav.channels'), 'Channels')
   setLocale('zh-CN')
   assert.equal(t('nav.channels'), '渠道管理')
+})
+
+test('first visit picks the UI language from the browser language', () => {
+  assert.equal(localeFor('zh-CN'), 'zh-CN')
+  assert.equal(localeFor('zh-TW'), 'zh-CN')
+  assert.equal(localeFor('en-US'), 'en')
+  assert.equal(localeFor('fr'), 'en')
+  assert.equal(localeFor(undefined), 'en')
 })
