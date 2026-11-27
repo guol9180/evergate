@@ -20,6 +20,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRi
 import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
 import { copyText } from '../lib/clipboard'
+import { errorMessage } from '../lib/errors'
 
 export type { Tone }
 
@@ -395,6 +396,23 @@ export function Alert({
 /** 骨架块：首次加载时替代 Spinner，保持布局稳定。 */
 export function Skeleton({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
   return <div aria-hidden="true" className={`eg-skeleton ${className}`} style={style} />
+}
+
+/**
+ * 加载失败态（列表 / 概览 / 卡片）：危险 Alert + 重试。
+ * 与「有数据但为空」「筛选无结果」严格区分，接口失败时绝不渲染空表或引导态。
+ */
+export function LoadError({ error, onRetry, title, className = '' }: { error: unknown; onRetry?: () => void; title?: string; className?: string }) {
+  return (
+    <Alert
+      tone="danger"
+      title={title ?? t('loadFailed.list')}
+      className={className}
+      action={onRetry ? <Button size="sm" variant="outline" onClick={onRetry}>{t('common.retry')}</Button> : undefined}
+    >
+      {errorMessage(error)}
+    </Alert>
+  )
 }
 
 /** 表格骨架：header 行 + n 数据行。 */

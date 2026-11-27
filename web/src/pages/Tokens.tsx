@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken, type TokenGovernanceInput } from '../api/hooks'
 import type { Token } from '../api/types'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, Dialog, Empty, Field, IconButton, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, Dialog, Empty, Field, IconButton, Input, LoadError, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime, tokenStatusLabel, tokenStatusTone } from '../lib/format'
@@ -82,7 +82,9 @@ export default function Tokens() {
       />
       <Card>
         <ContentSwap loading={tokens.isPending} skeleton={<SkeletonRows rows={4} />}>
-          {tokens.data?.items.length === 0 ? (
+          {tokens.isError ? (
+            <LoadError error={tokens.error} onRetry={() => void tokens.refetch()} />
+          ) : tokens.data?.items.length === 0 ? (
             <Empty
               icon={<KeyRound size={36} />}
               title={t('empty.tokens.title')}

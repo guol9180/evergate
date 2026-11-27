@@ -2,7 +2,7 @@ import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ChevronDown, ChevronUp, Download, Filter, RefreshCw, RotateCcw, ScrollText } from 'lucide-react'
 import { buildLogQuery, downloadAdminFile, useChannels, useLogModels, useLogs, useTokens } from '../api/hooks'
-import { Alert, Badge, Button, Card, ContentSwap, CopyButton, Disclosure, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch, Td, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ContentSwap, CopyButton, Disclosure, Drawer, Empty, Field, Input, LoadError, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import RetryTimeline, { lastAttempt } from '../components/RetryTimeline'
 import { PriceSourceBadge } from '../components/PriceTable'
@@ -214,7 +214,10 @@ export default function Logs() {
 
       <Card>
         <ContentSwap loading={logs.isPending} skeleton={<SkeletonRows rows={8} className="eg-card-fluid" />}>
-          {logs.data?.items.length === 0 ? (
+          {/* 首次加载失败给可重试的错误态；带上一批数据的后台刷新失败保留旧表格，不闪成空表 */}
+          {logs.isError && !logs.data ? (
+            <LoadError error={logs.error} onRetry={() => void logs.refetch()} />
+          ) : logs.data?.items.length === 0 ? (
             <Empty
               icon={<ScrollText size={36} />}
               filtered={hasFilters}

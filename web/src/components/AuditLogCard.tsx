@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ScrollText } from 'lucide-react'
 import { useAuditLogs } from '../api/hooks'
-import { Card, ContentSwap, Empty, Pagination, SkeletonRows, Td, Th } from './ui'
+import { Card, ContentSwap, Empty, LoadError, Pagination, SkeletonRows, Td, Th } from './ui'
 import { fmtTime } from '../lib/format'
 import { t, type MessageKey } from '../lib/i18n'
 
@@ -43,7 +43,9 @@ export default function AuditLogCard() {
       <h2 className="mb-1 text-sm font-semibold text-foreground">{t('audit.title')}</h2>
       <p className="mb-3 text-xs text-muted">{t('audit.desc')}</p>
       <ContentSwap loading={logs.isPending} skeleton={<SkeletonRows rows={3} />}>
-        {items.length === 0 ? (
+        {logs.isError && !logs.data ? (
+          <LoadError error={logs.error} onRetry={() => void logs.refetch()} />
+        ) : items.length === 0 ? (
           <Empty icon={<ScrollText size={32} />} title={t('empty.audit.title')} hint={t('empty.audit.hint')} />
         ) : (
           <div className="overflow-x-auto">

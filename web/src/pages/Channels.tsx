@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AlertTriangle, ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useSyncChannelCatalog, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, Tooltip } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, LoadError, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, Tooltip } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel, ChannelCatalogDiff, ChannelTimeouts, EffectivePrice } from '../api/types'
@@ -51,7 +51,9 @@ export default function Channels() {
 
       <Card>
         <ContentSwap loading={channels.isPending} skeleton={<SkeletonRows rows={4} className="eg-card-fluid" />}>
-          {channels.data?.items.length === 0 ? (
+          {channels.isError ? (
+            <LoadError error={channels.error} onRetry={() => void channels.refetch()} />
+          ) : channels.data?.items.length === 0 ? (
             <Empty
               icon={<Plug size={36} />}
               title={t('empty.channels.title')}

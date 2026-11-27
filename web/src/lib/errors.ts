@@ -95,6 +95,9 @@ export function errorCode(error: unknown): string | null {
   return error instanceof ApiError && error.code ? error.code : null
 }
 
+/** 浏览器 fetch 在网络层失败（断网、服务未启动）时只给英文固定文案，统一换成人话。 */
+const networkFailure = /failed to fetch|networkerror|load failed|network request failed/i
+
 function detailOf(message: string, code: string): string {
   const key = codeKeys[code]
   const serverPrefix: Record<string, RegExp> = {
@@ -118,6 +121,8 @@ function detailOf(message: string, code: string): string {
 /** 统一错误文案：有稳定 code 走字典（细节原样附带），否则回退原始 message；非 Error 值给通用提示。 */
 export function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  // 只认不带 code 的原生错误：带 code 的 ApiError 仍按字典本地化
+  if (!(error instanceof ApiError) && networkFailure.test(message)) return t('session.loadFailed')
   const code = errorCode(error)
   const key = code ? codeKeys[code] : undefined
   if (!key) return message || t('toast.failed')

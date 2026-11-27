@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, AlertTriangle, ArrowRight, Download, KeyRound, Plug, Timer, TowerControl, Waypoints, Zap } from 'lucide-react'
 import { useChannels, useLogsStats, useTokens, useUpdateStatus } from '../api/hooks'
-import { Alert, Button, Card, ContentSwap, Empty, PageHeader, PageSkeleton, StatusBadge, Td, Th } from '../components/ui'
+import { Alert, Button, Card, ContentSwap, Empty, LoadError, PageHeader, PageSkeleton, StatusBadge, Td, Th } from '../components/ui'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { channelStateTone, fmtInt, fmtMs, fmtTime, stateLabel, statusRank } from '../lib/format'
 import { currentBasePath } from '../lib/runtime'
@@ -77,7 +77,13 @@ export default function Dashboard() {
   )
 
   // 引导状态机：零渠道 → 有渠道零 key → 零令牌 → 零请求；每一步保留上下文直到第一次成功请求。
-  const onboarding = chs.length === 0 ? (
+  // 接口失败或仍在加载时不下结论：失败给可重试的错误态，避免把「没加载到」误报成「还没有」。
+  const onboarding = channels.isError || tokens.isError ? (
+    <LoadError
+      error={channels.error ?? tokens.error}
+      onRetry={() => { void channels.refetch(); void tokens.refetch() }}
+    />
+  ) : channels.isPending || tokens.isPending ? null : chs.length === 0 ? (
     <Card className="p-10">
       <Empty
         icon={<TowerControl size={40} />}
@@ -168,6 +174,9 @@ export default function Dashboard() {
       </div>
 
       {/* 今日卡片 */}
+      {stats.isError && !stats.data && (
+        <LoadError error={stats.error} onRetry={() => void stats.refetch()} title={t('loadFailed.stats')} />
+      )}
       <div className="eg-grid eg-grid-kpi">
         {[
           { label: t('dashboard.kpi.today'), value: fmtInt(s?.total), icon: Activity },
