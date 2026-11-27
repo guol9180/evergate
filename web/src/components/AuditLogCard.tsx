@@ -41,7 +41,7 @@ export default function AuditLogCard() {
   return (
     <Card>
       <h2 className="mb-1 text-sm font-semibold text-foreground">{t('audit.title')}</h2>
-      <p className="mb-3 text-xs text-muted">{t('audit.desc')}</p>
+      <p className="mb-3 text-xs text-muted-foreground">{t('audit.desc')}</p>
       <ContentSwap loading={logs.isPending} skeleton={<SkeletonRows rows={3} />}>
         {logs.isError && !logs.data ? (
           <LoadError error={logs.error} onRetry={() => void logs.refetch()} />
@@ -58,12 +58,12 @@ export default function AuditLogCard() {
             <tbody className="divide-y divide-line-soft">
               {items.map((log) => (
                 <tr key={log.id}>
-                  <Td className="whitespace-nowrap text-xs text-muted">{fmtTime(log.created_at)}</Td>
+                  <Td className="whitespace-nowrap text-xs text-muted-foreground">{fmtTime(log.created_at)}</Td>
                   <Td className="text-xs">{log.username || '—'}</Td>
                   <Td className="whitespace-nowrap text-xs font-medium">{ACTION_KEYS[log.action] ? t(ACTION_KEYS[log.action]) : log.action}</Td>
-                  <Td className="text-xs text-muted">{log.target || '—'}</Td>
-                  <Td className="max-w-sm truncate text-xs text-muted" title={log.summary}>{log.summary || '—'}</Td>
-                  <Td className="hidden text-xs text-muted min-[1100px]:table-cell">{log.ip}</Td>
+                  <Td className="text-xs text-muted-foreground">{log.target || '—'}</Td>
+                  <Td className="max-w-sm truncate text-xs text-muted-foreground" title={log.summary}>{log.summary || '—'}</Td>
+                  <Td className="hidden text-xs text-muted-foreground min-[1100px]:table-cell">{log.ip}</Td>
                 </tr>
               ))}
             </tbody>

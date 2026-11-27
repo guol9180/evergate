@@ -113,16 +113,16 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
       <div className="space-y-4">
         <div className="rounded-lg border border-line bg-surface-soft px-3 py-3 text-sm">
           <div className="flex items-center justify-between gap-3">
-            <span className="text-muted">{t('update.currentVersion')}</span>
+            <span className="text-muted-foreground">{t('update.currentVersion')}</span>
             <span className="font-medium tabular-nums text-foreground-soft">{current || t('common.unknown')}</span>
           </div>
           <div className="mt-2 flex items-center justify-between gap-3">
-            <span className="text-muted">{t('update.targetVersion')}</span>
+            <span className="text-muted-foreground">{t('update.targetVersion')}</span>
             <span className="font-medium tabular-nums text-brand-text">{target || '—'}</span>
           </div>
           {status?.source && (
             <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-muted">{t('update.checkSource')}</span>
+              <span className="text-muted-foreground">{t('update.checkSource')}</span>
               <Badge tone="neutral">
                 <span className="max-w-[220px] truncate" title={sourceLabel(status.source)}>{sourceLabel(status.source)}</span>
               </Badge>
@@ -130,7 +130,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
           )}
           {job?.source && (
             <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-muted">{t('update.channel')}</span>
+              <span className="text-muted-foreground">{t('update.channel')}</span>
               <Badge tone="brand">
                 <span className="max-w-[220px] truncate" title={sourceLabel(job.source)}>{sourceLabel(job.source)}</span>
               </Badge>
@@ -158,7 +158,7 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
 
         {started && (
           <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs text-muted">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span className="font-medium text-foreground-soft">{t(stageKey[job?.stage || 'downloading'] ?? 'update.stage.failed')}</span>
               <span className="tabular-nums">{job?.progress ?? 0}%</span>
             </div>
@@ -175,12 +175,12 @@ export function UpdateDialog({ open, onClose, status }: { open: boolean; onClose
                       : done ? <CheckCircle2 size={14} className="text-success-text" />
                       : active ? <Loader2 size={14} className="animate-spin text-brand-text" />
                         : <span className="h-3.5 w-3.5 rounded-full border border-line-strong" />}
-                    <span className={failedHere ? 'font-medium text-danger-text' : active ? 'font-medium text-foreground-soft' : 'text-muted'}>{t(stageKey[stage] ?? 'update.stage.failed')}</span>
+                    <span className={failedHere ? 'font-medium text-danger-text' : active ? 'font-medium text-foreground-soft' : 'text-muted-foreground'}>{t(stageKey[stage] ?? 'update.stage.failed')}</span>
                   </li>
                 )
               })}
             </ol>
-            <div className="flex items-start gap-2 rounded-lg bg-surface-soft px-3 py-2 text-xs text-muted">
+            <div className="flex items-start gap-2 rounded-lg bg-surface-soft px-3 py-2 text-xs text-muted-foreground">
               {restarting ? <RefreshCw size={14} className="mt-0.5 shrink-0 animate-spin text-brand-text" /> : <ShieldCheck size={14} className="mt-0.5 shrink-0 text-success-text" />}
               <div className="min-w-0 space-y-1">
                 <div>

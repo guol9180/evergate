@@ -100,7 +100,7 @@ export default function Dashboard() {
         ].map((step) => (
           <li key={step.n} className="flex items-center gap-3 rounded-lg border border-line px-4 py-3">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-subtle text-xs font-bold text-brand-text">{step.n}</span>
-            <span className="flex-1 text-muted">{step.text}</span>
+            <span className="flex-1 text-muted-foreground">{step.text}</span>
             {step.to && (
               <Link to={step.to} className="text-xs font-medium text-brand-text hover:underline">{t('dashboard.onboarding.go')} <ArrowRight size={12} className="inline" aria-hidden="true" /></Link>
             )}
@@ -168,7 +168,7 @@ export default function Dashboard() {
         ].map((item) => (
           <div key={item.label} className="flex min-w-0 items-baseline gap-2 bg-surface-soft px-4 py-3">
             <span className="text-lg font-semibold tabular-nums text-foreground">{item.value}</span>
-            <span className="truncate text-sm text-muted">{item.label}</span>
+            <span className="truncate text-sm text-muted-foreground">{item.label}</span>
           </div>
         ))}
       </div>
@@ -185,7 +185,7 @@ export default function Dashboard() {
           { label: t('dashboard.kpi.abnormal'), value: fmtInt(chs.filter((c) => c.status !== 'active').length), icon: AlertTriangle },
         ].map((c) => (
           <Card key={c.label} className="p-4">
-            <div className="flex items-center gap-2 text-xs text-muted">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <c.icon size={14} className="text-subtle" aria-hidden="true" />
               {c.label}
             </div>
@@ -220,14 +220,14 @@ export default function Dashboard() {
           <span title={c.last_probe_error || undefined}>{stateLabel(c.status)}</span>
                       </StatusBadge>
                     </Td>
-                    <Td className="hidden text-muted min-[1120px]:table-cell">{c.type}</Td>
+                    <Td className="hidden text-muted-foreground min-[1120px]:table-cell">{c.type}</Td>
                     <Td className="hidden min-[1200px]:table-cell">{c.priority}</Td>
                     <Td>
                       <span className="font-medium">{c.available_key_count}</span>
                       <span className="text-subtle"> / {c.key_count}</span>
                     </Td>
                     <Td>{(c.models || []).length}</Td>
-                    <Td className="hidden text-xs text-muted min-[1280px]:table-cell">
+                    <Td className="hidden text-xs text-muted-foreground min-[1280px]:table-cell">
           {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
                     </Td>
                     <Td className="hidden max-w-56 min-[1180px]:table-cell">

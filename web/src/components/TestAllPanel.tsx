@@ -38,7 +38,7 @@ export default function TestAllPanel() {
   if (testAll.isPending && !testAll.data) {
     return (
       <div role="status">
-        <Card className="eg-card-fluid text-sm text-muted">
+        <Card className="eg-card-fluid text-sm text-muted-foreground">
           <RefreshCw size={14} className="mr-2 inline animate-spin" aria-hidden="true" />
           {t('testAll.probing')}
         </Card>
@@ -60,10 +60,10 @@ export default function TestAllPanel() {
   const header = (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft">
       <div className="text-sm font-semibold text-foreground">
-        {t('testAll.title')} <span className="ml-2 text-xs font-normal text-muted">{tf('testAll.summary', { ok: okCount, total: items.length })}</span>
+        {t('testAll.title')} <span className="ml-2 text-xs font-normal text-muted-foreground">{tf('testAll.summary', { ok: okCount, total: items.length })}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted">{t('testAll.sort')}</span>
+        <span className="text-xs text-muted-foreground">{t('testAll.sort')}</span>
         <Select
           size="sm"
           aria-label={t('testAll.sort')}
@@ -83,7 +83,7 @@ export default function TestAllPanel() {
   )
 
   if (items.length === 0) {
-    return <Card className="eg-card-fluid">{header}<p className="py-6 text-center text-sm text-muted">{t('testAll.none')}</p></Card>
+    return <Card className="eg-card-fluid">{header}<p className="py-6 text-center text-sm text-muted-foreground">{t('testAll.none')}</p></Card>
   }
 
   return (
@@ -105,7 +105,7 @@ export default function TestAllPanel() {
                 <Td className="font-medium text-foreground">{item.name}</Td>
                 <Td><StatusBadge tone={item.ok ? 'success' : item.result === 'inconclusive' ? 'neutral' : 'danger'}>{item.ok ? t('testAll.ok') : item.result === 'inconclusive' ? t('keyState.inconclusive') : t('testAll.fail')}</StatusBadge></Td>
                 <Td className="tabular-nums">{item.latency_ms ? fmtMs(item.latency_ms) : '—'}</Td>
-                <Td className="max-w-md truncate text-xs text-muted" title={item.error}>{item.error || '—'}</Td>
+                <Td className="max-w-md truncate text-xs text-muted-foreground" title={item.error}>{item.error || '—'}</Td>
               </tr>
             ))}
           </tbody>

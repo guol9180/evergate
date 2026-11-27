@@ -91,14 +91,6 @@ P0 功能完成定义（1–10 全部通过）：
 
 #### 批次二 · 组件化基座（shadcn/ui · Radix 变体）
 
-#### T130: 组件体系基座（P1，G0 / 17）
-
-- 目标：引入 shadcn/ui（Radix 变体）作为组件版式基准：依赖、别名、`cn`、主题令牌映射、错误边界
-- 验收标准：① `components.json`（Radix 变体、lucide、CSS 变量）与 `@/` 别名就位，`npx shadcn@<锁定版本> add` 可直接写入 `components/ui/`；② `clsx` + `tailwind-merge` + `class-variance-authority` 接入，Button 变体改用 cva；③ shadcn 语义色（background / primary / destructive / muted / border / ring 等）映射到现有 `--eg-*` 令牌，浅深色与现状一致（`audit:layout` 全绿）；④ 根部与路由级错误边界：渲染异常显示可恢复的错误页而非白屏（UI 单测）；⑤ `tw-animate-css` 接入；⑥ 页面调用点不变，`npm run lint` / `npm test` / `npm run build` 通过
-- 边界：本卡不改页面；shadcn CLI 不作为依赖引入（用 `npx` 锁定版本）
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
-
 #### T131: 基础原语迁移（P1，G1 #8–#13）
 
 - 目标：`ui.tsx` 内的手写原语换成 shadcn（Radix 变体）实现：Field / Form、AlertDialog、DropdownMenu、Tabs / ToggleGroup、Accordion / Collapsible、Progress、Badge、Tooltip、Spinner、Empty、Skeleton、Kbd、Separator、Popover

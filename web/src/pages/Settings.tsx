@@ -70,7 +70,7 @@ export default function Settings() {
         title={t('page.settings.title')}
         description={t('page.settings.desc')}
         actions={
-          <div className="text-left text-xs text-muted sm:text-right">
+          <div className="text-left text-xs text-muted-foreground sm:text-right">
             <div>{t('settings.source')} <Badge tone="brand">{current?.source === 'database' ? t('settings.source.database') : 'evergate.yml'}</Badge></div>
             <div className="mt-1 break-words">{tf('settings.initialized', { init: fmtTime(current?.initialized_at), updated: fmtTime(current?.updated_at) })}</div>
           </div>
@@ -83,11 +83,11 @@ export default function Settings() {
           <dl className="eg-grid eg-grid-auto-wide text-xs">
             <div className="min-w-0">
               <dt className="text-subtle">{t('settings.configFile')}</dt>
-              <dd className="mt-1 break-all font-mono text-muted">{settings.data.paths.config_path || '—'}</dd>
+              <dd className="mt-1 break-all font-mono text-muted-foreground">{settings.data.paths.config_path || '—'}</dd>
             </div>
             <div className="min-w-0">
               <dt className="text-subtle">{t('settings.dataDir')}</dt>
-              <dd className="mt-1 break-all font-mono text-muted">{settings.data.paths.data_dir || '—'}</dd>
+              <dd className="mt-1 break-all font-mono text-muted-foreground">{settings.data.paths.data_dir || '—'}</dd>
             </div>
             <div className="min-w-0">
               <dt className="text-subtle">{t('settings.configSource')}</dt>

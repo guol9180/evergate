@@ -44,7 +44,7 @@ export default function PriceTable({ prices }: { prices: EffectivePrice[] }) {
                 </span>
               </Td>
               {/* 缓存价贴在输入价下方：设了才显示，未设的一侧标注「按输入价」 */}
-              <Td className="tabular-nums text-muted">
+              <Td className="tabular-nums text-muted-foreground">
                 <span className="block">{price.source ? fmtPriceMicros(price.input_micros_per_million) : '—'}</span>
                 {price.source && (price.cache_read_micros_per_million > 0 || price.cache_write_micros_per_million > 0) && (
                   <span className="mt-1 block text-[11px] text-subtle">
@@ -52,7 +52,7 @@ export default function PriceTable({ prices }: { prices: EffectivePrice[] }) {
                   </span>
                 )}
               </Td>
-              <Td className="tabular-nums text-muted">{price.source ? fmtPriceMicros(price.output_micros_per_million) : '—'}</Td>
+              <Td className="tabular-nums text-muted-foreground">{price.source ? fmtPriceMicros(price.output_micros_per_million) : '—'}</Td>
             </tr>
           ))}
         </tbody>

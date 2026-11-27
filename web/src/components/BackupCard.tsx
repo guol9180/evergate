@@ -73,7 +73,7 @@ export default function BackupCard() {
           />
         </div>
       </div>
-      <p className="mb-2 text-xs text-muted">{t('backups.desc')}</p>
+      <p className="mb-2 text-xs text-muted-foreground">{t('backups.desc')}</p>
       <p className="mb-4 text-xs text-subtle">{t('backups.masterKeyHint')}</p>
 
       {(pending || staged) && (
@@ -111,8 +111,8 @@ export default function BackupCard() {
                     <div className="text-xs">{fmtTime(item.time)}</div>
                     <div className="font-mono text-[11px] text-subtle">{item.name}</div>
                   </Td>
-                  <Td className="text-xs text-muted">{fmtBytes(item.size)}</Td>
-                  <Td className="text-xs text-muted">{item.version || '—'}</Td>
+                  <Td className="text-xs text-muted-foreground">{fmtBytes(item.size)}</Td>
+                  <Td className="text-xs text-muted-foreground">{item.version || '—'}</Td>
                   <Td>
                     <div className="flex justify-end gap-1">
                       <IconButton label={t('backups.download')} side="top" onClick={() => void onDownload(item.name)}>

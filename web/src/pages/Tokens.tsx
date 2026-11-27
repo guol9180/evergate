@@ -58,7 +58,7 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
             </div>
           </div>
         </div>
-        <p className="text-xs text-muted">{t('tokens.created.hint')}</p>
+        <p className="text-xs text-muted-foreground">{t('tokens.created.hint')}</p>
         <Button className="w-full" onClick={onClose}>{t('tokens.created.close')}</Button>
       </div>
     </Dialog>
@@ -118,7 +118,7 @@ export default function Tokens() {
                         <span className="text-subtle">{t('tokens.unlimited')}</span>
                       )}
                     </Td>
-                    <Td className="hidden text-xs text-muted min-[1180px]:table-cell">
+                    <Td className="hidden text-xs text-muted-foreground min-[1180px]:table-cell">
                       {tok.rpm_limit > 0 || tok.concurrency_limit > 0
                         ? tf('tokens.rateLimitSummary', {
                           rpm: tok.rpm_limit > 0 ? fmtInt(tok.rpm_limit) : '∞',
@@ -126,13 +126,13 @@ export default function Tokens() {
                         })
                         : <span className="text-subtle">{t('tokens.unlimited')}</span>}
                     </Td>
-                    <Td className="max-w-40 text-xs text-muted">
+                    <Td className="max-w-40 text-xs text-muted-foreground">
                       <div className="truncate" title={(tok.allowed_models || []).join(', ')}>
                         {(tok.allowed_models || []).join(', ') || t('tokens.allModels')}
                       </div>
                       {tok.disable_fallback && <Badge tone="warning">{t('tokens.fallbackDisabled')}</Badge>}
                     </Td>
-                    <Td className="hidden max-w-40 text-xs text-muted min-[1320px]:table-cell">
+                    <Td className="hidden max-w-40 text-xs text-muted-foreground min-[1320px]:table-cell">
                       <div className="truncate" title={(tok.allowed_ips || []).join(', ')}>
                         {(tok.allowed_ips || []).join(', ') || t('tokens.allIPs')}
                       </div>

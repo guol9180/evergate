@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 /* 暗色模式由 .dark 类驱动（侧栏切换 / localStorage 持久化 / 默认跟随系统，见 lib/theme.ts）。 */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -61,6 +63,8 @@
   --eg-neutral-subtle: #f1f5f9;
   --eg-neutral-text: #475569;
   --eg-overlay: rgb(15 23 42 / 0.55);
+  /* shadcn/ui 映射用的补充令牌：品牌色上的前景色 */
+  --eg-on-brand: #ffffff;
 }
 
 .dark {
@@ -117,7 +121,6 @@
   --color-line-strong: var(--eg-line-strong);
   --color-foreground: var(--eg-foreground);
   --color-foreground-soft: var(--eg-foreground-soft);
-  --color-muted: var(--eg-muted);
   --color-subtle: var(--eg-subtle);
 
   --color-brand: var(--eg-brand);
@@ -145,6 +148,31 @@
   --color-neutral-subtle: var(--eg-neutral-subtle);
   --color-neutral-text: var(--eg-neutral-text);
   --color-overlay: var(--eg-overlay);
+  /* shadcn/ui 语义色：全部映射到上面的令牌，组件默认配色即本项目配色；不引入其默认调色板 */
+  --color-background: var(--eg-surface);
+  --color-foreground: var(--eg-foreground);
+  --color-card: var(--eg-surface);
+  --color-card-foreground: var(--eg-foreground);
+  --color-popover: var(--eg-surface);
+  --color-popover-foreground: var(--eg-foreground);
+  --color-primary: var(--eg-brand);
+  --color-primary-foreground: var(--eg-on-brand);
+  --color-secondary: var(--eg-surface-strong);
+  --color-secondary-foreground: var(--eg-foreground-soft);
+  --color-muted: var(--eg-surface-strong);
+  --color-muted-foreground: var(--eg-muted);
+  --color-accent: var(--eg-surface-soft);
+  --color-accent-foreground: var(--eg-foreground-soft);
+  --color-destructive: var(--eg-danger-solid);
+  --color-destructive-foreground: var(--eg-on-brand);
+  --color-border: var(--eg-line);
+  --color-input: var(--eg-line-strong);
+  --color-ring: var(--eg-brand);
+  --color-chart-1: var(--eg-brand);
+  --color-chart-2: var(--eg-success-solid);
+  --color-chart-3: var(--eg-warning-solid);
+  --color-chart-4: var(--eg-info-solid);
+  --color-chart-5: var(--eg-danger-solid);
 }
 
 html, body, #root { height: 100%; }
@@ -326,7 +354,7 @@ tbody tr {
   max-height: min(360px, var(--radix-select-content-available-height));
 }
 /* 长列表上下滚动按钮：仅在可滚动方向出现，用弱化色不与选项抢注意力。 */
-.eg-select-scroll { @apply flex h-6 items-center justify-center text-muted; }
+.eg-select-scroll { @apply flex h-6 items-center justify-center text-muted-foreground; }
 
 /* Toast（sonner）：颜色映射到语义 token，浅深色随 .dark 自动切换；
    选择器需压过 sonner 运行时注入的 [data-sonner-theme] 规则（同特异性时后注入者胜出）。 */

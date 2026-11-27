@@ -4,6 +4,7 @@ import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Setting
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
 import { ApiError } from '../api/client'
 import { Alert, Button, PageSkeleton, Spinner, Tooltip } from './ui'
+import { ErrorBoundary } from './ErrorBoundary'
 import { withBasePath } from '../lib/runtime'
 import { loginUrl } from '../lib/session'
 import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
@@ -77,7 +78,7 @@ export default function Layout() {
   const otherLocaleName = localeEn ? 'locale.zh' : 'locale.en'
   // 底部操作行两态共用：收起态是 32px 图标按钮，展开态是整行「图标 + 文字 + 当前值」
   const actionRowClass =
-    'eg-press eg-nav-link eg-icon-btn eg-sidebar-action-row gap-2.5 text-sm text-muted hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
+    'eg-press eg-nav-link eg-icon-btn eg-sidebar-action-row gap-2.5 text-sm text-muted-foreground hover:bg-surface-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand'
 
   return (
     <div className="eg-shell flex h-full min-w-0">
@@ -98,7 +99,7 @@ export default function Layout() {
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) =>
-                  `eg-nav-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${isActive ? 'bg-brand-subtle font-medium text-brand-text' : 'text-muted hover:bg-surface-soft'}`
+                  `eg-nav-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${isActive ? 'bg-brand-subtle font-medium text-brand-text' : 'text-muted-foreground hover:bg-surface-soft'}`
                 }
               >
                 <item.icon size={16} aria-hidden="true" />
@@ -111,7 +112,7 @@ export default function Layout() {
           {/* 与导航项同缩进：px-3 + 16px 图标，保证图标中心与文字左缘都和菜单对齐 */}
           <div className="eg-sidebar-meta px-3 text-[11px] leading-4 text-subtle">
             {/* 版本号只在运行概览页头展示，这里不重复；仅在有新版本时给出升级入口 */}
-            <div className="flex min-w-0 items-center gap-2.5 text-xs text-muted">
+            <div className="flex min-w-0 items-center gap-2.5 text-xs text-muted-foreground">
               <UserRound size={16} aria-hidden="true" className="shrink-0" />
               <span className="truncate">{me.data?.username}</span>
             </div>
@@ -165,12 +166,14 @@ export default function Layout() {
       <main ref={mainRef} className="min-w-0 flex-1 overflow-auto" id="main-content">
         {/* key 绑定路径：切换页面时重挂内容区以触发入场动画（页面本身在路由切换时就会重挂） */}
         <div key={location.pathname} className="eg-page eg-page-in">
-          {me.isError && !unauthorized && (
-            <Alert tone="danger" className="mb-[var(--eg-section-gap)]" action={<Button size="sm" variant="outline" onClick={() => void me.refetch()}>{t('common.retry')}</Button>}>
-              {t('session.loadFailed')} {errorMessage(me.error)}
-            </Alert>
-          )}
-          <Outlet />
+          <ErrorBoundary scope="route">
+            {me.isError && !unauthorized && (
+              <Alert tone="danger" className="mb-[var(--eg-section-gap)]" action={<Button size="sm" variant="outline" onClick={() => void me.refetch()}>{t('common.retry')}</Button>}>
+                {t('session.loadFailed')} {errorMessage(me.error)}
+              </Alert>
+            )}
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </main>
     </div>

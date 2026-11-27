@@ -169,7 +169,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
         </Td>
         <Td className="hidden min-[1120px]:table-cell">
           <div className="flex flex-col gap-1">
-            <span className="inline-block max-w-[96px] truncate text-muted" title={c.type}>{c.type}</span>
+            <span className="inline-block max-w-[96px] truncate text-muted-foreground" title={c.type}>{c.type}</span>
             {(c.supports_responses || c.supports_anthropic || c.supports_gemini) && (
               <div className="flex items-center gap-1 whitespace-nowrap">
                 {c.supports_responses && <Badge compact tone="info">Responses</Badge>}
@@ -196,7 +196,7 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
           <span className="text-subtle"> / {c.key_count}</span>
         </Td>
         <Td className="hidden max-w-44 min-[1360px]:table-cell">
-          <div className="text-xs text-muted">
+          <div className="text-xs text-muted-foreground">
           {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
           </div>
           {c.last_probe_error && (
@@ -318,7 +318,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
                   <Td className={k.consecutive_fails > 0 ? 'text-warning-text font-medium' : ''}>{k.consecutive_fails}</Td>
                   <Td className="hidden min-[1180px]:table-cell">L{k.level}</Td>
                   <Td>{cooling ? <span className="text-warning-text">{formatRemainingSeconds(k.cooldown_remaining_sec)}</span> : '—'}</Td>
-                  <Td className="hidden text-xs text-muted min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
+                  <Td className="hidden text-xs text-muted-foreground min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
                   <Td className="hidden min-[1260px]:table-cell">
                     <KeyRpmInput
                       value={k.rpm_limit}
@@ -345,7 +345,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
         </table>
       </div>
       <div className="mt-4 rounded-lg border border-dashed border-line-strong p-3">
-        <div className="mb-2 text-xs font-medium text-muted">{t('channels.import.title')}</div>
+        <div className="mb-2 text-xs font-medium text-muted-foreground">{t('channels.import.title')}</div>
         <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-xxxxxxx\nsk-yyyyyyy'} />
         <div className="mt-2 flex items-center gap-3">
           <Button size="sm" loading={addKeys.isPending} disabled={!keysText.trim()} onClick={() => addKeys.mutate(
@@ -636,7 +636,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             action={<Button type="button" size="sm" variant="ghost" onClick={switchToCustom}>{t('channels.form.switchToCustom')}</Button>}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-muted">{t('channels.form.protocolReadonly')}</span>
+              <span className="text-muted-foreground">{t('channels.form.protocolReadonly')}</span>
               <Badge tone="brand">Chat Completions</Badge>
               {supportsResponses && <Badge tone="info">Responses</Badge>}
               {supportsAnthropic && <Badge tone="brand">Messages</Badge>}

@@ -256,7 +256,7 @@ export default function Playground() {
             ))}
             {output && <TurnBubble role="assistant" content={output} streaming />}
             {!output && running && (
-              <div className="flex items-center gap-2 py-6 text-sm text-muted"><Spinner /> {t('playground.waiting')}</div>
+              <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground"><Spinner /> {t('playground.waiting')}</div>
             )}
             {showEmpty && (
               <div className="py-6">
@@ -268,7 +268,7 @@ export default function Playground() {
           {meta && (
             <div className="border-t border-line-soft bg-surface-soft" style={{ padding: 'var(--eg-card-pad)' }}>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">{t('playground.trace')}</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('playground.trace')}</h3>
                 <span className="text-[11px] text-subtle">{t('playground.loggedFrom')}</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
@@ -277,7 +277,7 @@ export default function Playground() {
                 <MetaItem label={t('table.firstToken')} value={fmtMs(meta.first_token_ms || undefined)} />
                 <MetaItem label={t('table.totalMs')} value={fmtMs(meta.total_ms || undefined)} />
               </div>
-              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
+              <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
                 {meta.usage.usage_seen ? (
                   <>
                     <UsageChip label={t('usage.input')} value={fmtInt(meta.usage.prompt_tokens)} />
@@ -307,7 +307,7 @@ export default function Playground() {
                 </Disclosure>
               )}
               <div className="mt-4 border-t border-line pt-3">
-                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{t('logs.trace.title')}</h4>
+                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('logs.trace.title')}</h4>
                 <RetryTimeline attempts={meta.retry_trace} />
               </div>
             </div>
@@ -323,7 +323,7 @@ function TurnBubble({ role, content, streaming }: { role: PlaygroundTurn['role']
   const assistant = role === 'assistant'
   return (
     <div className={`mb-4 flex gap-3 ${assistant ? '' : 'flex-row-reverse'}`}>
-      <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${assistant ? 'bg-brand/10 text-brand' : 'bg-surface-soft text-muted ring-1 ring-inset ring-line'}`}>
+      <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${assistant ? 'bg-brand/10 text-brand' : 'bg-surface-soft text-muted-foreground ring-1 ring-inset ring-line'}`}>
         {assistant ? 'A' : 'U'}
       </span>
       <div className={`min-w-0 max-w-[88%] rounded-xl px-3.5 py-2.5 ${assistant ? 'bg-surface-soft' : 'bg-brand/10'}`}>

@@ -47,7 +47,7 @@ function FallbackBoundary({ a }: { a: RetryAttempt }) {
           {a.elapsed_ms > 0 && <span className="ml-auto tabular-nums text-subtle">{fmtMs(a.elapsed_ms)}</span>}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1 font-mono text-xs text-foreground-soft">
-          <span className="text-muted">{a.from_model}</span>
+          <span className="text-muted-foreground">{a.from_model}</span>
           <ArrowRight size={12} className="shrink-0 text-subtle" aria-hidden="true" />
           <span className="font-medium">{a.to_model}</span>
         </div>
@@ -74,7 +74,7 @@ function AttemptRow({ a, last }: { a: RetryAttempt; last: boolean }) {
         <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
           <Badge tone="danger" compact>{kindText(a.error_type)}</Badge>
           {upstream.code && <Badge tone="neutral" compact>{tf('retry.upstreamCode', { code: upstream.code })}</Badge>}
-          <span className="line-clamp-2 min-w-0 break-all text-muted" data-upstream="true" title={upstream.text}>{upstream.text}</span>
+          <span className="line-clamp-2 min-w-0 break-all text-muted-foreground" data-upstream="true" title={upstream.text}>{upstream.text}</span>
         </div>
       )}
     </div>

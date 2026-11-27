@@ -58,7 +58,7 @@ export default function ModelFallbackCard() {
       <div className="eg-control-row mb-4 flex flex-wrap items-start justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={15} className="text-brand-text" /> {t('fallback.title')}</h2>
-          <p className="mt-1 text-xs text-muted">{t('fallback.desc')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('fallback.desc')}</p>
         </div>
         <Button type="button" size="sm" variant="outline" onClick={() => append({ model: '', budgetThreshold: '0', fallbacks: '' })}>
           <Plus size={14} /> {t('fallback.add')}
@@ -66,7 +66,7 @@ export default function ModelFallbackCard() {
       </div>
 
       {fields.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-line-strong px-3 py-6 text-center text-xs text-muted">
+        <div className="rounded-lg border border-dashed border-line-strong px-3 py-6 text-center text-xs text-muted-foreground">
           {t('fallback.empty')}
         </div>
       ) : (

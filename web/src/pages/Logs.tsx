@@ -248,7 +248,7 @@ export default function Logs() {
                         onClick={() => setSelected(l)}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(l) } }}
                       >
-                        <Td className="whitespace-nowrap text-xs text-muted">{fmtTime(l.created_at)}</Td>
+                        <Td className="whitespace-nowrap text-xs text-muted-foreground">{fmtTime(l.created_at)}</Td>
                         <Td className="font-medium">
                           {l.model}
                           {l.original_model && l.original_model !== l.model && (
@@ -258,7 +258,7 @@ export default function Logs() {
                         </Td>
                         <Td className="hidden min-[1120px]:table-cell">
                           {l.channel_name ? (
-                            <span className="text-muted">{l.channel_name}</span>
+                            <span className="text-muted-foreground">{l.channel_name}</span>
                           ) : last?.channel_name ? (
                             <span className="inline-flex items-center gap-1 text-warning-text" title={t('logs.list.lastAttempt')}>
                               <RotateCcw size={12} aria-hidden="true" />{last.channel_name}
@@ -268,9 +268,9 @@ export default function Logs() {
                         <Td><span className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</span></Td>
                         <Td className="hidden min-[1080px]:table-cell">{fmtMs(l.first_token_ms || undefined)}</Td>
                         <Td>{fmtMs(l.total_ms || undefined)}</Td>
-                        <Td className="text-xs text-muted">{l.prompt_tokens}/{l.completion_tokens}</Td>
+                        <Td className="text-xs text-muted-foreground">{l.prompt_tokens}/{l.completion_tokens}</Td>
                         <Td className="whitespace-nowrap text-xs">{fmtRequestCost(l.cost_micros, l.cost_status)}</Td>
-                        <Td className="hidden text-xs text-muted min-[1180px]:table-cell">{l.token_name || '—'}</Td>
+                        <Td className="hidden text-xs text-muted-foreground min-[1180px]:table-cell">{l.token_name || '—'}</Td>
                         <Td className="hidden min-[1240px]:table-cell">{(l.retry_trace?.length ?? 0) > 1 ? <Badge tone="warning">{tf('logs.retryCount', { n: l.retry_trace!.length })}</Badge> : '—'}</Td>
                       </tr>
                     )
@@ -325,19 +325,19 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
           <StatusBadge tone={tone}>{log.status_code} {ok ? t('logs.detail.success') : t('logs.detail.failed')}</StatusBadge>
           {log.stream && <Badge tone="neutral" compact>{t('log.field.stream')}</Badge>}
           {log.source === 'playground' && <Badge tone="brand" compact>{t('log.source.playground')}</Badge>}
-          <span className="text-xs text-muted">{fmtTime(log.created_at)}</span>
+          <span className="text-xs text-muted-foreground">{fmtTime(log.created_at)}</span>
           <span className="ml-auto font-mono text-xs text-subtle">#{log.id}</span>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {chain.map((seg, i) => (
             <span key={`${seg.role}-${seg.model}`} className="inline-flex items-center gap-1">
               {i > 0 && <ArrowRight size={12} className="text-subtle" aria-hidden="true" />}
-              <span title={seg.role === 'original' ? t('log.field.originalModel') : seg.role === 'upstream' ? t('table.upstreamModel') : t('table.model')} className={`break-all font-mono text-sm ${seg.role === 'public' ? 'font-semibold text-foreground' : 'text-muted'}`}>{seg.model}</span>
+              <span title={seg.role === 'original' ? t('log.field.originalModel') : seg.role === 'upstream' ? t('table.upstreamModel') : t('table.model')} className={`break-all font-mono text-sm ${seg.role === 'public' ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>{seg.model}</span>
             </span>
           ))}
           <CopyButton compact value={log.upstream_model || log.model} label={t('common.copy')} side="bottom" />
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{t('table.channel')}{colon()}<span className="font-medium text-foreground-soft">{channelLabel || '—'}</span></span>
           <span>{t('log.field.keyId')} <span className="font-medium text-foreground-soft">{keyID ? `#${keyID}` : '—'}</span></span>
           <span>{t('table.token')}{colon()}<span className="font-medium text-foreground-soft">{log.token_name || '—'}</span></span>

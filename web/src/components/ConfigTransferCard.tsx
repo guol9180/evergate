@@ -65,7 +65,7 @@ export default function ConfigTransferCard() {
   return (
     <Card>
       <h2 className="mb-1 text-sm font-semibold text-foreground">{t('config.title')}</h2>
-      <p className="mb-4 text-xs text-muted">{t('config.desc')}</p>
+      <p className="mb-4 text-xs text-muted-foreground">{t('config.desc')}</p>
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" variant="outline" onClick={() => void exportConfig()} loading={busy}>
           <Download size={14} /> {t('config.export')}

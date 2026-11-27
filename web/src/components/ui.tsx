@@ -1,4 +1,4 @@
-// 全站 UI 原语唯一出处：自有轻量组件 + 三方无样式原语（Radix Dialog、sonner Toast）。
+// 全站 UI 原语唯一入口（barrel）：shadcn/ui（Radix 变体）的实现放在 components/ui/，这里保留项目特有的组合组件。
 // 颜色一律走 index.css 语义 token（T76），禁止在此出现调色板类名。
 import {
   type KeyboardEvent,
@@ -21,6 +21,7 @@ import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
 import { copyText } from '../lib/clipboard'
 import { errorMessage } from '../lib/errors'
+import { Button, type ButtonProps } from './ui/button'
 
 export type { Tone }
 
@@ -33,33 +34,9 @@ export const toneClass: Record<Tone, string> = {
   brand: 'bg-brand-subtle text-brand-text',
 }
 
-export function Button({ variant = 'default', size = 'md', loading = false, className = '', children, disabled, ...props }: React.ComponentProps<'button'> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'icon' | 'icon-sm'; loading?: boolean }) {
-  const base = 'eg-press relative inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:pointer-events-none'
-  const variants = {
-    default: 'bg-brand text-white hover:bg-brand-strong',
-    outline: 'border border-line-strong bg-surface text-foreground-soft hover:bg-surface-soft',
-    ghost: 'text-muted hover:bg-surface-strong',
-    danger: 'bg-danger-solid text-white hover:opacity-90',
-  }
-  const sizes = { sm: 'h-7 px-2.5 text-xs', md: 'h-9 px-4 text-sm', icon: 'h-7 w-7 px-0', 'icon-sm': 'h-6 w-6 px-0' }
-  return (
-    <button
-      type={props.type ?? 'button'}
-      aria-busy={loading || undefined}
-      disabled={disabled || loading}
-      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
-      {...props}
-    >
-      {/* 保留原标签参与布局，加载时只降到透明：按钮宽度不跳变，读屏仍能读到名称。 */}
-      <span className={`inline-flex items-center justify-center gap-1.5 ${loading ? 'opacity-0' : ''}`}>{children}</span>
-      {loading && (
-        <span className="absolute inset-0 flex items-center justify-center">
-          <Spinner size="sm" tone="current" />
-        </span>
-      )}
-    </button>
-  )
-}
+// shadcn/ui（radix-nova）生成的实现放在 components/ui/，这里导入后再导出：页面仍然只从 components/ui 取原语。
+export { Button, buttonVariants } from './ui/button'
+export type { ButtonProps } from './ui/button'
 
 // 控件带 aria-invalid 时由 Field 置为出错态：红边 + 红色聚焦环，错误文字紧贴其下。
 const invalidRing = 'aria-invalid:border-danger-solid aria-invalid:focus:border-danger-solid aria-invalid:focus:ring-danger-subtle'
@@ -123,7 +100,7 @@ export function Select({ value, onValueChange, options, size = 'md', className =
           <SelectPrimitive.Value placeholder={placeholder} />
         </span>
         <SelectPrimitive.Icon asChild>
-          <ChevronDown size={compact ? 14 : 16} className="shrink-0 text-muted transition-transform duration-200 group-data-[state=open]:rotate-180" aria-hidden="true" />
+          <ChevronDown size={compact ? 14 : 16} className="shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" aria-hidden="true" />
         </SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal>
@@ -191,7 +168,7 @@ export function Tooltip({ content, side = 'top', children, className = '' }: { c
 }
 
 /** 图标按钮：Button + Tooltip + aria-label 只在这里组合；表格行操作 / 分页箭头 / 侧栏共用。 */
-export function IconButton({ label, danger = false, side, variant = 'ghost', loading = false, size = 'icon', className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: 'default' | 'outline' | 'ghost' | 'danger'; loading?: boolean; size?: 'icon' | 'icon-sm' }) {
+export function IconButton({ label, danger = false, side, variant = 'ghost', loading = false, size = 'icon-sm', className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: ButtonProps['variant']; loading?: boolean; size?: 'icon' | 'icon-sm' | 'icon-xs' }) {
   return (
     <Tooltip content={label} side={side}>
       <Button size={size} variant={variant} aria-label={label} loading={loading} className={`${danger ? 'text-danger-text hover:bg-danger-subtle' : ''} ${className}`} {...props}>
@@ -222,7 +199,7 @@ export function CopyButton({ value, label, compact = false, className = '', side
   const text = state === 'ok' ? t('copy.copied') : state === 'fail' ? t('copy.failed') : label ?? t('copy.button')
   if (compact) {
     return (
-      <IconButton label={text} side={side} size="icon-sm" className={className} onClick={() => void copy()} aria-live="polite">
+      <IconButton label={text} side={side} size="icon-xs" className={className} onClick={() => void copy()} aria-live="polite">
         {state === 'ok' ? <Check size={13} className="text-success-text" /> : <Copy size={13} />}
       </IconButton>
     )
@@ -329,18 +306,14 @@ export function PageHeader({ title, description, actions }: { title: ReactNode; 
     <header className="eg-page-header flex flex-wrap items-start justify-between">
       <div className="min-w-0">
         <h1 className="text-lg font-bold tracking-tight text-foreground">{title}</h1>
-        {description && <p className="mt-1 text-xs leading-5 text-muted">{description}</p>}
+        {description && <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="eg-control-row flex w-full flex-wrap items-center sm:w-auto sm:shrink-0">{actions}</div>}
     </header>
   )
 }
 
-export function Spinner({ size = 'md', tone = 'brand', className = '' }: { size?: 'sm' | 'md'; tone?: 'brand' | 'current'; className?: string }) {
-  const dims = size === 'sm' ? 'h-3.5 w-3.5 border-[1.5px]' : 'h-4 w-4 border-2'
-  const colors = tone === 'current' ? 'border-current border-t-transparent' : 'border-line-strong border-t-brand'
-  return <span aria-hidden="true" className={`inline-block animate-spin rounded-full ${dims} ${colors} ${className}`} />
-}
+export { Spinner } from './ui/spinner'
 
 type AlertTone = 'info' | 'success' | 'warning' | 'danger' | 'neutral'
 
@@ -481,7 +454,7 @@ export function Dialog({ open, onClose, title, description, children, footer, wi
             </DialogPrimitive.Title>
             <CloseButton />
           </div>
-          {description && <p id={descId} className={`${dialogBody} border-b border-line-soft pb-3 text-xs leading-5 text-muted`}>{description}</p>}
+          {description && <p id={descId} className={`${dialogBody} border-b border-line-soft pb-3 text-xs leading-5 text-muted-foreground`}>{description}</p>}
           <div className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
           {footer && <div className="eg-dialog-footer shrink-0 border-t border-line-soft bg-surface">{footer}</div>}
         </DialogPrimitive.Content>
@@ -510,7 +483,7 @@ export function Drawer({ open, onClose, title, description, children, wide }: { 
             </DialogPrimitive.Title>
             <CloseButton />
           </div>
-          {description && <p id={descId} className={`${dialogBody} border-b border-line-soft pb-3 text-xs leading-5 text-muted`}>{description}</p>}
+          {description && <p id={descId} className={`${dialogBody} border-b border-line-soft pb-3 text-xs leading-5 text-muted-foreground`}>{description}</p>}
           <div className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
@@ -551,7 +524,7 @@ export function ConfirmDialog({ open, title, message, confirmText, cancelText, d
       footer={(
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel} disabled={loading}>{cancelText ?? t('common.cancel')}</Button>
-          <Button variant={danger ? 'danger' : 'default'} onClick={onConfirm} loading={loading} autoFocus>
+      <Button variant={danger ? 'destructive' : 'default'} onClick={onConfirm} loading={loading} autoFocus>
             {confirmText ?? t('common.confirm')}
           </Button>
         </div>
@@ -619,7 +592,7 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
         <RadioGroupPrimitive.Item
           key={option.value}
           value={option.value}
-          className={`flex items-center justify-center rounded-md font-medium text-muted outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand data-[state=checked]:bg-surface data-[state=checked]:text-foreground data-[state=checked]:shadow-sm disabled:opacity-50 ${
+          className={`flex items-center justify-center rounded-md font-medium text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand data-[state=checked]:bg-surface data-[state=checked]:text-foreground data-[state=checked]:shadow-sm disabled:opacity-50 ${
             size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-3 text-sm'
           }`}
         >
@@ -648,11 +621,11 @@ export function Progress({ value, tone = 'brand', className = '' }: { value: num
 export function Empty({ icon, title, hint, action, filtered = false, className = '' }: { icon?: ReactNode; title: string; hint?: ReactNode; action?: ReactNode; filtered?: boolean; className?: string }) {
   return (
     <div className={`flex flex-col items-center justify-center gap-2 px-4 py-14 text-center ${className}`}>
-      <div className={`mb-1 flex h-12 w-12 items-center justify-center rounded-full ${filtered ? 'bg-surface-strong text-muted' : 'bg-brand-subtle text-brand-text'} [&>svg]:h-5 [&>svg]:w-5`}>
+      <div className={`mb-1 flex h-12 w-12 items-center justify-center rounded-full ${filtered ? 'bg-surface-strong text-muted-foreground' : 'bg-brand-subtle text-brand-text'} [&>svg]:h-5 [&>svg]:w-5`}>
         {icon ?? <Inbox aria-hidden="true" />}
       </div>
       <p className="text-sm font-medium text-foreground-soft">{title}</p>
-      {hint && <p className="max-w-sm text-xs text-muted">{hint}</p>}
+      {hint && <p className="max-w-sm text-xs text-muted-foreground">{hint}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   )
@@ -717,7 +690,7 @@ export function ErrorText({ children }: { children?: ReactNode }) {
 }
 
 export function Th({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
-  return <th scope="col" title={title} className={`eg-cell-x eg-cell-y whitespace-nowrap text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted ${className}`}>{children}</th>
+  return <th scope="col" title={title} className={`eg-cell-x eg-cell-y whitespace-nowrap text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted-foreground ${className}`}>{children}</th>
 }
 
 export function Td({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
@@ -749,7 +722,7 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
     if (target >= 1 && target <= totalPages && target !== page) onPageChange(target)
   }
   return (
-    <nav aria-label={t('pagination.label')} className={`flex flex-wrap items-center justify-between gap-2 border-t border-line-soft text-xs text-muted ${className}`} style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
+    <nav aria-label={t('pagination.label')} className={`flex flex-wrap items-center justify-between gap-2 border-t border-line-soft text-xs text-muted-foreground ${className}`} style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
       <span className="tabular-nums">{tf('pagination.summary', { total: total.toLocaleString('zh-CN'), page, pages: totalPages })}</span>
       <div className="flex flex-wrap items-center gap-2">
         {onPageSizeChange && (
@@ -770,7 +743,7 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
               : (
                 <Button
                   key={p}
-                  size="icon"
+                  size="icon-sm"
                   variant={p === page ? 'default' : 'outline'}
                   aria-label={tf('pagination.pageAria', { p })}
                   aria-current={p === page ? 'page' : undefined}

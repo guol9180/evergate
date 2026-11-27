@@ -141,7 +141,7 @@ export default function Usage() {
 function Metric({ label, value, hint, warning }: { label: string; value: string; hint: string; warning?: boolean }) {
   return (
     <Card>
-      <div className="text-xs text-muted">{label}</div>
+      <div className="text-xs text-muted-foreground">{label}</div>
       <div className={`mt-1 text-2xl font-bold ${warning ? 'text-warning-text' : 'text-foreground'}`}>{value}</div>
       <div className="mt-1 text-xs text-subtle">{hint}</div>
     </Card>
@@ -328,7 +328,7 @@ function PriceCard() {
       <p className="mt-1 text-xs text-subtle">{t('usage.price.unit')}</p>
       {prices.isError && <Alert tone="danger" className="mt-3">{errorMessage(prices.error)}</Alert>}
       <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
-        <div className="mb-2 text-xs font-medium text-muted">{t('usage.price.globalDefault')}</div>
+        <div className="mb-2 text-xs font-medium text-muted-foreground">{t('usage.price.globalDefault')}</div>
         <div className="grid grid-cols-2 gap-2">
           <Field label={t('usage.input')} error={defaultForm.formState.errors.defaultIn?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultIn')} /></Field>
           <Field label={t('usage.output')} error={defaultForm.formState.errors.defaultOut?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultOut')} /></Field>
@@ -340,7 +340,7 @@ function PriceCard() {
       </form>
 
       <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-line-strong p-3">
-        <div className="text-xs font-medium text-muted">{t('usage.price.override')}</div>
+        <div className="text-xs font-medium text-muted-foreground">{t('usage.price.override')}</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Field label={t('table.channel')} error={overrideForm.formState.errors.channelID?.message}>
             <Controller
@@ -369,7 +369,7 @@ function PriceCard() {
           <div key={price.id} className="flex items-center gap-2 rounded-md bg-surface-soft px-2 py-1.5 text-xs">
             <Badge tone="brand">{channelName.get(price.channel_id) || `#${price.channel_id}`}</Badge>
             <span className="min-w-0 flex-1 truncate font-medium text-foreground-soft">{price.model}</span>
-            <span className="text-muted">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}{cacheSummary(price)}</span>
+            <span className="text-muted-foreground">{fmtPriceMicros(price.input_micros_per_million)} / {fmtPriceMicros(price.output_micros_per_million)}{cacheSummary(price)}</span>
             <IconButton danger label={t('usage.price.deleteOverride')} loading={remove.isPending && remove.variables === price.id} onClick={() => remove.mutate(price.id, { onSuccess: () => notify.success(t('toast.price.deleted')) })}>
               <Trash2 size={13} />
             </IconButton>
@@ -377,7 +377,7 @@ function PriceCard() {
         ))}
       </div>
       <div className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
-        <div className="text-xs font-medium text-muted">{t('usage.price.byPreset')}</div>
+        <div className="text-xs font-medium text-muted-foreground">{t('usage.price.byPreset')}</div>
         <p className="mt-1 text-[11px] text-subtle">{t('usage.price.byPresetHint')}</p>
         {presetChannels.length === 0 ? (
           <p className="mt-2 text-xs text-subtle">{t('usage.price.byPresetNone')}</p>

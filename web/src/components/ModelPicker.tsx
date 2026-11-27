@@ -66,7 +66,7 @@ export default function ModelPicker({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <div className="text-sm font-medium text-foreground-soft">{title}</div>
-          <div className="mt-0.5 text-xs text-muted">{t('picker.hint')}</div>
+          <div className="mt-0.5 text-xs text-muted-foreground">{t('picker.hint')}</div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {protocol && <Badge tone="brand">{protocol}</Badge>}
@@ -90,7 +90,7 @@ export default function ModelPicker({
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted"><Spinner /> {t('picker.loading')}</div>
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"><Spinner /> {t('picker.loading')}</div>
       ) : error ? (
         <div className="mt-3"><ErrorText>{error}</ErrorText></div>
       ) : visible.length === 0 ? (
@@ -132,7 +132,7 @@ export default function ModelPicker({
       )}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs text-muted">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{t('picker.writeMode')}</span>
           <SegmentedControl
             size="sm"

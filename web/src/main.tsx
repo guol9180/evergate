@@ -12,6 +12,7 @@ import { setUnauthorizedHandler } from './api/client'
 import Layout from './components/Layout'
 import { PageSkeleton } from './components/ui'
 import { Toaster } from './components/Toaster'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import Login from './pages/Login'
 import Setup from './pages/Setup'
 import ChangePassword from './pages/ChangePassword'
@@ -40,6 +41,7 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+      <ErrorBoundary scope="app">
     <QueryClientProvider client={queryClient}>
       <BrowserRouter basename={currentBasePath() || undefined}>
     <Suspense fallback={<div className="eg-page" role="status" aria-label={t('common.loading')}><PageSkeleton /></div>}>
@@ -62,5 +64,6 @@ createRoot(document.getElementById('root')!).render(
       </BrowserRouter>
       <Toaster />
     </QueryClientProvider>
+      </ErrorBoundary>
   </StrictMode>,
 )

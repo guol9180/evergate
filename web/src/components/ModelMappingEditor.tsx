@@ -92,8 +92,8 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
             <table className="w-full min-w-[420px] text-sm">
               <thead className="bg-surface-soft">
                 <tr>
-                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('mapping.publicHeader')}</th>
-                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted">{t('mapping.upstreamHeader')}</th>
+                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted-foreground">{t('mapping.publicHeader')}</th>
+                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted-foreground">{t('mapping.upstreamHeader')}</th>
                   <th scope="col" className="w-12" />
                 </tr>
               </thead>

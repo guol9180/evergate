@@ -52,7 +52,7 @@ export default function AlertCard() {
           {draft.enabled ? t('alerts.enabled') : t('alerts.disabled')}
         </Badge>
       </div>
-      <p className="mb-4 text-xs text-muted">{t('alerts.desc')}</p>
+      <p className="mb-4 text-xs text-muted-foreground">{t('alerts.desc')}</p>
 
       <div className="space-y-[var(--eg-section-gap)]">
         <SettingRow
@@ -84,7 +84,7 @@ export default function AlertCard() {
           <div className="mb-2 text-sm font-medium text-foreground-soft">{t('alerts.events')}</div>
           <div className="eg-grid eg-grid-auto-wide gap-2">
             {events.map((event) => (
-              <label key={event} className="flex items-center gap-2 text-xs text-muted">
+              <label key={event} className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Checkbox checked={draft.events.includes(event)} onCheckedChange={() => toggleEvent(event)} aria-label={eventLabel(event)} />
                 {eventLabel(event)}
               </label>
@@ -124,7 +124,7 @@ export default function AlertCard() {
                           {resultLabel(record.result)}
                         </Badge>
                       </Td>
-                      <Td className="max-w-72 truncate text-xs text-muted" title={record.error || record.message}>
+                      <Td className="max-w-72 truncate text-xs text-muted-foreground" title={record.error || record.message}>
                         {record.error || record.message || '—'}
                       </Td>
                     </tr>
