@@ -14,8 +14,24 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-// Open 打开（必要时创建）SQLite 数据库，启用 WAL 与外键约束。
+// Options 是打开数据库时的可选项。
+type Options struct {
+	// Synchronous 对应 PRAGMA synchronous：留空 / full = FULL（断电安全，默认），
+	// normal = NORMAL（WAL 下提交更快，断电可能丢最后几次提交，不损坏库）。
+	Synchronous string
+}
+
+// Open 打开（必要时创建）SQLite 数据库，启用 WAL 与外键约束（FULL 同步级别）。
 func Open(path string) (*gorm.DB, error) {
+	return OpenWithOptions(path, Options{})
+}
+
+// OpenWithOptions 按选项打开数据库。
+func OpenWithOptions(path string, opt Options) (*gorm.DB, error) {
+	synchronous, err := normalizeSynchronous(opt.Synchronous)
+	if err != nil {
+		return nil, err
+	}
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return nil, fmt.Errorf("create database directory %s: %w", dir, err)
@@ -23,7 +39,8 @@ func Open(path string) (*gorm.DB, error) {
 	}
 	// glebarez/modernc 驱动通过 file: URI 的 _pragma 参数下发 PRAGMA。
 	dsn := "file:" + strings.ReplaceAll(filepath.ToSlash(path), " ", "%20") +
-		"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+		"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)" +
+		"&_pragma=synchronous(" + synchronous + ")"
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		// GORM 自带日志静默：运行日志统一走 slog（见 AGENTS.md 代码风格）。
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
@@ -34,6 +51,18 @@ func Open(path string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open sqlite %s: %w", path, err)
 	}
 	return db, nil
+}
+
+// normalizeSynchronous 把配置值映射成 PRAGMA 取值；空值保持 FULL。
+func normalizeSynchronous(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "full":
+		return "FULL", nil
+	case "normal":
+		return "NORMAL", nil
+	default:
+		return "", fmt.Errorf("unsupported sqlite synchronous mode %q (allowed: full, normal)", value)
+	}
 }
 
 // Migrate 对全部表模型执行 GORM AutoMigrate（个人项目阶段唯一迁移方式，见 AGENTS.md 禁止事项）。

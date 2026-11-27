@@ -46,6 +46,8 @@ func (s Server) ListenAddr() string {
 type Storage struct {
 	SQLitePath       string `yaml:"sqlite_path"`
 	LogRetentionDays int    `yaml:"log_retention_days"`
+	// SQLiteSynchronous 是 PRAGMA synchronous：空 / full = FULL（默认，断电安全），normal = NORMAL（提交更快）。
+	SQLiteSynchronous string `yaml:"sqlite_synchronous"`
 }
 
 // Security 是主密钥与会话密钥（为空则首次启动自动生成并写回，T2 实现）。
@@ -187,6 +189,11 @@ func (c Config) Validate() error {
 	}
 	if c.Storage.LogRetentionDays < 1 {
 		return fmt.Errorf("storage.log_retention_days 必须 >= 1，当前 %d", c.Storage.LogRetentionDays)
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Storage.SQLiteSynchronous)) {
+	case "", "full", "normal":
+	default:
+		return fmt.Errorf("storage.sqlite_synchronous 只允许 full / normal，当前 %q", c.Storage.SQLiteSynchronous)
 	}
 	d := c.Defaults
 	if d.ConnectTimeout.Duration <= 0 || d.FirstTokenTimeout.Duration <= 0 || d.OverallTimeout.Duration <= 0 {

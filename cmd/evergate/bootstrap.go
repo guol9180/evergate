@@ -139,7 +139,7 @@ func bootstrap(f bootstrapFlags) (*bootstrapped, error) {
 		})
 	}
 
-	db, err := store.Open(sqlitePath)
+	db, err := store.OpenWithOptions(sqlitePath, store.Options{Synchronous: cfg.Storage.SQLiteSynchronous})
 	if err != nil {
 		return abort(fmt.Errorf("open database: %w", err))
 	}

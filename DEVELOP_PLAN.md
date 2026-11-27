@@ -80,7 +80,8 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-27 验证 ①：新增 TestKeyStatsWriterMergesAndFlushes / TestKeyStatsWriterCloseFlushesPending；基准 `BenchmarkKeyStatsPersistence`（本机 Windows）：旧同步 UPDATE 1,104,226 ns/op、7.8KB/op，新入队 208 ns/op、4B/op（约 5300×）；18787 端到端 200 次对话请求 P50 15.43 → 15.36ms、P95 18.44 → 19.34ms（本机 mock 上游与请求日志写库主导，差异在噪声内，故以基准作为主要证据）；实测 key 1 success_count 117 → 330 落库
   - 2026-11-27 执行 ③ 请求体：新增 `internal/relay/body_rewrite.go`，原始请求体首次重写时解析一次成字段表，之后按上游模型（与是否注入 stream_options）缓存重写结果；原生 Gemini 不重写不解析；桥接体仍走原路径。`attemptOne` 去掉「替换 model + 注入 usage」两次整包解析 / 序列化，合并为一次
   - 2026-11-27 验证 ③：新增 TestBodyRewriterCachesPerUpstreamModel（模型替换、缓存命中、原始体不被改写、injectUsage 切换复位 stream_options）与 TestBodyRewriterFallsBackForBridgeBodies；基准 `BenchmarkBodyRewrite`（本机）：1MB 旧路径 3.12ms / 4.8MB → 首次尝试 1.41ms / 2.4MB、缓存命中 53ns / 16B；8MB 旧路径 23.2ms / 37.8MB → 首次尝试 11.5ms / 19.3MB、缓存命中 87ns / 16B；go test -p 1 ./... 全 ok、staticcheck 干净、relay 82.0%、make build 通过
-  - 2026-11-27 备注 剩余：⑦ synchronous=NORMAL 可选开关与实测对比
+  - 2026-11-27 执行 ⑦ SQLite 同步级别：新增 `storage.sqlite_synchronous`（`full` 默认 / `normal` 可选，非法值启动即报错），`store.OpenWithOptions` 通过 DSN `_pragma=synchronous(...)` 下发；`store.Open` 行为不变（FULL）；运维配置文档补取舍说明
+  - 2026-11-27 验证 ⑦：TestOpenAppliesSynchronousMode（读回 PRAGMA = 1 / 2）、TestOpenRejectsUnknownSynchronousMode、TestStorageSQLiteSynchronousValidation；基准 `BenchmarkInsertCommitSyncModes` 单行提交 FULL 401µs vs NORMAL 152µs（约 2.6×）；18787 切 normal 重启后 200 次对话请求 P50 15.36 → 14.70~14.99ms、P95 19.34 → 17.81~18.62ms（两次采样）
 
 #### T113: 令牌限流与事件告警（P2，产品能力）
 

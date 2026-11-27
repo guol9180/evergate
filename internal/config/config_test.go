@@ -103,6 +103,23 @@ func TestServerHostRejectsSchemeAndPort(t *testing.T) {
 	}
 }
 
+func TestStorageSQLiteSynchronousValidation(t *testing.T) {
+	for _, mode := range []string{"", "full", "NORMAL", " normal "} {
+		cfg := Default()
+		cfg.Storage.SQLiteSynchronous = mode
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("mode %q should be valid: %v", mode, err)
+		}
+	}
+	for _, mode := range []string{"off", "extra", "2"} {
+		cfg := Default()
+		cfg.Storage.SQLiteSynchronous = mode
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("mode %q should be rejected", mode)
+		}
+	}
+}
+
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "evergate.yml")
 	if err := writeTestFile(path, "server:\n  port: 18787\n  prot: 8787\n"); err != nil {
