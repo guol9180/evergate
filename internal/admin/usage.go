@@ -18,13 +18,21 @@ func (a *API) getUsageReport(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "usage_not_ready", "用量统计未配置")
 		return
 	}
-	today := utcToday()
-	start, err := parseDateParam(c.Query("start"), today.AddDate(0, 0, -6))
+	// 用户时区（分钟，东八区 480）：「今天」与日期区间都按用户本地日计算，与概览页口径一致
+	tzOffset, err := parseQueryInt64(c, "tz_offset")
+	if err != nil || tzOffset < -14*60 || tzOffset > 14*60 {
+		fail(c, http.StatusBadRequest, "invalid_param", "tz_offset 必须是 -840 到 840 之间的分钟数")
+		return
+	}
+	loc := time.FixedZone("local", int(tzOffset)*60)
+	now := time.Now().In(loc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	start, err := parseDateParam(c.Query("start"), today.AddDate(0, 0, -6), loc)
 	if err != nil {
 		fail(c, http.StatusBadRequest, "invalid_start_date", "start 必须是 YYYY-MM-DD")
 		return
 	}
-	end, err := parseDateParam(c.Query("end"), today)
+	end, err := parseDateParam(c.Query("end"), today, loc)
 	if err != nil {
 		fail(c, http.StatusBadRequest, "invalid_end_date", "end 必须是 YYYY-MM-DD")
 		return
@@ -57,7 +65,7 @@ func (a *API) getUsageReport(c *gin.Context) {
 		return
 	}
 	report, err := usage.BuildReport(a.opt.DB, usage.ReportQuery{
-		Start: start, End: end,
+		StartDate: start.Format("2006-01-02"), EndDate: end.Format("2006-01-02"), TZOffset: int(tzOffset),
 		ChannelID: channelID,
 		Model:     strings.TrimSpace(c.Query("model")),
 		TokenID:   tokenID,
@@ -182,19 +190,13 @@ func (a *API) respondUsagePrices(c *gin.Context) {
 	ok(c, gin.H{"default": global, "overrides": overrides, "catalog": gin.H{"as_of": asOf, "note": note, "entries": entries}})
 }
 
-func parseDateParam(value string, fallback time.Time) (time.Time, error) {
+// parseDateParam 解析用户本地日（YYYY-MM-DD）；缺省用 fallback 所在时区的日期。
+func parseDateParam(value string, fallback time.Time, loc *time.Location) (time.Time, error) {
 	if value == "" {
-		return utcTodayFrom(fallback), nil
+		fallback = fallback.In(loc)
+		return time.Date(fallback.Year(), fallback.Month(), fallback.Day(), 0, 0, 0, 0, loc), nil
 	}
-	day, err := time.ParseInLocation("2006-01-02", value, time.UTC)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return day, nil
-}
-
-func utcToday() time.Time {
-	return utcTodayFrom(time.Now())
+	return time.ParseInLocation("2006-01-02", value, loc)
 }
 
 func utcTodayFrom(t time.Time) time.Time {

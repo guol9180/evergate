@@ -305,6 +305,23 @@ export interface UsageTotals {
   unknown_cost_requests: number
 }
 
+/** 聚合表按 UTC 小时落库：hour 为 UTC 整点起点（RFC3339） */
+export interface UsageHourlyPoint {
+  hour: string
+  requests: number
+  success: number
+  tokens_in: number
+  tokens_out: number
+  cache_read_tokens?: number
+  cost_micros: number
+  cost: number
+  priced_requests: number
+  unpriced_requests: number
+  no_usage_requests: number
+  unknown_cost_requests: number
+}
+
+/** 展示层按用户本地日分桶后的一天 */
 export interface UsageDailyPoint {
   date: string
   requests: number
@@ -341,7 +358,7 @@ export interface UsageReport {
   start: string
   end: string
   totals: UsageTotals
-  daily: UsageDailyPoint[]
+  hourly: UsageHourlyPoint[]
   top_channels: UsageDimensionRow[]
   top_models: UsageDimensionRow[]
   top_tokens: UsageDimensionRow[]

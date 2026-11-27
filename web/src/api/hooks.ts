@@ -417,6 +417,8 @@ export function useUsageReport(filters: UsageFilters) {
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== '') params.set(key, String(value))
   })
+  // 「今天」按用户本地日：服务端用 tz_offset（分钟，东八区 480）换算日期区间
+  params.set('tz_offset', String(-new Date().getTimezoneOffset()))
   return useQuery({
     queryKey: ['usage-report', filters],
     queryFn: () => api<UsageReport>(`/admin/api/usage/report?${params.toString()}`),

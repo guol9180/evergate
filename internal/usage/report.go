@@ -11,11 +11,28 @@ import (
 )
 
 type ReportQuery struct {
-	Start     time.Time
-	End       time.Time
+	// StartDate / EndDate 为用户所选本地日（YYYY-MM-DD），TZOffset 为该本地时区相对 UTC 的分钟数（东八区 480）；
+	// 聚合表按 UTC 小时落库，这里把本地日区间换算成 UTC 瞬时区间，保证「今天」口径与概览页一致。
+	StartDate string
+	EndDate   string
+	TZOffset  int
 	ChannelID int64
 	Model     string
 	TokenID   int64
+}
+
+// DayBounds 把本地日区间换算为 [start, endExclusive) 的 UTC 瞬时。
+func (q ReportQuery) DayBounds() (time.Time, time.Time, error) {
+	loc := time.FixedZone("local", q.TZOffset*60)
+	start, err := time.ParseInLocation("2006-01-02", q.StartDate, loc)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	end, err := time.ParseInLocation("2006-01-02", q.EndDate, loc)
+	if err != nil {
+		return time.Time{}, time.Time{}, err
+	}
+	return start.UTC(), end.AddDate(0, 0, 1).UTC(), nil
 }
 
 type ReportTotals struct {
@@ -33,7 +50,7 @@ type ReportTotals struct {
 }
 
 type DailyPoint struct {
-	Date            string  `json:"date"`
+	Date            string  `json:"hour"` // UTC 小时起点（RFC3339），前端按本地日分桶
 	Requests        int64   `json:"requests"`
 	Success         int64   `json:"success"`
 	TokensIn        int64   `json:"tokens_in"`
@@ -68,7 +85,7 @@ type Report struct {
 	Start       string         `json:"start"`
 	End         string         `json:"end"`
 	Totals      ReportTotals   `json:"totals"`
-	Daily       []DailyPoint   `json:"daily"`
+	Hourly      []DailyPoint   `json:"hourly"`
 	TopChannels []DimensionRow `json:"top_channels"`
 	TopModels   []DimensionRow `json:"top_models"`
 	TopTokens   []DimensionRow `json:"top_tokens"`
@@ -92,10 +109,11 @@ type reportAggregate struct {
 }
 
 func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
-	start := utcDay(q.Start)
-	end := utcDay(q.End)
-	endExclusive := end.AddDate(0, 0, 1)
-	report := Report{Start: start.Format("2006-01-02"), End: end.Format("2006-01-02")}
+	start, endExclusive, err := q.DayBounds()
+	if err != nil {
+		return Report{}, err
+	}
+	report := Report{Start: q.StartDate, End: q.EndDate}
 	filter := func(db *gorm.DB) *gorm.DB {
 		db = db.Where("date >= ? AND date < ?", start, endExclusive)
 		if q.ChannelID > 0 {
@@ -146,10 +164,11 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 		NoUsageRequests: counts.NoUsage, UnknownCostRequests: counts.Unknown,
 	}
 
+	// 按 UTC 小时分组返回，由前端按本地日分桶（每日一条），避免服务端猜测用户时区
 	var daily []reportAggregate
 	if err := filter(db.Model(&store.UsageDaily{})).
 		Select(`
-			strftime('%Y-%m-%d', date) AS day,
+			strftime('%Y-%m-%dT%H:00:00Z', date) AS day,
 			COALESCE(SUM(requests), 0) AS requests,
 			COALESCE(SUM(success), 0) AS success,
 			COALESCE(SUM(tokens_in), 0) AS tokens_in,
@@ -163,9 +182,9 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 		`).Group("day").Order("day asc").Scan(&daily).Error; err != nil {
 		return report, err
 	}
-	report.Daily = make([]DailyPoint, 0, len(daily))
+	report.Hourly = make([]DailyPoint, 0, len(daily))
 	for _, row := range daily {
-		report.Daily = append(report.Daily, DailyPoint{
+		report.Hourly = append(report.Hourly, DailyPoint{
 			Date: row.Date, Requests: row.Requests, Success: row.Success,
 			TokensIn: row.TokensIn, TokensOut: row.TokensOut,
 			CacheReadTokens: row.CacheReadTokens,

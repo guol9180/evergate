@@ -99,25 +99,39 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 	if err := db.Create(&logs).Error; err != nil {
 		t.Fatal(err)
 	}
+	// 小时聚合：日志落在 00 / 01 / 02 / 03 四个小时，渠道 a 占三个；全量重建两次验证幂等
 	for i := 0; i < 2; i++ {
-		if err := RecomputeDay(context.Background(), db, day); err != nil {
+		if err := RecomputeAll(context.Background(), db, slog.Default()); err != nil {
 			t.Fatalf("recompute %d: %v", i, err)
 		}
 	}
 	var daily []store.UsageDaily
-	if err := db.Order("channel_id asc").Find(&daily).Error; err != nil {
+	if err := db.Order("channel_id asc, date asc").Find(&daily).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(daily) != 2 {
-		t.Fatalf("daily rows = %d, want 2", len(daily))
+	if len(daily) != 4 {
+		t.Fatalf("hourly rows = %d, want 4 (channel-a × 3 hours + channel-b × 1)", len(daily))
 	}
-	if daily[0].Requests != 4 || daily[0].Success != 4 || daily[0].TokensIn != 6 || daily[0].CostMicros != 7 ||
-		daily[0].PricedRequests != 1 || daily[0].UnpricedRequests != 1 ||
-		daily[0].NoUsageRequests != 1 || daily[0].UnknownCostRequests != 1 {
-		t.Fatalf("channel-a aggregate = %#v", daily[0])
+	var sum store.UsageDaily
+	for _, row := range daily {
+		if row.ChannelID == ch1.ID {
+			sum.Requests += row.Requests
+			sum.Success += row.Success
+			sum.TokensIn += row.TokensIn
+			sum.CostMicros += row.CostMicros
+			sum.PricedRequests += row.PricedRequests
+			sum.UnpricedRequests += row.UnpricedRequests
+			sum.NoUsageRequests += row.NoUsageRequests
+			sum.UnknownCostRequests += row.UnknownCostRequests
+		}
+	}
+	if sum.Requests != 4 || sum.Success != 4 || sum.TokensIn != 6 || sum.CostMicros != 7 ||
+		sum.PricedRequests != 1 || sum.UnpricedRequests != 1 ||
+		sum.NoUsageRequests != 1 || sum.UnknownCostRequests != 1 {
+		t.Fatalf("channel-a aggregate = %#v", sum)
 	}
 
-	report, err := BuildReport(db, ReportQuery{Start: day, End: day})
+	report, err := BuildReport(db, ReportQuery{StartDate: "2026-11-10", EndDate: "2026-11-10"})
 	if err != nil {
 		t.Fatalf("build report: %v", err)
 	}
@@ -127,8 +141,16 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 		report.Totals.NoUsageRequests != 1 || report.Totals.UnknownCostRequests != 1 {
 		t.Fatalf("report totals = %#v", report.Totals)
 	}
-	if len(report.Daily) != 1 || report.Daily[0].Date != "2026-11-10" {
-		t.Fatalf("daily report = %#v", report.Daily)
+	// 按小时返回，起点为 UTC 整点；总量与小时数都与日志一致
+	if len(report.Hourly) != 4 || report.Hourly[0].Date != "2026-11-10T00:00:00Z" || report.Hourly[3].Date != "2026-11-10T03:00:00Z" {
+		t.Fatalf("hourly report = %#v", report.Hourly)
+	}
+	// 「今天」按用户本地日：东八区的 11-10 覆盖 UTC 11-09 16:00 → 11-10 16:00，包含全部； UTC-8 的 11-10 则一条都没有
+	if east, err := BuildReport(db, ReportQuery{StartDate: "2026-11-10", EndDate: "2026-11-10", TZOffset: 480}); err != nil || east.Totals.Requests != 5 {
+		t.Fatalf("UTC+8 local day should include every request: %v %#v", err, east.Totals)
+	}
+	if west, err := BuildReport(db, ReportQuery{StartDate: "2026-11-10", EndDate: "2026-11-10", TZOffset: -480}); err != nil || west.Totals.Requests != 0 {
+		t.Fatalf("UTC-8 local day should exclude them: %v %#v", err, west.Totals)
 	}
 	if len(report.TopChannels) != 2 || report.TopChannels[0].Name != "channel-a" {
 		t.Fatalf("top channels = %#v", report.TopChannels)
@@ -151,7 +173,7 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	named, err := BuildReport(db, ReportQuery{Start: day, End: day})
+	named, err := BuildReport(db, ReportQuery{StartDate: "2026-11-10", EndDate: "2026-11-10"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +196,7 @@ func TestRecomputeDayIdempotentAndReportReconciles(t *testing.T) {
 		}
 	}
 
-	filtered, err := BuildReport(db, ReportQuery{Start: day, End: day, ChannelID: ch1.ID, Model: "m", TokenID: tok1.ID})
+	filtered, err := BuildReport(db, ReportQuery{StartDate: "2026-11-10", EndDate: "2026-11-10", ChannelID: ch1.ID, Model: "m", TokenID: tok1.ID})
 	if err != nil {
 		t.Fatalf("filtered report: %v", err)
 	}
@@ -387,27 +409,30 @@ func TestBuildReportFiltersModelsAndMultiDay(t *testing.T) {
 	if err := db.Create(&logs).Error; err != nil {
 		t.Fatal(err)
 	}
-	for _, day := range []time.Time{day1, day2} {
-		if err := RecomputeDay(context.Background(), db, day); err != nil {
-			t.Fatalf("recompute %s: %v", day.Format("2006-01-02"), err)
-		}
+	if err := RecomputeAll(context.Background(), db, slog.Default()); err != nil {
+		t.Fatal(err)
 	}
 
-	full, err := BuildReport(db, ReportQuery{Start: day1, End: day2})
+	full, err := BuildReport(db, ReportQuery{StartDate: "2026-11-09", EndDate: "2026-11-10"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(full.Daily) != 2 || full.Daily[0].Date != "2026-11-09" || full.Daily[1].Date != "2026-11-10" {
-		t.Fatalf("daily buckets = %#v", full.Daily)
+	// 三个小时点；按日期前缀求和仍是每天 300
+	if len(full.Hourly) != 3 {
+		t.Fatalf("hourly buckets = %#v", full.Hourly)
 	}
-	if full.Daily[0].CostMicros != 300 || full.Daily[1].CostMicros != 300 {
-		t.Fatalf("daily cost = %#v", full.Daily)
+	perDay := map[string]int64{}
+	for _, point := range full.Hourly {
+		perDay[point.Date[:10]] += point.CostMicros
+	}
+	if perDay["2026-11-09"] != 300 || perDay["2026-11-10"] != 300 {
+		t.Fatalf("daily cost = %#v", perDay)
 	}
 	if len(full.TopModels) != 2 || full.TopModels[0].Name != "m1" || full.TopModels[0].CostMicros != 400 {
 		t.Fatalf("top models = %#v", full.TopModels)
 	}
 
-	byChannel, err := BuildReport(db, ReportQuery{Start: day1, End: day2, ChannelID: ch2.ID})
+	byChannel, err := BuildReport(db, ReportQuery{StartDate: "2026-11-09", EndDate: "2026-11-10", ChannelID: ch2.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +443,7 @@ func TestBuildReportFiltersModelsAndMultiDay(t *testing.T) {
 		t.Fatalf("channel filter rows = %#v", byChannel.TopChannels)
 	}
 
-	byModel, err := BuildReport(db, ReportQuery{Start: day1, End: day2, Model: "m1"})
+	byModel, err := BuildReport(db, ReportQuery{StartDate: "2026-11-09", EndDate: "2026-11-10", Model: "m1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +451,7 @@ func TestBuildReportFiltersModelsAndMultiDay(t *testing.T) {
 		t.Fatalf("model filter = %#v %#v", byModel.Totals, byModel.TopModels)
 	}
 
-	byToken, err := BuildReport(db, ReportQuery{Start: day1, End: day2, TokenID: tok2.ID})
+	byToken, err := BuildReport(db, ReportQuery{StartDate: "2026-11-09", EndDate: "2026-11-10", TokenID: tok2.ID})
 	if err != nil {
 		t.Fatal(err)
 	}

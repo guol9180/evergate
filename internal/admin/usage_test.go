@@ -52,8 +52,10 @@ func TestUsagePricingAndReportAPI(t *testing.T) {
 	if err := env.db.Create(&logs).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := usage.RecomputeDay(context.Background(), env.db, today); err != nil {
-		t.Fatalf("recompute: %v", err)
+	for _, hour := range []time.Time{today.Add(time.Hour), today.Add(2 * time.Hour), today.Add(3 * time.Hour), today.Add(4 * time.Hour)} {
+		if err := usage.RecomputeHour(context.Background(), env.db, hour); err != nil {
+			t.Fatalf("recompute %s: %v", hour.Format(time.RFC3339), err)
+		}
 	}
 
 	code, body, _ = env.req(t, "GET", "/admin/api/usage/report", cookie, "")

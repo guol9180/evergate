@@ -11,8 +11,9 @@ import (
 	"evergate/internal/store"
 )
 
-// StartAggregator 启动 UTC 日聚合任务。启动时重建全部现存请求日志日期，
-// 运行中每分钟重建今天/昨天；stop 会等待 goroutine 并再重建一次今天。
+// StartAggregator 启动 UTC 小时聚合任务。启动时清空派生表并按小时重建全部现存请求日志
+// （也是旧日级数据迁移：总量来自 request_logs，不会变），运行中每分钟重建当前/上一小时；
+// stop 会等待 goroutine 并再重建一次当前小时。展示层按本地日分桶，见 BuildReport。
 func StartAggregator(db *gorm.DB, logger *slog.Logger, interval time.Duration) (stop func()) {
 	if db == nil {
 		return func() {}
@@ -40,7 +41,7 @@ func StartAggregator(db *gorm.DB, logger *slog.Logger, interval time.Duration) (
 				recomputeRecent(ctx, db, logger)
 			case <-stopCh:
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-				if err := RecomputeDay(shutdownCtx, db, utcDay(time.Now())); err != nil {
+				if err := RecomputeHour(shutdownCtx, db, time.Now()); err != nil {
 					logger.Error("usage aggregate shutdown rebuild failed", slog.Any("error", err))
 				}
 				cancel()
@@ -57,30 +58,34 @@ func StartAggregator(db *gorm.DB, logger *slog.Logger, interval time.Duration) (
 }
 
 func recomputeRecent(ctx context.Context, db *gorm.DB, logger *slog.Logger) {
-	today := utcDay(time.Now())
-	for _, day := range []time.Time{today.AddDate(0, 0, -1), today} {
-		if err := RecomputeDay(ctx, db, day); err != nil {
-			logger.Error("usage aggregate day rebuild failed", slog.Time("date", day), slog.Any("error", err))
+	now := time.Now()
+	for _, hour := range []time.Time{now.Add(-time.Hour), now} {
+		if err := RecomputeHour(ctx, db, hour); err != nil {
+			logger.Error("usage aggregate hour rebuild failed", slog.Time("hour", utcHour(hour)), slog.Any("error", err))
 		}
 	}
 }
 
 func RecomputeAll(ctx context.Context, db *gorm.DB, logger *slog.Logger) error {
 	var rows []struct {
-		Day string `gorm:"column:day"`
+		Hour string `gorm:"column:hour"`
 	}
 	if err := db.WithContext(ctx).
-		Raw("SELECT DISTINCT date(created_at) AS day FROM request_logs").
+		Raw("SELECT DISTINCT strftime('%Y-%m-%dT%H', created_at) AS hour FROM request_logs").
 		Scan(&rows).Error; err != nil {
 		return err
 	}
+	// 派生表整体重建：旧版本按 UTC 日落库的行在这里被清掉，避免与新小时行叠加重复计数
+	if err := db.WithContext(ctx).Where("1 = 1").Delete(&store.UsageDaily{}).Error; err != nil {
+		return err
+	}
 	for _, row := range rows {
-		day, err := time.ParseInLocation("2006-01-02", row.Day, time.UTC)
+		hour, err := time.ParseInLocation("2006-01-02T15", row.Hour, time.UTC)
 		if err != nil {
-			logger.Warn("skip invalid usage aggregate date", slog.String("date", row.Day))
+			logger.Warn("skip invalid usage aggregate hour", slog.String("hour", row.Hour))
 			continue
 		}
-		if err := RecomputeDay(ctx, db, day); err != nil {
+		if err := RecomputeHour(ctx, db, hour); err != nil {
 			return err
 		}
 	}
@@ -104,10 +109,10 @@ type aggregateRow struct {
 	UnknownCostRequests int64  `gorm:"column:unknown_cost_requests"`
 }
 
-// RecomputeDay 从 request_logs 全量重建指定 UTC 日，事务内先删后插，保证幂等。
-func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
-	day = utcDay(day)
-	next := day.AddDate(0, 0, 1)
+// RecomputeHour 从 request_logs 全量重建指定 UTC 小时（按渠道 / 模型 / 令牌），事务内先删后插，保证幂等。
+func RecomputeHour(ctx context.Context, db *gorm.DB, hour time.Time) error {
+	hour = utcHour(hour)
+	next := hour.Add(time.Hour)
 	var rows []aggregateRow
 	if err := db.WithContext(ctx).
 		Model(&store.RequestLog{}).
@@ -125,13 +130,13 @@ func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
 			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 AND cost_status = 'no_usage' THEN 1 ELSE 0 END), 0) AS no_usage_requests,
 			COALESCE(SUM(CASE WHEN status_code >= 200 AND status_code < 400 AND cost_status NOT IN ('priced', 'unpriced', 'no_usage') THEN 1 ELSE 0 END), 0) AS unknown_cost_requests
 		`).
-		Where("created_at >= ? AND created_at < ?", day, next).
+		Where("created_at >= ? AND created_at < ?", hour, next).
 		Group("channel_id, model, token_id").
 		Scan(&rows).Error; err != nil {
 		return err
 	}
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("date = ?", day).Delete(&store.UsageDaily{}).Error; err != nil {
+		if err := tx.Where("date = ?", hour).Delete(&store.UsageDaily{}).Error; err != nil {
 			return err
 		}
 		if len(rows) == 0 {
@@ -140,7 +145,7 @@ func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
 		items := make([]store.UsageDaily, 0, len(rows))
 		for _, row := range rows {
 			items = append(items, store.UsageDaily{
-				Date: day, ChannelID: row.ChannelID, Model: row.Model, TokenID: row.TokenID,
+				Date: hour, ChannelID: row.ChannelID, Model: row.Model, TokenID: row.TokenID,
 				Requests: row.Requests, Success: row.Success,
 				TokensIn: row.TokensIn, TokensOut: row.TokensOut,
 				CacheReadTokens: row.CacheReadTokens, CacheWriteTokens: row.CacheWriteTokens,
@@ -153,7 +158,6 @@ func RecomputeDay(ctx context.Context, db *gorm.DB, day time.Time) error {
 	})
 }
 
-func utcDay(t time.Time) time.Time {
-	t = t.UTC()
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+func utcHour(t time.Time) time.Time {
+	return t.UTC().Truncate(time.Hour)
 }

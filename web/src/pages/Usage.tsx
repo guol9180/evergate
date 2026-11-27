@@ -12,6 +12,7 @@ import {
   useUsageReport,
 } from '../api/hooks'
 import type { ModelPrice, UsageDailyPoint, UsageDimensionRow } from '../api/types'
+import { bucketByLocalDay } from '../lib/usage'
 import { Alert, Badge, Button, Card, Empty, Field, IconButton, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import { TrendChart } from '../components/TrendChart'
@@ -39,7 +40,8 @@ export default function Usage() {
   const chs = channels.data?.items ?? []
   const tks = tokens.data?.items ?? []
   const data = report.data
-  const daily = useMemo(() => fillDailyGaps(data?.daily ?? [], data?.start, data?.end), [data])
+  // 小时点按本地日分桶后再补齐空天：与概览页「今天」同一口径
+  const daily = useMemo(() => fillDailyGaps(bucketByLocalDay(data?.hourly ?? []), data?.start, data?.end), [data])
   const successRate = data?.totals.requests ? (data.totals.success / data.totals.requests) * 100 : null
   const costIssues = data ? [
     data.totals.unpriced_requests > 0 ? tf('usage.unpricedCount', { n: fmtInt(data.totals.unpriced_requests) }) : '',
