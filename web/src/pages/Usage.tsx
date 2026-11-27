@@ -1,4 +1,7 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { Controller, useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { BarChart3, CircleDollarSign, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   useApplyPresetPrice,
@@ -223,16 +226,31 @@ function PriceCard() {
   const upsert = useUpsertPriceOverride()
   const remove = useDeletePriceOverride()
   const applyPreset = useApplyPresetPrice()
-  const [defaultIn, setDefaultIn] = useState('0')
-  const [defaultOut, setDefaultOut] = useState('0')
-  const [defaultCacheRead, setDefaultCacheRead] = useState('')
-  const [defaultCacheWrite, setDefaultCacheWrite] = useState('')
-  const [channelID, setChannelID] = useState('')
-  const [model, setModel] = useState('')
-  const [overrideIn, setOverrideIn] = useState('0')
-  const [overrideOut, setOverrideOut] = useState('0')
-  const [overrideCacheRead, setOverrideCacheRead] = useState('')
-  const [overrideCacheWrite, setOverrideCacheWrite] = useState('')
+  // 价格按美元 / 百万 token 的字符串编辑，提交时转微美元；非负校验文案走 i18n
+  const price = (optional: boolean) => z.string().trim().refine((value) => (optional && value === '') || (value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0), t('usage.price.invalid'))
+  const defaultSchema = z.object({
+    defaultIn: price(false), defaultOut: price(false), defaultCacheRead: price(true), defaultCacheWrite: price(true),
+  })
+  const overrideSchema = z.object({
+    channelID: z.string().min(1, t('usage.price.channelRequired')),
+    model: z.string().trim().min(1, t('usage.price.modelRequired')),
+    overrideIn: price(false), overrideOut: price(false), overrideCacheRead: price(true), overrideCacheWrite: price(true),
+  })
+  const defaultForm = useForm<z.infer<typeof defaultSchema>>({
+    resolver: zodResolver(defaultSchema),
+    values: prices.data ? {
+      defaultIn: toPriceInput(prices.data.default?.input_micros_per_million),
+      defaultOut: toPriceInput(prices.data.default?.output_micros_per_million),
+      defaultCacheRead: toOptionalPriceInput(prices.data.default?.cache_read_micros_per_million),
+      defaultCacheWrite: toOptionalPriceInput(prices.data.default?.cache_write_micros_per_million),
+    } : undefined,
+  })
+  const overrideForm = useForm<z.infer<typeof overrideSchema>>({
+    resolver: zodResolver(overrideSchema),
+    defaultValues: { channelID: '', model: '', overrideIn: '0', overrideOut: '0', overrideCacheRead: '', overrideCacheWrite: '' },
+  })
+  const channelID = overrideForm.watch('channelID')
+  const model = overrideForm.watch('model')
   const [presetChannelID, setPresetChannelID] = useState('')
   const presetChannels = useMemo(
     () => (channels.data?.items ?? []).filter((ch) => ch.preset_id),
@@ -242,47 +260,39 @@ function PriceCard() {
   const presetDefault = presetChannels.find((ch) => (ch.models ?? []).length > 0) ?? presetChannels[0]
   const presetDetail = useChannel(presetChannelID ? Number(presetChannelID) : null)
 
+  // 覆盖表单默认落到第一个渠道（有预设渠道时优先在下方 preset 浏览里处理）
   useEffect(() => {
-    if (prices.data) {
-      setDefaultIn(toPriceInput(prices.data.default?.input_micros_per_million))
-      setDefaultOut(toPriceInput(prices.data.default?.output_micros_per_million))
-      setDefaultCacheRead(toOptionalPriceInput(prices.data.default?.cache_read_micros_per_million))
-      setDefaultCacheWrite(toOptionalPriceInput(prices.data.default?.cache_write_micros_per_million))
-    }
-  }, [prices.data])
-  useEffect(() => {
-    if (!channelID && channels.data?.items[0]) setChannelID(String(channels.data.items[0].id))
-  }, [channelID, channels.data])
+    if (!channelID && channels.data?.items[0]) overrideForm.setValue('channelID', String(channels.data.items[0].id))
+  }, [channelID, channels.data, overrideForm])
   useEffect(() => {
     if (!presetChannelID && presetDefault) setPresetChannelID(String(presetDefault.id))
   }, [presetChannelID, presetDefault])
 
   const channelName = useMemo(() => new Map((channels.data?.items ?? []).map((ch) => [ch.id, ch.name])), [channels.data])
 
-  const submitDefault = (e: FormEvent) => {
-    e.preventDefault()
-    setDefault.mutate(
+  const submitDefault = defaultForm.handleSubmit(
+    (values) => setDefault.mutate(
       {
-        input_micros_per_million: toMicros(defaultIn), output_micros_per_million: toMicros(defaultOut),
-        cache_read_micros_per_million: toMicros(defaultCacheRead), cache_write_micros_per_million: toMicros(defaultCacheWrite),
+        input_micros_per_million: toMicros(values.defaultIn), output_micros_per_million: toMicros(values.defaultOut),
+        cache_read_micros_per_million: toMicros(values.defaultCacheRead), cache_write_micros_per_million: toMicros(values.defaultCacheWrite),
       },
       { onSuccess: () => notify.success(t('toast.price.saved')) },
-    )
-  }
-  const submitOverride = (e: FormEvent) => {
-    e.preventDefault()
-    if (!channelID || !model.trim()) return
-    upsert.mutate({
-      channel_id: Number(channelID), model: model.trim(),
-      input_micros_per_million: toMicros(overrideIn), output_micros_per_million: toMicros(overrideOut),
-      cache_read_micros_per_million: toMicros(overrideCacheRead), cache_write_micros_per_million: toMicros(overrideCacheWrite),
+    ),
+    (errors) => defaultForm.setFocus(Object.keys(errors)[0] as 'defaultIn'),
+  )
+  const submitOverride = overrideForm.handleSubmit(
+    (values) => upsert.mutate({
+      channel_id: Number(values.channelID), model: values.model.trim(),
+      input_micros_per_million: toMicros(values.overrideIn), output_micros_per_million: toMicros(values.overrideOut),
+      cache_read_micros_per_million: toMicros(values.overrideCacheRead), cache_write_micros_per_million: toMicros(values.overrideCacheWrite),
     }, {
       onSuccess: () => {
         notify.success(t('toast.price.saved'))
-        setModel('')
+        overrideForm.resetField('model')
       }
-    })
-  }
+    }),
+    (errors) => overrideForm.setFocus(Object.keys(errors)[0] as 'model'),
+  )
 
   if (prices.isPending) return <Card className="flex justify-center p-8"><Spinner /></Card>
   return (
@@ -293,10 +303,10 @@ function PriceCard() {
       <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
         <div className="mb-2 text-xs font-medium text-muted">{t('usage.price.globalDefault')}</div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label={t('usage.input')}><Input type="number" min={0} step="0.000001" value={defaultIn} onChange={(e) => setDefaultIn(e.target.value)} /></Field>
-          <Field label={t('usage.output')}><Input type="number" min={0} step="0.000001" value={defaultOut} onChange={(e) => setDefaultOut(e.target.value)} /></Field>
-          <Field label={t('usage.price.cacheRead')}><Input type="number" min={0} step="0.000001" value={defaultCacheRead} onChange={(e) => setDefaultCacheRead(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
-          <Field label={t('usage.price.cacheWrite')}><Input type="number" min={0} step="0.000001" value={defaultCacheWrite} onChange={(e) => setDefaultCacheWrite(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <Field label={t('usage.input')} error={defaultForm.formState.errors.defaultIn?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultIn')} /></Field>
+          <Field label={t('usage.output')} error={defaultForm.formState.errors.defaultOut?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultOut')} /></Field>
+          <Field label={t('usage.price.cacheRead')} error={defaultForm.formState.errors.defaultCacheRead?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultCacheRead')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <Field label={t('usage.price.cacheWrite')} error={defaultForm.formState.errors.defaultCacheWrite?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultCacheWrite')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
         </div>
         <p className="mb-2 text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
         <Button type="submit" size="sm" className="mt-2" loading={setDefault.isPending}>{t('usage.price.saveDefault')}</Button>
@@ -305,18 +315,24 @@ function PriceCard() {
       <form onSubmit={submitOverride} className="mt-4 space-y-2 rounded-lg border border-dashed border-line-strong p-3">
         <div className="text-xs font-medium text-muted">{t('usage.price.override')}</div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <Field label={t('table.channel')}>
-            <Select
-              value={channelID}
-              onValueChange={setChannelID}
-              options={(channels.data?.items ?? []).map((ch) => ({ value: String(ch.id), label: ch.name }))}
+          <Field label={t('table.channel')} error={overrideForm.formState.errors.channelID?.message}>
+            <Controller
+              control={overrideForm.control}
+              name="channelID"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  options={(channels.data?.items ?? []).map((ch) => ({ value: String(ch.id), label: ch.name }))}
+                />
+              )}
             />
           </Field>
-          <Field label={t('usage.price.upstreamModel')}><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder={t('usage.price.upstreamPlaceholder')} /></Field>
-          <Field label={t('usage.price.inputPrice')}><Input type="number" min={0} step="0.000001" value={overrideIn} onChange={(e) => setOverrideIn(e.target.value)} placeholder={t('usage.price.useDefault')} /></Field>
-          <Field label={t('usage.price.outputPrice')}><Input type="number" min={0} step="0.000001" value={overrideOut} onChange={(e) => setOverrideOut(e.target.value)} placeholder={t('usage.price.useDefault')} /></Field>
-          <Field label={t('usage.price.cacheRead')}><Input type="number" min={0} step="0.000001" value={overrideCacheRead} onChange={(e) => setOverrideCacheRead(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
-          <Field label={t('usage.price.cacheWrite')}><Input type="number" min={0} step="0.000001" value={overrideCacheWrite} onChange={(e) => setOverrideCacheWrite(e.target.value)} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <Field label={t('usage.price.upstreamModel')} error={overrideForm.formState.errors.model?.message}><Input {...overrideForm.register('model')} placeholder={t('usage.price.upstreamPlaceholder')} /></Field>
+          <Field label={t('usage.price.inputPrice')} error={overrideForm.formState.errors.overrideIn?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideIn')} placeholder={t('usage.price.useDefault')} /></Field>
+          <Field label={t('usage.price.outputPrice')} error={overrideForm.formState.errors.overrideOut?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideOut')} placeholder={t('usage.price.useDefault')} /></Field>
+          <Field label={t('usage.price.cacheRead')} error={overrideForm.formState.errors.overrideCacheRead?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideCacheRead')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <Field label={t('usage.price.cacheWrite')} error={overrideForm.formState.errors.overrideCacheWrite?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideCacheWrite')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
         </div>
         <p className="text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
         <Button type="submit" size="sm" variant="outline" loading={upsert.isPending} disabled={!model.trim()}><Plus size={13} /> {t('usage.price.saveOverride')}</Button>
