@@ -71,6 +71,8 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（可维护性 / UI 细节）
   - 2026-11-26 决策 用户同意新增 react-hook-form、zod、@hookform/resolvers、@radix-ui/react-switch
   - 2026-11-27 执行 开工；依赖已向用户告知后安装，按 ③ Switch / Tooltip / aria → ① 表单迁移（登录 → 设置 → 令牌 → 渠道 → 价格 → 降级链）→ ② 脏数据保护 → ④⑤ 的顺序分步提交
+  - 2026-11-27 执行 ③④ 完成：Switch 改 Radix Switch、侧栏收起态导航项 Tooltip、Dialog / Drawer 可选 description；分页器 lucide 图标、图表激活点语义 token 类；① 登录与令牌表单迁移 RHF + zod（校验文案 i18n、入参强类型、失败聚焦首错字段）；② 新增 useUnsavedGuard 并接入令牌弹窗（Esc / 遮罩 / 取消按钮有脏数据先确认）。验证：lint 0 警告、unit 16 + ui 73 通过（Login 按异步 resolver 调整，新增 guard 两例与令牌脏数据 / 校验两例）、audit:layout 907/1440 浅中 + 深英通过、make build 通过
+  - 2026-11-27 备注 剩余：渠道 / 改密 / 首启 / 设置 / 价格 / 降级链表单迁移，渠道弹窗接入脏数据保护，⑤ 两项定案，18787 逐表单复验后归档
 
 #### T111: 可维护性重构（P2，代码审查）
 

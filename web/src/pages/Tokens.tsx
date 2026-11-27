@@ -1,4 +1,7 @@
-import { type FormEvent, useId, useState } from 'react'
+import { useId, useState } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken } from '../api/hooks'
 import type { Token } from '../api/types'
@@ -12,6 +15,7 @@ import { currentBasePath } from '../lib/runtime'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import { errorMessage } from '../lib/errors'
+import { useUnsavedGuard } from '../lib/useUnsavedGuard'
 
 /** 创建成功：明文 key 仅此一次；同时给出可直接粘贴到客户端的环境变量片段。 */
 function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () => void }) {
@@ -168,30 +172,47 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   const catalog = useModelCatalog()
   const formID = 'token-form'
   const modelsId = useId()
-  const [name, setName] = useState(token?.name ?? '')
-  const [quota, setQuota] = useState(String(token?.quota ?? 0))
-  const [expiredAt, setExpiredAt] = useState(toLocalInput(token?.expired_at))
-  const [modelsText, setModelsText] = useState((token?.allowed_models || []).join('\n'))
-  const [ipsText, setIpsText] = useState((token?.allowed_ips || []).join('\n'))
-  const [disableFallback, setDisableFallback] = useState(token?.disable_fallback ?? false)
+  // schema 即校验规则与入参类型；文本域字段保留原始字符串，提交时再拆行
+  const schema = z.object({
+    name: z.string().trim().min(1, t('tokens.form.nameRequired')),
+    quota: z.string().refine((value) => value === '' || (!Number.isNaN(Number(value)) && Number(value) >= 0), t('tokens.form.quotaInvalid')),
+    expired_at: z.string(),
+    modelsText: z.string(),
+    ipsText: z.string(),
+    disable_fallback: z.boolean(),
+  })
+  const form = useForm<z.infer<typeof schema>>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: token?.name ?? '',
+      quota: String(token?.quota ?? 0),
+      expired_at: toLocalInput(token?.expired_at),
+      modelsText: (token?.allowed_models || []).join('\n'),
+      ipsText: (token?.allowed_ips || []).join('\n'),
+      disable_fallback: token?.disable_fallback ?? false,
+    },
+  })
+  const { register, handleSubmit, formState, setValue, watch } = form
   const [showModelPicker, setShowModelPicker] = useState(false)
+  // 有未保存更改时关闭需确认（Esc / 遮罩 / 取消按钮都走这里）
+  const guard = useUnsavedGuard(formState.isDirty)
+  const close = guard.guard(onClose)
 
   if (create.data) {
     return <TokenCreatedDialog apiKey={create.data.key} onClose={onClose} />
   }
 
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault()
+  const onSubmit = handleSubmit((values) => {
     const payload = {
-      name,
-      quota: Number(quota) || 0,
-      expired_at: expiredAt ? new Date(expiredAt).toISOString() : null,
-      allowed_models: splitLines(modelsText),
-      allowed_ips: splitLines(ipsText),
-      disable_fallback: disableFallback,
+      name: values.name.trim(),
+      quota: Number(values.quota) || 0,
+      expired_at: values.expired_at ? new Date(values.expired_at).toISOString() : null,
+      allowed_models: splitLines(values.modelsText),
+      allowed_ips: splitLines(values.ipsText),
+      disable_fallback: values.disable_fallback,
     }
     if (token) {
-      update.mutate({ id: token.id, ...payload, clear_expired_at: !expiredAt }, {
+      update.mutate({ id: token.id, ...payload, clear_expired_at: !values.expired_at }, {
         onSuccess: () => {
           notify.success(t('toast.token.updated'))
           onClose()
@@ -200,17 +221,17 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
     } else {
       create.mutate(payload, { onSuccess: () => undefined })
     }
-  }
+  })
 
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       title={token ? t('tokens.edit.title') : t('page.tokens.create')}
       wide
       footer={
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button type="button" variant="outline" onClick={close}>{t('common.cancel')}</Button>
           <Button type="submit" form={formID} loading={create.isPending || update.isPending}>
             {t('common.save')}
           </Button>
@@ -222,21 +243,21 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
           <Alert tone="danger">{errorMessage(create.isError ? create.error : update.error)}</Alert>
         )}
         <div className="eg-grid eg-grid-auto-wide">
-          <Field label={t('tokens.form.name')} hint={t('tokens.form.nameHint')}>
-            <Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="my-token" />
+          <Field label={t('tokens.form.name')} hint={t('tokens.form.nameHint')} error={formState.errors.name?.message}>
+            <Input {...register('name')} placeholder="my-token" />
           </Field>
-          <Field label={t('tokens.form.quota')} hint={t('tokens.form.quotaHint')}>
-            <Input type="number" min={0} value={quota} onChange={(e) => setQuota(e.target.value)} />
+          <Field label={t('tokens.form.quota')} hint={t('tokens.form.quotaHint')} error={formState.errors.quota?.message}>
+            <Input type="number" min={0} {...register('quota')} />
           </Field>
         </div>
         <Field label={t('tokens.form.expiresAt')} hint={t('tokens.form.expiresHint')}>
-          <Input type="datetime-local" value={expiredAt} onChange={(e) => setExpiredAt(e.target.value)} />
+          <Input type="datetime-local" {...register('expired_at')} />
         </Field>
         <SettingRow
           title={t('tokens.form.fallback')}
           description={t('tokens.form.fallbackDesc')}
-          checked={!disableFallback}
-          onChange={(enabled) => setDisableFallback(!enabled)}
+          checked={!watch('disable_fallback')}
+          onChange={(enabled) => setValue('disable_fallback', !enabled, { shouldDirty: true })}
           label={t('tokens.form.fallback')}
         />
         <div className="eg-grid eg-grid-auto-wide">
@@ -247,11 +268,11 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
                 <RefreshCw size={13} /> {showModelPicker ? t('tokens.form.catalogClose') : t('tokens.form.catalogOpen')}
               </Button>
             </div>
-            <Textarea id={modelsId} rows={4} value={modelsText} onChange={(e) => setModelsText(e.target.value)} placeholder={'gpt-4o\nglm-4.7'} />
+            <Textarea id={modelsId} rows={4} {...register('modelsText')} placeholder={'gpt-4o\nglm-4.7'} />
             <div className="text-xs text-subtle">{t('tokens.form.modelsHint')}</div>
           </div>
           <Field label={t('tokens.form.ips')} hint={t('tokens.form.ipsHint')}>
-            <Textarea rows={4} value={ipsText} onChange={(e) => setIpsText(e.target.value)} placeholder={'127.0.0.1\n192.168.0.0/16'} />
+            <Textarea rows={4} {...register('ipsText')} placeholder={'127.0.0.1\n192.168.0.0/16'} />
           </Field>
         </div>
         {/* 目录选择器横跨弹窗全宽：挤在左半栏时每行长说明折成三行、还要在弹窗里再套一层内滚动 */}
@@ -265,22 +286,22 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
                 ? item.channels.map((channel) => `${channel.channel_name}: ${channel.upstream_model}`).join('; ')
                 : undefined,
             }))}
-            initialModels={splitLines(modelsText)}
+            initialModels={splitLines(watch('modelsText'))}
             loading={catalog.isPending}
             error={catalog.isError ? errorMessage(catalog.error) : undefined}
             onCancel={() => setShowModelPicker(false)}
             onApply={(selected, mode) => {
-              const next = applyModelSelection(splitLines(modelsText), selected, mode)
-              setModelsText(next.join('\n'))
+              const next = applyModelSelection(splitLines(watch('modelsText')), selected, mode)
+              setValue('modelsText', next.join('\n'), { shouldDirty: true })
               setShowModelPicker(false)
             }}
           />
         )}
       </form>
+      {guard.dialog}
     </Dialog>
   )
 }
-
 function splitLines(text: string): string[] {
   return text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
 }
