@@ -77,6 +77,7 @@ func newEnv(t *testing.T) *testEnv {
 	}
 	logs := NewLogWriter(db, 256, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	rel := New(Options{DB: db, Router: router.New(42), Pool: pl, MasterKey: master, Defaults: d, Now: clock.Now, LogWriter: logs, Usage: usageMgr})
+	t.Cleanup(rel.Close)
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
 	e.POST("/v1/chat/completions", rel.HandleChatCompletions)
@@ -159,6 +160,7 @@ func TestRelayPersistsKeyAttemptStatistics(t *testing.T) {
 	env.reportKeySuccess(key.ID)
 	env.recordKeyFailure(key.ID, "model unavailable")
 	env.reportKeyFailure(key.ID, retry.Classification{Kind: retry.KindTransient}, "upstream unavailable")
+	env.FlushKeyStats() // 统计异步落库，断言前显式刷盘
 
 	var row store.ChannelKey
 	if err := env.db.First(&row, key.ID).Error; err != nil {
@@ -1637,6 +1639,7 @@ func TestNonRetryablePassThrough(t *testing.T) {
 	if h, _, _ := up.snapshot(); h != 1 {
 		t.Fatalf("不可重试错误只应尝试 1 次, got %d", h)
 	}
+	env.FlushKeyStats() // 统计异步落库，断言前显式刷盘
 	var key store.ChannelKey
 	if err := env.db.First(&key).Error; err != nil {
 		t.Fatalf("read key: %v", err)

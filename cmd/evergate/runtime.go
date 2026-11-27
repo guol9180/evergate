@@ -133,6 +133,7 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		Metrics:   metricsReg,
 		Tracer:    b.tracer,
 	})
+	runners = append(runners, relayHandler.Close)
 	adminAPI := admin.New(admin.Options{
 		DB:             db,
 		MasterKey:      cfg.Security.MasterKey,

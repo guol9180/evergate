@@ -73,6 +73,9 @@ type Relay struct {
 	channelsRead bool
 	fallbacks    []store.ModelFallback
 	fallbackRead bool
+
+	// keyStats 异步合并 key 成功 / 失败统计，避免首 token 路径同步写库。
+	keyStats *keyStatsWriter
 }
 
 // New 创建 Relay。
@@ -92,7 +95,25 @@ func New(opt Options) *Relay {
 	if opt.Tracer == nil {
 		opt.Tracer = telemetry.New(telemetry.Config{}, opt.Logger)
 	}
-	return &Relay{opt: opt, transports: make(map[time.Duration]*transportEntry)}
+	rel := &Relay{opt: opt, transports: make(map[time.Duration]*transportEntry)}
+	if opt.DB != nil {
+		rel.keyStats = newKeyStatsWriter(opt.DB, opt.Logger, opt.Now)
+	}
+	return rel
+}
+
+// FlushKeyStats 立即把待落库的 key 统计写盘（测试与停机编排使用）。
+func (r *Relay) FlushKeyStats() {
+	if r.keyStats != nil {
+		r.keyStats.Flush()
+	}
+}
+
+// Close 停止 key 统计的异步刷盘；应在进程退出前调用一次。
+func (r *Relay) Close() {
+	if r.keyStats != nil {
+		r.keyStats.Close()
+	}
 }
 
 // attemptOutcome 单次尝试的结果，决定下一步走向。
@@ -905,24 +926,8 @@ func (r *Relay) recordKeyFailure(keyID int64, message string) {
 }
 
 func (r *Relay) persistKeyAttempt(keyID int64, success bool, message string) {
-	if r.opt.DB == nil {
-		return
-	}
-	if len(message) > 300 {
-		message = httpx.TruncateRunes(message, 300)
-	}
-	updates := map[string]any{"last_used_at": r.opt.Now().UTC()}
-	if success {
-		updates["success_count"] = gorm.Expr("success_count + 1")
-		updates["last_error"] = ""
-	} else {
-		updates["fail_count"] = gorm.Expr("fail_count + 1")
-		updates["last_error"] = message
-	}
-	if err := r.opt.DB.Model(&store.ChannelKey{}).Where("id = ?", keyID).Updates(updates).Error; err != nil {
-		if r.opt.Logger != nil {
-			r.opt.Logger.Warn("persist key attempt failed", slog.Int64("key_id", keyID), slog.Any("error", err))
-		}
+	if r.keyStats != nil {
+		r.keyStats.Add(keyID, success, message)
 	}
 }
 

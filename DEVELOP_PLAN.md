@@ -76,7 +76,9 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-27 执行 ④ Transport：连接超时按 5s 分桶共用连接池，缓存上限 16 个档位、超限回收最久未用并关闭其空闲连接
   - 2026-11-27 执行 ② 配置快照：relay 缓存启用渠道与模型降级规则（RWMutex + 懒加载），管理台会话组挂 invalidateOnWrite 中间件，任何成功的非 GET 写操作后调用 relay.InvalidateConfig；热路径配置读库由每请求 2 次（渠道 + 降级规则）降为 0 次
   - 2026-11-27 验证 ②④⑥：新增 TestChatRequestDoesNotReadConfigTables（warm 后一次对话请求对 channels / model_fallbacks 的查询计数为 0）、TestConfigSnapshotCachesUntilInvalidated、TestFallbackRuleSnapshotRefreshesAfterInvalidation、TestInvalidateOnWriteOnlyAfterSuccessfulWrites、TestServerListenAddr、TestServerHostRejectsSchemeAndPort、TestShutdownServerDrainsIdleServer、TestShutdownServerClosesHungConnectionsOnTimeout、TestTransportBucketSharesNearbyTimeouts、TestTransportCacheIsBounded；go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、relay 81.6%、make build 通过
-  - 2026-11-27 备注 剩余：① key 统计异步刷盘与首 token 压测、③ 请求体单次解析与按模型缓存、⑦ synchronous=NORMAL 可选开关
+  - 2026-11-27 执行 ① key 统计：新增 `internal/relay/keystats.go`，每次尝试只累加内存计数，500ms 或 256 个 key 时合并成批量 UPDATE 落库；状态机（冷却 / 禁用）仍在内存即时更新，`Relay.Close` 停机做最后一次刷盘并接入 closeRunners，`FlushKeyStats` 供测试断言
+  - 2026-11-27 验证 ①：新增 TestKeyStatsWriterMergesAndFlushes / TestKeyStatsWriterCloseFlushesPending；基准 `BenchmarkKeyStatsPersistence`（本机 Windows）：旧同步 UPDATE 1,104,226 ns/op、7.8KB/op，新入队 208 ns/op、4B/op（约 5300×）；18787 端到端 200 次对话请求 P50 15.43 → 15.36ms、P95 18.44 → 19.34ms（本机 mock 上游与请求日志写库主导，差异在噪声内，故以基准作为主要证据）；实测 key 1 success_count 117 → 330 落库
+  - 2026-11-27 备注 剩余：③ 请求体单次解析与按模型缓存、⑦ synchronous=NORMAL 可选开关
 
 #### T113: 令牌限流与事件告警（P2，产品能力）
 
