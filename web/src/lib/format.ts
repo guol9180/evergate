@@ -14,7 +14,8 @@ export function fmtTime(iso: string | null | undefined): string {
 
 export function fmtMs(ms: number | null | undefined): string {
   if (ms == null || ms === 0) return '—'
-  if (ms < 1000) return `${ms}ms`
+  // 均值可能是小数（如 2.4312…）：保留一位小数，整数不受影响
+  if (ms < 1000) return `${Math.round(ms * 10) / 10}ms`
   return `${(ms / 1000).toFixed(2)}s`
 }
 

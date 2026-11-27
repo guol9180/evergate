@@ -16,11 +16,11 @@ import {
 } from '../api/hooks'
 import type { ModelPrice, UsageDailyPoint, UsageDimensionRow } from '../api/types'
 import { bucketByLocalDay } from '../lib/usage'
-import { Alert, Badge, Button, Card, Empty, Field, IconButton, Input, PageHeader, Select, Spinner, Td, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, Empty, Field, IconButton, Input, PageHeader, SegmentedControl, Select, Spinner, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
-import { TrendChart } from '../components/TrendChart'
+import { TREND_METRICS, TrendChart, type TrendMetric } from '../components/TrendChart'
 import PriceTable, { fmtPriceMicros } from '../components/PriceTable'
-import { fmtInt, fmtMoney } from '../lib/format'
+import { fmtInt, fmtMoney, fmtMs } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import { errorMessage } from '../lib/errors'
@@ -123,8 +123,8 @@ export default function Usage() {
           </div>
 
           <div className="eg-grid eg-grid-triple">
-            <TopCard title={t('usage.topChannels')} rows={data.top_channels} />
-            <TopCard title={t('usage.topModels')} rows={data.top_models} />
+            <TopCard title={t('usage.topChannels')} rows={data.top_channels} latency />
+            <TopCard title={t('usage.topModels')} rows={data.top_models} latency />
             <TopCard title={t('usage.topTokens')} rows={data.top_tokens} />
           </div>
         </>
@@ -144,18 +144,27 @@ function Metric({ label, value, hint, warning }: { label: string; value: string;
 }
 
 function TrendCard({ daily }: { daily: UsageDailyPoint[] }) {
+  const [metric, setMetric] = useState<TrendMetric>('requests')
   return (
     <Card className="flex flex-col self-start">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><BarChart3 size={15} className="text-brand-text" /> {t('usage.trend')}</h3>
-        <div className="flex items-center gap-3 text-xs text-subtle">
-          <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-brand" />{t('chart.requests')}</span>
+        <SegmentedControl
+          label={t('chart.metric')}
+          value={metric}
+          onChange={setMetric}
+          options={TREND_METRICS.map((item) => ({ value: item.value, label: t(item.label) }))}
+          size="sm"
+          className="grid-cols-2 sm:grid-cols-4"
+        />
+      </div>
+      <div className="mt-2 flex items-center gap-3 text-xs text-subtle">
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-brand" />{t(`chart.metric.${metric}`)}</span>
           <span className="flex items-center gap-1.5"><span className="h-0.5 w-3.5 rounded bg-success-solid" />{t('chart.successRate')}</span>
-        </div>
       </div>
       {daily.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
         <div className="mt-4 h-[clamp(224px,32vw,360px)]">
-          <TrendChart data={daily} className="h-full" />
+          <TrendChart data={daily} metric={metric} className="h-full" />
         </div>
       )}
     </Card>
@@ -183,19 +192,32 @@ function fillDailyGaps(points: UsageDailyPoint[], start?: string, end?: string):
   })
 }
 
-function TopCard({ title, rows }: { title: string; rows: UsageDimensionRow[] }) {
+function TopCard({ title, rows, latency }: { title: string; rows: UsageDimensionRow[]; latency?: boolean }) {
   return (
     <Card flush>
       <h3 className="border-b border-line-soft text-sm font-semibold" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>{title}</h3>
       {rows.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[300px]">
-            <thead className="bg-surface-soft"><tr><Th>{t('table.name')}</Th><Th>{t('table.requests')}</Th><Th>{t('table.cost')}</Th></tr></thead>
+          <table className={`w-full ${latency ? 'min-w-[340px]' : 'min-w-[300px]'}`}>
+            <thead className="bg-surface-soft">
+              <tr>
+                <Th>{t('table.name')}</Th><Th>{t('table.requests')}</Th>
+                {latency && <Th title={t('usage.firstTokenHint')}>{t('table.firstToken')}</Th>}
+                <Th>{t('table.cost')}</Th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-line-soft">
               {rows.map((row) => (
                 <tr key={`${row.id}-${row.name}`}>
                   <Td className="max-w-40 truncate font-medium" title={row.name}>{dimensionName(row)}</Td>
                   <Td>{fmtInt(row.requests)}</Td>
+                  {latency && (
+                    <Td className="text-xs" title={t('usage.firstTokenHint')}>
+                      {row.first_token_avg_ms == null
+                        ? <span className="text-subtle">—</span>
+                        : `${fmtMs(row.first_token_avg_ms)} / ${fmtMs(row.first_token_p50_ms ?? undefined)}`}
+                    </Td>
+                  )}
                   <Td className="text-xs">
                     {row.priced_requests === 0
                       ? <span className="text-subtle" title={t('usage.topCostHint')}>—</span>

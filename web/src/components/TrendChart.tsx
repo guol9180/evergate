@@ -11,28 +11,68 @@ import {
   type TooltipContentProps,
 } from 'recharts'
 import type { UsageDailyPoint } from '../api/types'
-import { fmtInt, fmtMoney } from '../lib/format'
+import { fmtInt, fmtMoney, fmtMs } from '../lib/format'
 import { t, tf } from '../lib/i18n'
+
+/** 趋势图可切换的柱状指标；成功率折线始终保留。 */
+export type TrendMetric = 'requests' | 'tokens' | 'cost' | 'firstToken'
+
+export const TREND_METRICS: readonly { value: TrendMetric; label: Parameters<typeof t>[0] }[] = [
+  { value: 'requests', label: 'chart.metric.requests' },
+  { value: 'tokens', label: 'chart.metric.tokens' },
+  { value: 'cost', label: 'chart.metric.cost' },
+  { value: 'firstToken', label: 'chart.metric.firstToken' },
+]
 
 type TrendRow = UsageDailyPoint & {
   label: string
   successRate: number | null
+  totalTokens: number | null
+}
+
+/** 轴刻度用紧凑数字：1.2k / 3.4M，避免大数撑宽 Y 轴。 */
+function compactNumber(value: number): string {
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}M`
+  if (abs >= 1_000) return `${Number((value / 1_000).toFixed(1))}k`
+  return String(Math.round(value))
+}
+
+function metricDataKey(metric: TrendMetric): keyof TrendRow {
+  switch (metric) {
+    case 'tokens': return 'totalTokens'
+    case 'cost': return 'cost_micros'
+    case 'firstToken': return 'first_token_avg_ms'
+    default: return 'requests'
+  }
+}
+
+function formatMetricValue(metric: TrendMetric, row: TrendRow): string {
+  switch (metric) {
+    case 'tokens': return row.totalTokens == null ? '—' : fmtInt(row.totalTokens)
+    case 'cost': return fmtMoney(row.cost_micros)
+    case 'firstToken': return row.first_token_avg_ms == null ? '—' : fmtMs(row.first_token_avg_ms)
+    default: return fmtInt(row.requests)
+  }
 }
 
 /**
- * 用量日趋势：柱 = 请求数，线 = 成功率。
+ * 用量趋势：柱 = 所选指标（请求 / Token / 成本 / 首 token 延迟），线 = 成功率。
  * 使用 Recharts ComposedChart，数据量固定为按天聚合，SVG 渲染足够且交互/主题一致。
  */
-export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint[]; className?: string }) {
+export function TrendChart({ data, metric = 'requests', className = 'h-56' }: { data: UsageDailyPoint[]; metric?: TrendMetric; className?: string }) {
   const rows = useMemo<TrendRow[]>(
     () =>
       data.map((point) => ({
         ...point,
         label: point.date.slice(5),
         successRate: point.requests > 0 ? Math.round((point.success / point.requests) * 1000) / 10 : null,
+        totalTokens: point.requests > 0 ? point.tokens_in + point.tokens_out : null,
       })),
     [data],
   )
+  const dataKey = metricDataKey(metric)
+  const axisFormatter = (value: number) => (metric === 'cost' ? `$${compactNumber(value / 1_000_000)}` : compactNumber(value))
 
   return (
     <div className={`w-full ${className}`}>
@@ -48,9 +88,10 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
             tick={{ fontSize: 11, fill: 'var(--color-subtle)' }}
           />
           <YAxis
-            yAxisId="requests"
-            width={44}
+            yAxisId="metric"
+            width={48}
             allowDecimals={false}
+            tickFormatter={axisFormatter}
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: 11, fill: 'var(--color-subtle)' }}
@@ -67,13 +108,13 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
             tick={{ fontSize: 11, fill: 'var(--color-subtle)' }}
           />
           <Tooltip
-            content={ChartTooltip}
+            content={(props) => <ChartTooltip {...props} metric={metric} />}
             cursor={{ fill: 'rgba(99, 102, 241, 0.06)' }}
           />
           <Bar
-            yAxisId="requests"
-            dataKey="requests"
-            name={t('chart.requests')}
+            yAxisId="metric"
+            dataKey={dataKey}
+            name={t(`chart.metric.${metric}`)}
             fill="var(--color-brand-text)"
             radius={[4, 4, 0, 0]}
             maxBarSize={28}
@@ -95,10 +136,11 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
   )
 }
 
-function ChartTooltip({ active, payload }: TooltipContentProps) {
+function ChartTooltip({ active, payload, metric }: TooltipContentProps & { metric?: TrendMetric }) {
   if (!active || !payload?.length) return null
   const row = payload[0]?.payload as TrendRow | undefined
   if (!row) return null
+  const current = metric ?? 'requests'
   const costIssues = row.unpriced_requests + row.no_usage_requests + row.unknown_cost_requests
   const costKnown = row.requests === 0 || row.priced_requests > 0 || costIssues === 0
   return (
@@ -106,8 +148,8 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
       <div className="font-medium text-foreground-soft">{row.date}</div>
       <dl className="mt-1.5 space-y-1">
         <div className="flex items-center justify-between gap-4">
-          <dt className="text-subtle">{t('chart.request')}</dt>
-          <dd className="tabular-nums text-foreground-soft">{fmtInt(row.requests)}</dd>
+          <dt className="text-subtle">{t(`chart.metric.${current}`)}</dt>
+          <dd className="tabular-nums text-foreground-soft">{formatMetricValue(current, row)}</dd>
         </div>
         <div className="flex items-center justify-between gap-4">
           <dt className="text-subtle">{t('chart.success')}</dt>
@@ -117,6 +159,12 @@ function ChartTooltip({ active, payload }: TooltipContentProps) {
           <dt className="text-subtle">{t('chart.successRate')}</dt>
           <dd className="tabular-nums text-success-text">{row.successRate == null ? '—' : `${row.successRate.toFixed(1)}%`}</dd>
         </div>
+        {current !== 'firstToken' && row.first_token_avg_ms != null && (
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-subtle">{t('chart.metric.firstToken')}</dt>
+            <dd className="tabular-nums text-foreground-soft">{fmtMs(row.first_token_avg_ms)}</dd>
+          </div>
+        )}
         {!!row.cache_read_tokens && (
           <div className="flex items-center justify-between gap-4">
             <dt className="text-subtle">{t('chart.cacheRead')}</dt>

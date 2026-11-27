@@ -322,6 +322,8 @@ export interface UsageHourlyPoint {
   unpriced_requests: number
   no_usage_requests: number
   unknown_cost_requests: number
+  first_token_avg_ms?: number
+  first_token_samples?: number
 }
 
 /** 展示层按用户本地日分桶后的一天 */
@@ -338,6 +340,10 @@ export interface UsageDailyPoint {
   unpriced_requests: number
   no_usage_requests: number
   unknown_cost_requests: number
+  /** 该小时成功请求的首 token 平均延迟（ms）；日志已清理时缺省 */
+  first_token_avg_ms?: number
+  /** 参与首 token 均值的样本数，供按本地日加权平均 */
+  first_token_samples?: number
 }
 
 export interface UsageDimensionRow {
@@ -355,6 +361,10 @@ export interface UsageDimensionRow {
   unpriced_requests: number
   no_usage_requests: number
   unknown_cost_requests: number
+  /** 首 token 延迟统计（ms）来自仍保留的请求日志；无样本时缺省 */
+  first_token_avg_ms?: number
+  first_token_p50_ms?: number
+  first_token_samples?: number
 }
 
 export interface UsageReport {

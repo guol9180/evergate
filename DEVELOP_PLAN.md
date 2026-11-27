@@ -73,6 +73,10 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-27 执行 ① 前端：Playground 改为对话线程（user / assistant 轮次气泡、流式光标、清空对话），左侧新增「采样参数」折叠区（三个输入，留空不下发），Ctrl/⌘+Enter 发送；命中链路新增「查看发往上游的请求」折叠区（方法 + URL + 缩进 JSON，截断时带 warning 徽标）；`useEffect` 卸载时自动 abort 在途请求
   - 2026-11-27 验证 ①：Go 新增 TestPlaygroundMultiTurnAndParams（历史顺序 / 参数透传 / 快照为改写后的上游体且不含 key）、TestPlaygroundResponsesInputShapeByTurns、TestPlaygroundUpstreamRequestRedactedAndTruncated（sk- / Bearer 脱敏、多轮超 16KB 截断）、TestPlaygroundRejectsBadParamsAndHistory（5 例 400 且不触达上游）；前端 lint 0 警告、tsc 通过；audit:layout 907/1440 × 浅中 + 深英通过；18787 内置浏览器实测：两轮对话（mock 上游）→ 展开「查看发往上游的请求」显示 POST + URL + 三条 messages 的缩进 JSON → 清空对话回到空态
 
+  - 2026-11-27 执行 ② 首 token 延迟维度：`usage.BuildReport` 在聚合表之外按同一筛选扫 `request_logs`（`attachLatency`）：按模型 / 渠道用一次窗口扫描（ROW_NUMBER + COUNT OVER）算均值与最近秩 P50，按小时给均值 + 样本数；合并进 `TopModels` / `TopChannels` 的 `first_token_avg_ms / first_token_p50_ms / first_token_samples` 与 `Hourly[].first_token_avg_ms / first_token_samples`。只统计成功且有首 token 样本的请求，日志按保留策略清理后为空
+  - 2026-11-27 执行 ② 前端：`TrendChart` 新增 `metric`（请求数 / Token 用量 / 成本 / 首 token 延迟），柱状按指标切换、轴刻度紧凑格式（k / M、成本带 $），成功率折线保留，tooltip 显示当前指标与首 token；用量页趋势卡顶部用 `SegmentedControl` 切指标；Top 渠道 / Top 模型表新增「首 token」列（均值 / P50，无样本显示 —）；`bucketByLocalDay` 对延迟按样本数加权平均（不再丢字段或直接求和）；`fmtMs` 对小数均值保留一位；`eg-grid-triple` 断点改为 ≥1024 两列（第三张通栏）/ ≥1440 三列，四列表格不再被横向滚动遮住
+  - 2026-11-27 验证 ②：Go 新增 `TestReportFirstTokenLatencyByModelChannelAndHour`（m1 100/300/500 → avg 300 P50 300；m2 900/1100 → avg 1000 P50 900；失败与 0 延迟不计数；小时均值 580；按模型筛选后延迟同步过滤）；前端 `usageBucket.test.ts` 新增加权平均用例（(100×3+400×1)/4=175）；lint 0 警告、unit 17 通过、tsc + vite build 通过；audit:layout 907/1440 × 浅中 + 深英通过；18787 实测：切到「首 token 延迟」柱状图与 tooltip 正常，Top 渠道 / 模型显示「2.4ms / 1ms」等均值 / P50
+
 > 来源：P3 待复验任务（由 T73 拆分）。
 
 #### T74v: 复验 macOS cgo CI（P0，待外部环境）

@@ -201,11 +201,13 @@ body {
 .eg-grid { display: grid; gap: var(--eg-grid-gap); }
 .eg-grid-auto { grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); }
 .eg-grid-auto-wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
-/* 四张 KPI 卡：窄屏 2×2、≥1100px 单行四列，避免第 4 张落单；三张并列卡（Top 榜）窄屏单列、≥1024px 三列。 */
+  /* 四张 KPI 卡：窄屏 2×2、≥1100px 单行四列，避免第 4 张落单；三张并列卡（Top 榜）窄屏单列、≥1024px 两列（第三张通栏）、≥1440px 三列（四列表格需要更宽的卡）。 */
 .eg-grid-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 1100px) { .eg-grid-kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.eg-grid-triple { grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 1024px) { .eg-grid-triple { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .eg-grid-triple { grid-template-columns: minmax(0, 1fr); }
+  .eg-grid-triple > :last-child { grid-column: 1 / -1; }
+  @media (min-width: 1024px) { .eg-grid-triple { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (min-width: 1440px) { .eg-grid-triple { grid-template-columns: repeat(3, minmax(0, 1fr)); } .eg-grid-triple > :last-child { grid-column: auto; } }
 .eg-page-header { gap: var(--eg-control-gap); }
 .eg-control-row { gap: var(--eg-control-gap); }
 .eg-card-fluid { padding: var(--eg-card-pad); }

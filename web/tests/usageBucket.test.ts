@@ -23,3 +23,20 @@ test('UTC hourly points are summed into the user local day (T109 ⑤)', () => {
   assert.equal(split[1].date, localDayKey(noon.toISOString()))
   assert.deepEqual(bucketByLocalDay([]), [])
 })
+
+test('first-token latency is averaged by sample count, not summed (T115 ②)', () => {
+  const noon = new Date('2026-11-27T12:00:00')
+  const hour = (offset: number, avg: number, samples: number) => ({
+    ...point(new Date(noon.getTime() + offset * 3_600_000).toISOString(), samples, 0),
+    first_token_avg_ms: avg,
+    first_token_samples: samples,
+  })
+  // (100×3 + 400×1) / 4 = 175；直接求和会得到 500
+  const [day] = bucketByLocalDay([hour(0, 100, 3), hour(1, 400, 1)])
+  assert.equal(day.first_token_avg_ms, 175)
+  assert.equal(day.first_token_samples, 4)
+  // 没有延迟样本的小时不影响结果
+  const [plain] = bucketByLocalDay([hour(0, 100, 2), point(new Date(noon.getTime() + 3_600_000).toISOString(), 9, 0)])
+  assert.equal(plain.first_token_avg_ms, 100)
+  assert.equal(plain.first_token_samples, 2)
+})

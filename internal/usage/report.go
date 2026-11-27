@@ -62,6 +62,10 @@ type DailyPoint struct {
 	Unpriced        int64   `json:"unpriced_requests"`
 	NoUsage         int64   `json:"no_usage_requests"`
 	Unknown         int64   `json:"unknown_cost_requests"`
+	// FirstTokenAvgMS 是该小时成功请求的首 token 平均延迟（毫秒），无样本时为 nil。
+	FirstTokenAvgMS *float64 `json:"first_token_avg_ms,omitempty"`
+	// FirstTokenSamples 是该小时参与首 token 均值的样本数，供前端按本地日加权平均。
+	FirstTokenSamples int64 `json:"first_token_samples"`
 }
 
 type DimensionRow struct {
@@ -79,6 +83,10 @@ type DimensionRow struct {
 	UnpricedRequests    int64   `json:"unpriced_requests"`
 	NoUsageRequests     int64   `json:"no_usage_requests"`
 	UnknownCostRequests int64   `json:"unknown_cost_requests"`
+	// 首 token 延迟（毫秒）来自仍保留的请求日志；日志已按保留策略清理时为 nil。
+	FirstTokenAvgMS   *float64 `json:"first_token_avg_ms,omitempty"`
+	FirstTokenP50MS   *int64   `json:"first_token_p50_ms,omitempty"`
+	FirstTokenSamples int64    `json:"first_token_samples"`
 }
 
 type Report struct {
@@ -201,6 +209,11 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 	report.TopModels = modelRows
 	fillDimensionNames(db, report.TopChannels, &store.Channel{})
 	fillDimensionNames(db, report.TopTokens, &store.Token{})
+	// 首 token 延迟不能从聚合表求和推导（P50 需要原始值），按同一筛选扫 request_logs：
+	// 按模型 / 渠道给出均值与最近秩 P50，按小时给出均值供趋势图切换指标。
+	if err := attachLatency(db, start, endExclusive, q, &report); err != nil {
+		return report, err
+	}
 	return report, nil
 }
 
@@ -287,4 +300,113 @@ func fillDimensionNames(db *gorm.DB, rows []DimensionRow, model any) {
 			rows[i].NameKind = "deleted"
 		}
 	}
+}
+
+type latencyRow struct {
+	Key     string  `gorm:"column:k"`
+	AvgMS   float64 `gorm:"column:avg_ms"`
+	P50MS   int64   `gorm:"column:p50_ms"`
+	Samples int64   `gorm:"column:samples"`
+}
+
+// latencyFilter 生成 request_logs 的筛选片段与参数：只统计成功且有首 token 样本的请求。
+func latencyFilter(start, end time.Time, q ReportQuery) (string, []any) {
+	sql := "created_at >= ? AND created_at < ? AND first_token_ms > 0 AND status_code >= 200 AND status_code < 400"
+	args := []any{start, end}
+	if q.ChannelID > 0 {
+		sql += " AND channel_id = ?"
+		args = append(args, q.ChannelID)
+	}
+	if q.Model != "" {
+		sql += " AND model = ?"
+		args = append(args, q.Model)
+	}
+	if q.TokenID > 0 {
+		sql += " AND token_id = ?"
+		args = append(args, q.TokenID)
+	}
+	return sql, args
+}
+
+// firstTokenByDimension 按维度（channel_id / model）计算首 token 均值与最近秩 P50：
+// 一次窗口扫描同时得到行号与组内计数，再在组内取第 (cnt+1)/2 行。
+func firstTokenByDimension(db *gorm.DB, start, end time.Time, q ReportQuery, column string) (map[string]latencyRow, error) {
+	where, args := latencyFilter(start, end, q)
+	var rows []latencyRow
+	err := db.Raw(`
+		WITH scoped AS (
+			SELECT CAST(`+column+` AS TEXT) AS k, first_token_ms,
+				ROW_NUMBER() OVER (PARTITION BY `+column+` ORDER BY first_token_ms) AS rn,
+				COUNT(*) OVER (PARTITION BY `+column+`) AS cnt
+			FROM request_logs
+			WHERE `+where+`
+		)
+		SELECT k,
+			AVG(first_token_ms) AS avg_ms,
+			MAX(CASE WHEN rn = (cnt + 1) / 2 THEN first_token_ms END) AS p50_ms,
+			COUNT(*) AS samples
+		FROM scoped GROUP BY k`, args...).Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]latencyRow, len(rows))
+	for _, row := range rows {
+		out[row.Key] = row
+	}
+	return out, nil
+}
+
+func attachLatency(db *gorm.DB, start, end time.Time, q ReportQuery, report *Report) error {
+	byChannel, err := firstTokenByDimension(db, start, end, q, "channel_id")
+	if err != nil {
+		return err
+	}
+	byModel, err := firstTokenByDimension(db, start, end, q, "model")
+	if err != nil {
+		return err
+	}
+	for i := range report.TopChannels {
+		if row, ok := byChannel[strconv.FormatInt(report.TopChannels[i].ID, 10)]; ok {
+			report.TopChannels[i].setLatency(row)
+		}
+	}
+	for i := range report.TopModels {
+		if row, ok := byModel[report.TopModels[i].Name]; ok {
+			report.TopModels[i].setLatency(row)
+		}
+	}
+
+	// 小时级只给均值：趋势图看走势，P50 在维度表里看
+	where, args := latencyFilter(start, end, q)
+	var hourly []struct {
+		Hour    string  `gorm:"column:hour"`
+		AvgMS   float64 `gorm:"column:avg_ms"`
+		Samples int64   `gorm:"column:samples"`
+	}
+	if err := db.Raw(`SELECT strftime('%Y-%m-%dT%H:00:00Z', created_at) AS hour,
+		AVG(first_token_ms) AS avg_ms, COUNT(*) AS samples
+		FROM request_logs WHERE `+where+` GROUP BY hour`, args...).Scan(&hourly).Error; err != nil {
+		return err
+	}
+	type hourLatency struct {
+		avg     float64
+		samples int64
+	}
+	byHour := make(map[string]hourLatency, len(hourly))
+	for _, row := range hourly {
+		byHour[row.Hour] = hourLatency{avg: row.AvgMS, samples: row.Samples}
+	}
+	for i := range report.Hourly {
+		if latency, ok := byHour[report.Hourly[i].Date]; ok {
+			avg := latency.avg
+			report.Hourly[i].FirstTokenAvgMS = &avg
+			report.Hourly[i].FirstTokenSamples = latency.samples
+		}
+	}
+	return nil
+}
+
+func (d *DimensionRow) setLatency(row latencyRow) {
+	avg, p50 := row.AvgMS, row.P50MS
+	d.FirstTokenAvgMS, d.FirstTokenP50MS, d.FirstTokenSamples = &avg, &p50, row.Samples
 }
