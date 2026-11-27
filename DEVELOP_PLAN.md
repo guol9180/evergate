@@ -60,29 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
 
-#### T112: 转发热路径与服务生命周期优化（P2，代码审查）
-
-- 目标：把同步写库移出首包关键路径，去掉每请求的重复配置读库与请求体重编码，补齐服务端生命周期细节
-- 验收标准：① key 成功 / 失败统计的持久化移到首包写出之后或并入异步刷盘，内存状态机仍即时，压测给出首 token 延迟 P50 / P95 的前后对比；② 渠道、降级规则等低频配置走内存快照 + 变更失效，单请求配置读库由 4 次以上降到不超过 1 次，管理台变更后立即生效；③ 请求体一次解析并按上游模型缓存重写结果，1MB / 8MB 请求体下有 CPU 与分配的前后对比；④ Transport 缓存按时长分桶并设容量上限；⑤ 日志统计的分位数下推到 SQL，不再全量读入内存；⑥ http.Server 设空闲连接超时，新增 server.host 监听地址配置（默认行为不变），优雅停机超时不再按启动失败处理并强制关闭残留连接；⑦ SQLite synchronous=NORMAL 作为可选项并提供实测对比
-- 边界：不改调度语义、重试预算与 SSE 红线，不做多进程与外部缓存；决策项：synchronous=NORMAL 能降低写延迟，代价是断电可能丢最后几次提交，默认值由用户确认
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：in-progress
-- 进度：
-  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（性能）
-  - 2026-11-26 决策 用户确认 synchronous=NORMAL 作为可选项并给出实测对比
-  - 2026-11-27 执行 ⑤ 日志统计：`/logs/stats` 改为一条聚合（总数 / 成功数 / 延迟条数 / 延迟总和）+ 两条 `ORDER BY total_ms LIMIT 1 OFFSET` 取 P50 / P95，删除整表读入内存的 computeLogStats 与其断言辅助；最近秩法拆为 percentileRank 表驱动
-  - 2026-11-27 验证 ⑤：TestPercentileRankTableDriven + TestLogsStatsAndCSVExport 通过（4 条日志 p50=300 p95=700 与筛选后成功率 50% 与旧口径一致）、admin 包测试全 ok
-  - 2026-11-27 执行 ⑥ 服务生命周期：`server.host` 监听地址配置（空 = 全部网卡，校验只接受 IP / 主机名）、http.Server 加 120s 空闲超时、停机拆出 shutdownServer（30s 排空后强制 Close 残留连接并只告警，不再当作启动错误）
-  - 2026-11-27 执行 ④ Transport：连接超时按 5s 分桶共用连接池，缓存上限 16 个档位、超限回收最久未用并关闭其空闲连接
-  - 2026-11-27 执行 ② 配置快照：relay 缓存启用渠道与模型降级规则（RWMutex + 懒加载），管理台会话组挂 invalidateOnWrite 中间件，任何成功的非 GET 写操作后调用 relay.InvalidateConfig；热路径配置读库由每请求 2 次（渠道 + 降级规则）降为 0 次
-  - 2026-11-27 验证 ②④⑥：新增 TestChatRequestDoesNotReadConfigTables（warm 后一次对话请求对 channels / model_fallbacks 的查询计数为 0）、TestConfigSnapshotCachesUntilInvalidated、TestFallbackRuleSnapshotRefreshesAfterInvalidation、TestInvalidateOnWriteOnlyAfterSuccessfulWrites、TestServerListenAddr、TestServerHostRejectsSchemeAndPort、TestShutdownServerDrainsIdleServer、TestShutdownServerClosesHungConnectionsOnTimeout、TestTransportBucketSharesNearbyTimeouts、TestTransportCacheIsBounded；go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、relay 81.6%、make build 通过
-  - 2026-11-27 执行 ① key 统计：新增 `internal/relay/keystats.go`，每次尝试只累加内存计数，500ms 或 256 个 key 时合并成批量 UPDATE 落库；状态机（冷却 / 禁用）仍在内存即时更新，`Relay.Close` 停机做最后一次刷盘并接入 closeRunners，`FlushKeyStats` 供测试断言
-  - 2026-11-27 验证 ①：新增 TestKeyStatsWriterMergesAndFlushes / TestKeyStatsWriterCloseFlushesPending；基准 `BenchmarkKeyStatsPersistence`（本机 Windows）：旧同步 UPDATE 1,104,226 ns/op、7.8KB/op，新入队 208 ns/op、4B/op（约 5300×）；18787 端到端 200 次对话请求 P50 15.43 → 15.36ms、P95 18.44 → 19.34ms（本机 mock 上游与请求日志写库主导，差异在噪声内，故以基准作为主要证据）；实测 key 1 success_count 117 → 330 落库
-  - 2026-11-27 执行 ③ 请求体：新增 `internal/relay/body_rewrite.go`，原始请求体首次重写时解析一次成字段表，之后按上游模型（与是否注入 stream_options）缓存重写结果；原生 Gemini 不重写不解析；桥接体仍走原路径。`attemptOne` 去掉「替换 model + 注入 usage」两次整包解析 / 序列化，合并为一次
-  - 2026-11-27 验证 ③：新增 TestBodyRewriterCachesPerUpstreamModel（模型替换、缓存命中、原始体不被改写、injectUsage 切换复位 stream_options）与 TestBodyRewriterFallsBackForBridgeBodies；基准 `BenchmarkBodyRewrite`（本机）：1MB 旧路径 3.12ms / 4.8MB → 首次尝试 1.41ms / 2.4MB、缓存命中 53ns / 16B；8MB 旧路径 23.2ms / 37.8MB → 首次尝试 11.5ms / 19.3MB、缓存命中 87ns / 16B；go test -p 1 ./... 全 ok、staticcheck 干净、relay 82.0%、make build 通过
-  - 2026-11-27 执行 ⑦ SQLite 同步级别：新增 `storage.sqlite_synchronous`（`full` 默认 / `normal` 可选，非法值启动即报错），`store.OpenWithOptions` 通过 DSN `_pragma=synchronous(...)` 下发；`store.Open` 行为不变（FULL）；运维配置文档补取舍说明
-  - 2026-11-27 验证 ⑦：TestOpenAppliesSynchronousMode（读回 PRAGMA = 1 / 2）、TestOpenRejectsUnknownSynchronousMode、TestStorageSQLiteSynchronousValidation；基准 `BenchmarkInsertCommitSyncModes` 单行提交 FULL 401µs vs NORMAL 152µs（约 2.6×）；18787 切 normal 重启后 200 次对话请求 P50 15.36 → 14.70~14.99ms、P95 19.34 → 17.81~18.62ms（两次采样）
-
 #### T113: 令牌限流与事件告警（P2，产品能力）
 
 - 目标：补上「一个客户端打满上游没有刹车」与「挂了半天不知道」两个产品空白
@@ -185,7 +162,7 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 最近完成 / 已取消
 
-> 本批次已 done 的卡（T103–T111、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
+> 本批次已 done 的卡（T103–T112、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
 
 ## 归档索引
 
