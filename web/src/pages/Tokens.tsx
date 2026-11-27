@@ -3,7 +3,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken } from '../api/hooks'
+import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken, type TokenGovernanceInput } from '../api/hooks'
 import type { Token } from '../api/types'
 import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, Dialog, Empty, Field, IconButton, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
@@ -215,7 +215,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   }
 
   const onSubmit = handleSubmit((values) => {
-    const payload = {
+    const payload: TokenGovernanceInput = {
       name: values.name.trim(),
       quota: Number(values.quota) || 0,
       rpm_limit: Number(values.rpm_limit) || 0,

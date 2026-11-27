@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, jsonBody } from './client'
 import { withBasePath } from '../lib/runtime'
-import type { AdminInfo, AlertRecord, AlertsPayload, AlertSetting, AuditLog, BackupsPayload, ChannelCatalogDiff, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, AlertRecord, AlertsPayload, AlertSetting, AuditLog, BackupsPayload, ChannelCatalogDiff, Channel, ChannelDetail, ChannelTimeouts, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -229,10 +229,27 @@ export function useChannel(id: number | null) {
   })
 }
 
+/** 渠道创建 / 更新载荷：字段与后端 channelReq 对齐，必填项遗漏或字段拼错在编译期报错。 */
+export interface ChannelSaveInput {
+  id?: number
+  name: string
+  type: string
+  preset_id?: string
+  base_url: string
+  priority?: number
+  weight?: number
+  models?: string[]
+  model_mapping?: Record<string, string> | null
+  supports_responses?: boolean
+  supports_anthropic?: boolean
+  supports_gemini?: boolean
+  timeout_config?: ChannelTimeouts
+}
+
 export function useSaveChannel() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { id?: number } & Record<string, unknown>) => {
+    mutationFn: (data: ChannelSaveInput) => {
       const { id, ...body } = data
       return id
         ? api<Channel>(`/admin/api/channels/${id}`, { method: 'PUT', body: JSON.stringify(body) })
@@ -310,14 +327,21 @@ export function useBatchAddKeys({ silentError = false }: { silentError?: boolean
   })
 }
 
+export interface KeyUpdateInput {
+  id: number
+  enabled?: boolean
+  weight?: number
+  rpm_limit?: number
+}
+
 export function useUpdateKey() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { id: number; enabled?: boolean; weight?: number; rpm_limit?: number }) =>
-      api<{ updated: boolean }>(`/admin/api/keys/${data.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ enabled: data.enabled, weight: data.weight }),
-      }),
+    // 整个 patch 原样发送：逐字段挑着发会漏掉后来新增的字段（rpm_limit 曾因此静默无效）
+    mutationFn: (data: KeyUpdateInput) => {
+      const { id, ...patch } = data
+      return api<{ updated: boolean }>(`/admin/api/keys/${id}`, { method: 'PUT', body: JSON.stringify(patch) })
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['channel'] }),
   })
 }
@@ -358,15 +382,24 @@ export interface TokenGovernanceInput {
   expired_at?: string | null
   allowed_models?: string[]
   allowed_ips?: string[]
+  disable_fallback?: boolean
   rpm_limit?: number
   concurrency_limit?: number
+}
+
+/** 令牌更新载荷：只发出现的字段；enabled 仅更新接口支持，clear_expired_at 为 true 时清空过期时间。 */
+export interface TokenUpdateInput extends Partial<Omit<TokenGovernanceInput, 'expired_at'>> {
+  id: number
+  enabled?: boolean
+  expired_at?: string | null
+  clear_expired_at?: boolean
 }
 
 /** silentError：TokenDialog 内联展示错误时为 true；列表里的启停开关只靠全局 Toast。 */
 export function useUpdateToken({ silentError = false }: { silentError?: boolean } = {}) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { id: number } & Record<string, unknown>) => {
+    mutationFn: (data: TokenUpdateInput) => {
       const { id, ...body } = data
       return api<{ updated: boolean }>(`/admin/api/tokens/${id}`, { method: 'PUT', body: JSON.stringify(body) })
     },

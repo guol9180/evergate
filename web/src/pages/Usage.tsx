@@ -15,7 +15,7 @@ import {
   useUsageReport,
 } from '../api/hooks'
 import type { ModelPrice, UsageDailyPoint, UsageDimensionRow } from '../api/types'
-import { bucketByLocalDay } from '../lib/usage'
+import { bucketByLocalDay, localDateKey } from '../lib/usage'
 import { Alert, Badge, Button, Card, Empty, Field, IconButton, Input, PageHeader, SegmentedControl, Select, Spinner, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import { TREND_METRICS, TrendChart, type TrendMetric } from '../components/TrendChart'
@@ -25,8 +25,13 @@ import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import { errorMessage } from '../lib/errors'
 
-const today = () => new Date().toISOString().slice(0, 10)
-const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
+// 日期默认值与上限一律按本地日：toISOString 取的是 UTC 日期，东八区 0–8 点会落到昨天
+const today = () => localDateKey(new Date())
+const daysAgo = (days: number) => {
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  return localDateKey(d)
+}
 
 export default function Usage() {
   usePageTitle(t('page.usage.title'))

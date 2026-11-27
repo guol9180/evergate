@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -7,7 +7,7 @@ import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKe
 import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, Tooltip } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
-import type { Channel, ChannelCatalogDiff, EffectivePrice } from '../api/types'
+import type { Channel, ChannelCatalogDiff, ChannelTimeouts, EffectivePrice } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset, uniquePresetName } from '../lib/channelPresets'
 import { channelStateTone, fmtInt, fmtMs, fmtTime, formatRemainingSeconds, keyImportMessage, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
@@ -369,6 +369,8 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
 /** key 的每分钟请求上限：失焦或回车提交，0 表示不限。 */
 function KeyRpmInput({ value, disabled, label, onCommit }: { value: number; disabled: boolean; label: string; onCommit: (value: number) => void }) {
   const [draft, setDraft] = useState(String(value))
+  // 回车提交后失焦会立刻再触发一次 commit：同一值在极短时间内只提交一次，失败后仍可重试
+  const lastSentAt = useRef(0)
   useEffect(() => setDraft(String(value)), [value])
   const commit = () => {
     const next = Number(draft)
@@ -376,6 +378,8 @@ function KeyRpmInput({ value, disabled, label, onCommit }: { value: number; disa
       setDraft(String(value))
       return
     }
+    if (Date.now() - lastSentAt.current < 400) return
+    lastSentAt.current = Date.now()
     onCommit(next)
   }
   return (
@@ -533,7 +537,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
 
   const onSubmit = handleSubmit(
     (values) => {
-      const timeouts: Record<string, number> = {}
+      const timeouts: ChannelTimeouts = {}
       if (values.connectSec.trim()) timeouts.connect_sec = Number(values.connectSec)
       if (values.firstTokenSec.trim()) timeouts.first_token_sec = Number(values.firstTokenSec)
       if (values.overallSec.trim()) timeouts.overall_sec = Number(values.overallSec)

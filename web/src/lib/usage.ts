@@ -3,9 +3,12 @@ import type { UsageDailyPoint, UsageHourlyPoint } from '../api/types'
 const FIELDS = ['requests', 'success', 'tokens_in', 'tokens_out', 'cache_read_tokens', 'cost_micros', 'priced_requests', 'unpriced_requests', 'no_usage_requests', 'unknown_cost_requests'] as const
 
 /** 本地日键（YYYY-MM-DD）：用本地时区拆年月日，不依赖 toLocaleDateString 的实现差异。 */
-export function localDayKey(iso: string): string {
-  const d = new Date(iso)
+export function localDateKey(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function localDayKey(iso: string): string {
+  return localDateKey(new Date(iso))
 }
 
 /**
