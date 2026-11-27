@@ -35,6 +35,17 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': 'error',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+      // mutation 失败反馈只有 lib/mutationCache 一个出处：页面内联展示错误的 hook 声明 meta.silentError，
+      // 不得在 mutate / useMutation 的 onError、onSettled 里再调 notify.*（会与全局 Toast 叠成两条）
+      'no-restricted-syntax': ['error', {
+        selector: "Property[key.name=/^on(Error|Settled)$/] CallExpression[callee.object.name='notify']",
+        message: 'mutation 失败反馈由 lib/mutationCache 统一弹出；页面内联展示错误请给 hook 声明 meta.silentError，不要在 onError / onSettled 里调用 notify.*。',
+      }],
     },
+  },
+  // 唯一允许在 MutationCache.onError 里弹 Toast 的出处
+  {
+    files: ['src/lib/mutationCache.ts'],
+    rules: { 'no-restricted-syntax': 'off' },
   },
 )

@@ -176,7 +176,7 @@ export default function Tokens() {
 
 function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => void }) {
   const create = useCreateToken()
-  const update = useUpdateToken()
+  const update = useUpdateToken({ silentError: true })
   const catalog = useModelCatalog()
   const formID = 'token-form'
   const modelsId = useId()

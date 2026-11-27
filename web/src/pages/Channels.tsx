@@ -224,7 +224,6 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
                   if (!d) notify.success(t('channels.catalog.upToDate'))
                   else notify.info(tf('channels.catalog.synced', { added: d.added, removed: d.removed }))
                 },
-                onError: (err) => notify.error(err, t('channels.catalog.syncFailed')),
               })}
             >
               <RefreshCw size={13} />
@@ -406,7 +405,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const channelDetail = useChannel(channel?.id ?? null)
   const usagePrices = useUsagePrices()
   const upsertPrice = useUpsertPriceOverride()
-  const addKeys = useBatchAddKeys()
+  const addKeys = useBatchAddKeys({ silentError: true })
   const formID = 'channel-form'
   const modelsId = useId()
   const [showModelPicker, setShowModelPicker] = useState(false)

@@ -38,6 +38,8 @@ export function useSetupAdmin() {
   return useMutation({
     mutationFn: (data: { username: string; password: string }) =>
       api<{ username: string; setup: boolean }>('/admin/api/auth/setup', jsonBody(data)),
+    // 首启页在表单顶部内联展示错误
+    meta: { silentError: true },
     // 设置成功后立刻更新状态缓存，否则登录页会读到旧的 setup_required=true 再跳回 /setup
     onSuccess: () => qc.setQueryData<SetupStatus>(['setup-status'], { setup_required: false }),
   })
@@ -76,6 +78,8 @@ export function useApplyUpdate() {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    // UpdateDialog 在弹窗内用 Alert 展示失败阶段与原因
+    meta: { silentError: true },
   })
 }
 
@@ -105,6 +109,8 @@ export function useCreateBackup() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => api<{ name: string }>('/admin/api/backups', { method: 'POST' }),
+    // BackupCard 用卡片内 Alert 展示失败
+    meta: { silentError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
   })
 }
@@ -113,6 +119,7 @@ export function useDeleteBackup() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (name: string) => api<{ deleted: boolean }>(`/admin/api/backups/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    meta: { silentError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
   })
 }
@@ -125,6 +132,7 @@ export function useRestoreBackup() {
       form.append('file', file)
       return api<{ restart_required: boolean; safety_backup: string }>('/admin/api/backups/restore', { method: 'POST', body: form })
     },
+    meta: { silentError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
   })
 }
@@ -134,6 +142,8 @@ export function useSaveAlerts() {
   return useMutation({
     mutationFn: (data: { enabled: boolean; preset: string; url: string; events: string[] }) =>
       api<{ setting: AlertSetting }>('/admin/api/alerts', { method: 'PUT', body: JSON.stringify(data) }),
+    // AlertCard 在操作按钮上方内联展示保存与测试失败
+    meta: { silentError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
   })
 }
@@ -142,6 +152,7 @@ export function useTestAlert() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => api<{ record: AlertRecord }>('/admin/api/alerts/test', { method: 'POST' }),
+    meta: { silentError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
   })
 }
@@ -227,6 +238,8 @@ export function useSaveChannel() {
         ? api<Channel>(`/admin/api/channels/${id}`, { method: 'PUT', body: JSON.stringify(body) })
         : api<Channel>('/admin/api/channels', jsonBody(body))
     },
+    // ChannelForm 在弹窗正文顶部内联展示错误
+    meta: { silentError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['channels'] }),
   })
 }
@@ -269,6 +282,8 @@ export function useSyncChannelCatalog() {
 export function usePreviewChannelModels() {
   return useMutation({
     mutationFn: (id: number) => api<ModelPreview>(`/admin/api/channels/${id}/models/preview`, { method: 'POST' }),
+    // ChannelForm 在「获取上游模型」按钮下方内联展示失败
+    meta: { silentError: true },
   })
 }
 
@@ -281,11 +296,13 @@ export function useModelCatalog() {
 }
 
 // ---------- 凭据 ----------
-export function useBatchAddKeys() {
+/** silentError：ChannelForm 内联展示导入失败时为 true；KeysPanel 只靠全局 Toast。 */
+export function useBatchAddKeys({ silentError = false }: { silentError?: boolean } = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { channelId: number; keys: string }) =>
       api<{ added: number; duplicates?: number; invalid?: number }>(`/admin/api/channels/${data.channelId}/keys`, jsonBody({ keys: data.keys })),
+    meta: silentError ? { silentError: true } : undefined,
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['channels'] })
       qc.invalidateQueries({ queryKey: ['channel', vars.channelId] })
@@ -329,6 +346,8 @@ export function useCreateToken() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: TokenGovernanceInput) => api<{ token: Token; key: string }>('/admin/api/tokens', jsonBody(data)),
+    // TokenDialog 在表单顶部内联展示错误
+    meta: { silentError: true },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tokens'] }),
   })
 }
@@ -343,13 +362,15 @@ export interface TokenGovernanceInput {
   concurrency_limit?: number
 }
 
-export function useUpdateToken() {
+/** silentError：TokenDialog 内联展示错误时为 true；列表里的启停开关只靠全局 Toast。 */
+export function useUpdateToken({ silentError = false }: { silentError?: boolean } = {}) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { id: number } & Record<string, unknown>) => {
       const { id, ...body } = data
       return api<{ updated: boolean }>(`/admin/api/tokens/${id}`, { method: 'PUT', body: JSON.stringify(body) })
     },
+    meta: silentError ? { silentError: true } : undefined,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tokens'] }),
   })
 }
@@ -416,6 +437,8 @@ export function useLogsStats(filters: Omit<LogFilters, 'page' | 'page_size'>) {
 export function useChannelsTestAll() {
   return useMutation({
     mutationFn: () => api<{ items: TestAllItem[]; timeout_sec: number }>('/admin/api/channels/test-all', { method: 'POST' }),
+    // TestAllPanel 用 Alert 内联展示失败
+    meta: { silentError: true },
   })
 }
 
