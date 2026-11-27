@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "test": "npm run test:unit && npm run test:ui",
-    "test:unit": "node --experimental-strip-types --test tests/modelSelection.test.ts tests/playgroundProtocol.test.ts tests/channelPresets.test.ts tests/runtime.test.ts tests/i18n.test.ts",
+    "test:unit": "node --experimental-strip-types --test tests/modelSelection.test.ts tests/playgroundProtocol.test.ts tests/channelPresets.test.ts tests/runtime.test.ts tests/i18n.test.ts tests/errorCodes.test.ts",
     "test:ui": "vitest run",
     "lint": "eslint src tests --max-warnings=0",
     "audit:layout": "node scripts/layout-audit.mjs",

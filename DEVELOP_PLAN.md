@@ -77,6 +77,9 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-27 执行 ⑥ 数据层：降级边界不再写「模型降级」渠道名与中文原因文案，只落 reason / from / to（展示由前端按分类字典本地化）；settings scope.runtime_source 改英文
   - 2026-11-27 验证 新增 tests/ui/t109.test.tsx（全局 Toast 与 silentError、safeNext），Layout 测试改为 401 带 next 跳转 / 网络错误留页重试，Login 测试补回跳与非法 next 两例，i18n 单测补 localeFor；前端 lint 0 警告、unit 14 + ui 66 通过、build 通过；gofmt / vet 干净、relay + admin 包测试 ok、make build 通过；audit:layout 907/1440 × 浅深 × 中英四组全绿（英文日期已为 en-US 格式）；18787 headless 端到端：删 cookie 后点刷新 → `/login?next=%2Flogs` 且显示「登录已过期」→ 重新登录回到 /logs 列表 20 行
   - 2026-11-27 备注 ③ 全量稳定错误码与 ⑤ UTC 小时聚合尚未动工，下一步从 ③ 开始
+  - 2026-11-27 执行 ③ 错误码：管理台 `fail` 改为四参（status / code / message）唯一出口 `httpx.FailCode`，149 处调用点全部带稳定 code（静态文案按语义命名，`err.Error()` 动态校验按状态码归为 invalid_param / not_found / conflict），`importFailure` 补 code 字段，relay/playground 三处同步；删除无引用的 `httpx.Fail`。前端新增 `lib/errors.ts`：code → `error.*` 字典（zh / en 各 74 条），Toaster 与 21 处内联 Alert 统一走 `errorMessage()`；带细节的 code 本地化前缀并保留细节（含 settings / price_overrides / channels[i] 等服务端前缀剥离）
+  - 2026-11-27 验证 ③：Go 新增 `TestEveryFailCallCarriesStableCode`（源码扫描：三参写法与 `httpx.Fail` 直接失败）；前端新增 `tests/errorCodes.test.ts`（扫描 Go 源码的全部 code 与字典 / errors.ts 映射双向一致）与 `errorMessage` 用例；gofmt / vet 干净、go test -p 1 ./... 全 ok、make build 通过；前端 lint 0 警告、unit 15 + ui 69 通过；18787 实测：400 信封为 `{"code":"invalid_param","message":…}`，登录错密在英文界面显示「Wrong username or password」、中文显示「用户名或密码错误」
+  - 2026-11-27 备注 ③ 的边界：领域层（settings / usage / config 校验）抛出的动态细节文本仍可能为中文，英文界面以「本地化前缀 + 原文细节」呈现；彻底本地化需领域错误也 code 化，另立卡处理
 
 #### T110: 表单体系与 UI 细节收尾（P2，代码审查）
 

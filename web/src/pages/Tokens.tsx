@@ -11,6 +11,7 @@ import { clientEnvSnippet, modelListSnippets } from '../lib/clipboard'
 import { currentBasePath } from '../lib/runtime'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
+import { errorMessage } from '../lib/errors'
 
 /** 创建成功：明文 key 仅此一次；同时给出可直接粘贴到客户端的环境变量片段。 */
 function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () => void }) {
@@ -218,7 +219,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
     >
       <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]">
         {(create.isError || update.isError) && (
-          <Alert tone="danger">{((create.isError ? create.error : update.error) as Error).message}</Alert>
+          <Alert tone="danger">{errorMessage(create.isError ? create.error : update.error)}</Alert>
         )}
         <div className="eg-grid eg-grid-auto-wide">
           <Field label={t('tokens.form.name')} hint={t('tokens.form.nameHint')}>
@@ -266,7 +267,7 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
             }))}
             initialModels={splitLines(modelsText)}
             loading={catalog.isPending}
-            error={catalog.isError ? (catalog.error as Error).message : undefined}
+            error={catalog.isError ? errorMessage(catalog.error) : undefined}
             onCancel={() => setShowModelPicker(false)}
             onApply={(selected, mode) => {
               const next = applyModelSelection(splitLines(modelsText), selected, mode)

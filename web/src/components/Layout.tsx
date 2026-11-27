@@ -9,6 +9,7 @@ import { loginUrl } from '../lib/session'
 import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
 import { getLocale, setLocale, t, tf, useLocale, type MessageKey } from '../lib/i18n'
 import { useMediaQuery } from '../lib/useMediaQuery'
+import { errorMessage } from '../lib/errors'
 
 const nav: { to: string; label: MessageKey; end?: boolean; icon: typeof LayoutDashboard }[] = [
   { to: '/', label: 'nav.dashboard', icon: LayoutDashboard, end: true },
@@ -166,7 +167,7 @@ export default function Layout() {
         <div key={location.pathname} className="eg-page eg-page-in">
           {me.isError && !unauthorized && (
             <Alert tone="danger" className="mb-[var(--eg-section-gap)]" action={<Button size="sm" variant="outline" onClick={() => void me.refetch()}>{t('common.retry')}</Button>}>
-              {t('session.loadFailed')} {(me.error as Error).message}
+              {t('session.loadFailed')} {errorMessage(me.error)}
             </Alert>
           )}
           <Outlet />

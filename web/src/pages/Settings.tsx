@@ -10,6 +10,7 @@ import ModelFallbackCard from '../components/ModelFallbackCard'
 import ConfigTransferCard from '../components/ConfigTransferCard'
 import AuditLogCard from '../components/AuditLogCard'
 import { fmtTime } from '../lib/format'
+import { errorMessage } from '../lib/errors'
 
 type FormState = {
   connectTimeoutSec: string
@@ -46,7 +47,7 @@ export default function Settings() {
     return (
       <div className="eg-page-stack">
         <PageHeader title={t('page.settings.title')} description={t('page.settings.desc')} />
-        <Alert tone="danger">{settings.isError ? (settings.error as Error).message : t('common.settingsMissing')}</Alert>
+        <Alert tone="danger">{settings.isError ? errorMessage(settings.error) : t('common.settingsMissing')}</Alert>
       </div>
     )
   }

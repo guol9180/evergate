@@ -4,6 +4,7 @@ import { useChannelsTestAll } from '../api/hooks'
 import { Alert, Button, Card, Select, StatusBadge, Td, Th } from './ui'
 import { fmtMs } from '../lib/format'
 import { t, tf } from '../lib/i18n'
+import { errorMessage } from '../lib/errors'
 
 type SortKey = 'latency' | 'name' | 'result'
 
@@ -45,7 +46,7 @@ export default function TestAllPanel() {
     )
   }
   if (testAll.isError && !testAll.data) {
-    return <Alert tone="danger">{tf('testAll.failed', { message: (testAll.error as Error).message })}</Alert>
+    return <Alert tone="danger">{tf('testAll.failed', { message: errorMessage(testAll.error) })}</Alert>
   }
   if (!testAll.data) {
     return (

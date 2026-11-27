@@ -30,12 +30,12 @@ type testAllItem struct {
 // testAllChannels 对全部启用渠道并发执行与健康探测相同的模型列表 GET，用于一键摸底与按延迟排序。
 func (a *API) testAllChannels(c *gin.Context) {
 	if a.opt.Health == nil {
-		fail(c, http.StatusInternalServerError, "健康探测器未初始化")
+		fail(c, http.StatusInternalServerError, "prober_not_ready", "健康探测器未初始化")
 		return
 	}
 	var channels []*store.Channel
 	if err := a.opt.DB.Where("enabled = ?", true).Order("priority asc, id asc").Find(&channels).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	timeout, nextInterval := 10*time.Second, 5*time.Minute

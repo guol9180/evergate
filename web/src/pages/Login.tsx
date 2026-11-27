@@ -6,6 +6,7 @@ import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
 import { Alert, Button, Field, Input, focusFirstInvalid } from '../components/ui'
 import AuthCard from '../components/AuthCard'
+import { errorMessage } from '../lib/errors'
 
 type FieldErrors = { username?: string; password?: string }
 
@@ -55,7 +56,7 @@ export default function Login() {
       <form ref={formRef} onSubmit={onSubmit} className="space-y-4" noValidate>
         {redirected && <Alert tone="info">{t('session.expired')}</Alert>}
         {/* 提交错误放在表单顶部：先读原因再扫字段，而不是夹在密码框和按钮之间 */}
-        {login.isError && <Alert tone="danger">{(login.error as Error).message}</Alert>}
+        {login.isError && <Alert tone="danger">{errorMessage(login.error)}</Alert>}
         <Field label={t('login.username')} error={errors.username}>
           <Input value={username} onChange={(e) => { setUsername(e.target.value); setErrors((current) => ({ ...current, username: undefined })) }} placeholder="admin" autoComplete="username" />
         </Field>

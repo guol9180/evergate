@@ -96,6 +96,7 @@ type configImportResult struct {
 // importFailure 是导入事务内可直接回给客户端的校验失败（400），与内部错误区分。
 type importFailure struct {
 	status  int
+	code    string
 	message string
 }
 
@@ -104,22 +105,22 @@ func (e *importFailure) Error() string { return e.message }
 func (a *API) exportConfig(c *gin.Context) {
 	var channels []*store.Channel
 	if err := a.opt.DB.Order("id asc").Find(&channels).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询渠道失败")
+		fail(c, http.StatusInternalServerError, "channels_query_failed", "查询渠道失败")
 		return
 	}
 	var fallbacks []*store.ModelFallback
 	if err := a.opt.DB.Order("model asc").Find(&fallbacks).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询降级链失败")
+		fail(c, http.StatusInternalServerError, "fallbacks_query_failed", "查询降级链失败")
 		return
 	}
 	var prices []*store.ModelPrice
 	if err := a.opt.DB.Order("channel_id asc, model asc").Find(&prices).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询价格失败")
+		fail(c, http.StatusInternalServerError, "prices_query_failed", "查询价格失败")
 		return
 	}
 	var tokens []*store.Token
 	if err := a.opt.DB.Order("id asc").Find(&tokens).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询令牌失败")
+		fail(c, http.StatusInternalServerError, "tokens_query_failed", "查询令牌失败")
 		return
 	}
 	channelName := make(map[int64]string, len(channels))
@@ -184,11 +185,11 @@ func (a *API) exportConfig(c *gin.Context) {
 func (a *API) importConfig(c *gin.Context) {
 	var in configExport
 	if err := c.ShouldBindJSON(&in); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
 	if in.Version != configExportVersion {
-		fail(c, http.StatusBadRequest, fmt.Sprintf("不支持的配置版本 %d", in.Version))
+		fail(c, http.StatusBadRequest, "unsupported_config_version", fmt.Sprintf("不支持的配置版本 %d", in.Version))
 		return
 	}
 	// 先全量校验，避免半成功。
@@ -202,11 +203,11 @@ func (a *API) importConfig(c *gin.Context) {
 			Timeouts: ch.Timeouts,
 		}
 		if err := req.normalize(); err != nil {
-			fail(c, http.StatusBadRequest, fmt.Sprintf("channels[%d]: %v", i, err))
+			fail(c, http.StatusBadRequest, "config_channels_invalid", fmt.Sprintf("channels[%d]: %v", i, err))
 			return
 		}
 		if err := a.validateEffectiveChannelTimeouts(req.Timeouts); err != nil {
-			fail(c, http.StatusBadRequest, fmt.Sprintf("channels[%d]: %v", i, err))
+			fail(c, http.StatusBadRequest, "config_channels_invalid", fmt.Sprintf("channels[%d]: %v", i, err))
 			return
 		}
 		reqs = append(reqs, req)
@@ -219,23 +220,23 @@ func (a *API) importConfig(c *gin.Context) {
 		return items
 	}())
 	if err != nil {
-		fail(c, http.StatusBadRequest, "model_fallbacks: "+err.Error())
+		fail(c, http.StatusBadRequest, "config_fallbacks_invalid", "model_fallbacks: "+err.Error())
 		return
 	}
 	if in.Settings != nil && a.opt.Settings == nil {
-		fail(c, http.StatusServiceUnavailable, "系统设置未配置")
+		fail(c, http.StatusServiceUnavailable, "settings_not_ready", "系统设置未配置")
 		return
 	}
 	// 价格数值先校验，渠道名映射在事务内完成；非法价格不开启事务。
 	for _, p := range in.PriceOverrides {
 		if err := usage.ValidatePrice(p.priceInput()); err != nil {
-			fail(c, http.StatusBadRequest, "price_overrides: "+err.Error())
+			fail(c, http.StatusBadRequest, "config_price_overrides_invalid", "price_overrides: "+err.Error())
 			return
 		}
 	}
 	if in.PriceDefault != nil {
 		if err := usage.ValidatePrice(in.PriceDefault.priceInput()); err != nil {
-			fail(c, http.StatusBadRequest, "price_default: "+err.Error())
+			fail(c, http.StatusBadRequest, "config_price_default_invalid", "price_default: "+err.Error())
 			return
 		}
 	}
@@ -293,7 +294,7 @@ func (a *API) importConfig(c *gin.Context) {
 		// 设置：复用管理台同一校验，事务内写入，提交后再发布快照。
 		if in.Settings != nil {
 			if err := a.opt.Settings.SaveTx(tx, *in.Settings); err != nil {
-				return &importFailure{status: http.StatusBadRequest, message: "settings: " + err.Error()}
+				return &importFailure{status: http.StatusBadRequest, code: "config_settings_invalid", message: "settings: " + err.Error()}
 			}
 			result.Updated++
 		}
@@ -323,7 +324,7 @@ func (a *API) importConfig(c *gin.Context) {
 				overrides = append(overrides, usage.ImportPrice{ChannelID: id, Model: p.Model, Price: p.priceInput()})
 			}
 			if err := a.opt.Usage.ApplyImport(tx, def, overrides); err != nil {
-				return &importFailure{status: http.StatusBadRequest, message: "price_overrides: " + err.Error()}
+				return &importFailure{status: http.StatusBadRequest, code: "config_price_overrides_invalid", message: "price_overrides: " + err.Error()}
 			}
 			if def != nil {
 				result.Updated++
@@ -354,10 +355,10 @@ func (a *API) importConfig(c *gin.Context) {
 			}
 			allowedModels, allowedIPs, nerr := normalizeTokenRules(t.AllowedModels, t.AllowedIPs)
 			if nerr != nil {
-				return &importFailure{status: http.StatusBadRequest, message: fmt.Sprintf("tokens[%s]: %v", name, nerr)}
+				return &importFailure{status: http.StatusBadRequest, code: "config_tokens_invalid", message: fmt.Sprintf("tokens[%s]: %v", name, nerr)}
 			}
 			if t.Quota < 0 {
-				return &importFailure{status: http.StatusBadRequest, message: fmt.Sprintf("tokens[%s]: 额度不能为负数", name)}
+				return &importFailure{status: http.StatusBadRequest, code: "negative_quota", message: fmt.Sprintf("tokens[%s]: 额度不能为负数", name)}
 			}
 			raw := make([]byte, 24)
 			if _, rerr := rand.Read(raw); rerr != nil {
@@ -390,13 +391,13 @@ func (a *API) importConfig(c *gin.Context) {
 	if err != nil {
 		var f *importFailure
 		if errors.As(err, &f) {
-			fail(c, f.status, f.message)
+			fail(c, f.status, f.code, f.message)
 			return
 		}
 		if a.opt.Logger != nil {
 			a.opt.Logger.Warn("config import failed", slog.Any("error", err))
 		}
-		fail(c, http.StatusInternalServerError, "导入失败，改动已回滚")
+		fail(c, http.StatusInternalServerError, "import_rolled_back", "导入失败，改动已回滚")
 		return
 	}
 	// 事务提交后再发布缓存快照，失败不会留下半成品。

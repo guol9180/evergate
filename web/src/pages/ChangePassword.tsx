@@ -7,6 +7,7 @@ import { t } from '../lib/i18n'
 import { Alert, Button, Field, Input, focusFirstInvalid } from '../components/ui'
 import { notify } from '../components/Toaster'
 import AuthCard from '../components/AuthCard'
+import { errorMessage } from '../lib/errors'
 
 type FieldErrors = { newPassword?: string; confirm?: string }
 
@@ -47,7 +48,7 @@ export default function ChangePassword() {
   return (
     <AuthCard title={t('changePassword.heading')} subtitle={t('changePassword.hint')}>
       <form ref={formRef} onSubmit={onSubmit} className="space-y-4" noValidate>
-        {change.isError && <Alert tone="danger">{(change.error as Error).message}</Alert>}
+        {change.isError && <Alert tone="danger">{errorMessage(change.error)}</Alert>}
         <Field label={t('changePassword.old')}>
           <Input type="password" value={oldPwd} onChange={(e) => setOldPwd(e.target.value)} autoComplete="current-password" autoFocus />
         </Field>

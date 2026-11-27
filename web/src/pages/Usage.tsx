@@ -19,6 +19,7 @@ import PriceTable, { fmtPriceMicros } from '../components/PriceTable'
 import { fmtInt, fmtMoney } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
+import { errorMessage } from '../lib/errors'
 
 const today = () => new Date().toISOString().slice(0, 10)
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)
@@ -82,7 +83,7 @@ export default function Usage() {
         </div>
       </Card>
 
-      {report.isError && <Alert tone="danger">{(report.error as Error).message}</Alert>}
+      {report.isError && <Alert tone="danger">{errorMessage(report.error)}</Alert>}
 
       {prices.data && !prices.data.default && prices.data.overrides.length === 0 && (
         <Alert tone="warning" title={t('usage.noPrice.title')}>
@@ -286,7 +287,7 @@ function PriceCard() {
     <Card>
       <h3 className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign size={15} className="text-success-text" /> {t('usage.price.title')}</h3>
       <p className="mt-1 text-xs text-subtle">{t('usage.price.unit')}</p>
-      {prices.isError && <Alert tone="danger" className="mt-3">{(prices.error as Error).message}</Alert>}
+      {prices.isError && <Alert tone="danger" className="mt-3">{errorMessage(prices.error)}</Alert>}
       <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
         <div className="mb-2 text-xs font-medium text-muted">{t('usage.price.globalDefault')}</div>
         <div className="grid grid-cols-2 gap-2">
@@ -371,7 +372,7 @@ function PriceCard() {
             )}
             <div className="mt-2">
               {presetDetail.isError ? (
-                <Alert tone="danger">{(presetDetail.error as Error).message}</Alert>
+                <Alert tone="danger">{errorMessage(presetDetail.error)}</Alert>
               ) : presetDetail.isPending ? (
                 <div className="flex justify-center py-3"><Spinner /></div>
               ) : presetDetail.data && (presetDetail.data.prices?.length ?? 0) > 0 ? (

@@ -13,6 +13,7 @@ import { t, tf } from '../lib/i18n'
 import ModelMappingEditor from '../components/ModelMappingEditor'
 import PriceTable from '../components/PriceTable'
 import TestAllPanel from '../components/TestAllPanel'
+import { errorMessage } from '../lib/errors'
 
 export default function Channels() {
   usePageTitle(t('page.channels.title'))
@@ -214,7 +215,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
   const [keysText, setKeysText] = useState('')
 
   if (detail.isPending) return <Card className="eg-card-fluid"><SkeletonRows rows={3} /></Card>
-  if (detail.isError) return <Card className="p-4"><ErrorText>{(detail.error as Error).message}</ErrorText></Card>
+  if (detail.isError) return <Card className="p-4"><ErrorText>{errorMessage(detail.error)}</ErrorText></Card>
 
   return (
     <Card className="eg-expand-in">
@@ -444,7 +445,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       <form id={formID} ref={formRef} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]" noValidate>
         {/* 提交错误放弹窗正文顶部：打开即见，不藏在「保存」按钮上方 */}
         {save.isError
-          ? <Alert tone="danger">{(save.error as Error).message}</Alert>
+          ? <Alert tone="danger">{errorMessage(save.error)}</Alert>
           : addKeys.isError
             ? (
               <Alert
@@ -453,7 +454,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
                   ? <Button size="sm" variant="outline" loading={addKeys.isPending} onClick={() => importKeys(createdChannelID)}>{t('channels.form.retryImport')}</Button>
                   : undefined}
               >
-                {tf('channels.form.keyImportFailed', { message: (addKeys.error as Error).message })}
+                {tf('channels.form.keyImportFailed', { message: errorMessage(addKeys.error) })}
               </Alert>
             )
             : null}
@@ -630,7 +631,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             />
           )}
           {preview.isError && !preview.data && (
-            <ErrorText>{tf('channels.form.fetchFailed', { message: (preview.error as Error).message })}</ErrorText>
+            <ErrorText>{tf('channels.form.fetchFailed', { message: errorMessage(preview.error) })}</ErrorText>
           )}
         </div>
         {presetMode && (

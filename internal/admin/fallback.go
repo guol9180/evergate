@@ -23,7 +23,7 @@ type modelFallbackReq struct {
 func (a *API) listModelFallbacks(c *gin.Context) {
 	var items []*store.ModelFallback
 	if err := a.opt.DB.Order("model asc").Find(&items).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询模型降级链失败")
+		fail(c, http.StatusInternalServerError, "fallbacks_query_failed", "查询模型降级链失败")
 		return
 	}
 	ok(c, gin.H{"items": items})
@@ -34,12 +34,12 @@ func (a *API) replaceModelFallbacks(c *gin.Context) {
 		Items []modelFallbackReq `json:"items"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
 	rows, err := normalizeModelFallbacks(req.Items)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	err = a.opt.DB.Transaction(func(tx *gorm.DB) error {
@@ -52,7 +52,7 @@ func (a *API) replaceModelFallbacks(c *gin.Context) {
 		return tx.Create(&rows).Error
 	})
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "保存模型降级链失败："+err.Error())
+		fail(c, http.StatusInternalServerError, "fallbacks_save_failed", "保存模型降级链失败："+err.Error())
 		return
 	}
 	ok(c, gin.H{"items": rows})

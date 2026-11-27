@@ -6,6 +6,7 @@ import { Alert, Button, Field, Input, Spinner, focusFirstInvalid } from '../comp
 import AuthCard from '../components/AuthCard'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t } from '../lib/i18n'
+import { errorMessage } from '../lib/errors'
 
 const usernamePattern = /^[A-Za-z0-9_.-]{3,32}$/
 
@@ -54,7 +55,7 @@ export default function Setup() {
     setup.mutate({ username: name, password })
   }
 
-  const serverError = setup.isError ? (setup.error as Error).message : status.isError ? (status.error as Error).message : ''
+  const serverError = setup.isError ? errorMessage(setup.error) : status.isError ? errorMessage(status.error) : ''
 
   return (
     <AuthCard

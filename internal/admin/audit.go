@@ -115,12 +115,12 @@ func (a *API) listAuditLogs(c *gin.Context) {
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	var items []*store.AuditLog
 	if err := q.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&items).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	ok(c, gin.H{"items": items, "total": total, "page": page, "page_size": pageSize})

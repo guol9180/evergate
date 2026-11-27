@@ -78,7 +78,7 @@ func applyLogFilters(c *gin.Context, q *gorm.DB) (*gorm.DB, error) {
 func (a *API) logModelFacets(c *gin.Context) {
 	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	var rows []struct {
@@ -86,7 +86,7 @@ func (a *API) logModelFacets(c *gin.Context) {
 		Requests int64  `gorm:"column:requests"`
 	}
 	if err := q.Select("model, COUNT(*) AS requests").Group("model").Order("requests DESC, model ASC").Limit(500).Scan(&rows).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	items := make([]gin.H, 0, len(rows))
@@ -109,7 +109,7 @@ type logStats struct {
 func (a *API) logStatsHandler(c *gin.Context) {
 	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	var rows []struct {
@@ -117,7 +117,7 @@ func (a *API) logStatsHandler(c *gin.Context) {
 		TotalMS    int64 `gorm:"column:total_ms"`
 	}
 	if err := q.Select("status_code, total_ms").Find(&rows).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	ok(c, gin.H{"stats": computeLogStats(rows)})
@@ -169,12 +169,12 @@ func percentile(sorted []int64, p float64) int64 {
 func (a *API) exportLogs(c *gin.Context) {
 	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	var logs []*store.RequestLog
 	if err := q.Order("id desc").Limit(logExportMaxRows).Find(&logs).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	buf := &bytes.Buffer{}

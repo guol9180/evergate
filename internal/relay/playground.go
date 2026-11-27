@@ -68,12 +68,12 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	defer reqSpan.end()
 	req, err := parsePlaygroundRequest(c)
 	if err != nil {
-		httpx.Fail(c, http.StatusBadRequest, err.Error())
+		httpx.FailCode(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	body, err := buildPlaygroundBody(req)
 	if err != nil {
-		httpx.Fail(c, http.StatusBadRequest, err.Error())
+		httpx.FailCode(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	dispatchBody := body
@@ -85,7 +85,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 		}
 		dispatchBody, err = geminiDispatchBody(body, req.Model, geminiMethodName)
 		if err != nil {
-			httpx.Fail(c, http.StatusBadRequest, "构造 Gemini 请求失败")
+			httpx.FailCode(c, http.StatusBadRequest, "invalid_param", "gemini request build failed")
 			return
 		}
 	}

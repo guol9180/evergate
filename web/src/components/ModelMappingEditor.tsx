@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { Button, FieldError, IconButton, Input, Textarea } from './ui'
 import { t, tf } from '../lib/i18n'
+import { errorMessage } from '../lib/errors'
 
 type Mapping = Record<string, string>
 type Row = { from: string; to: string }
@@ -73,7 +74,7 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
       setJsonError('')
       onChange(next)
     } catch (err) {
-      setJsonError((err as Error).message)
+      setJsonError(errorMessage(err))
     }
   }
 

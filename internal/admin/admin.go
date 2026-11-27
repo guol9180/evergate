@@ -137,7 +137,7 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 // playground 仅负责会话保护；具体调度与流式输出由 relay 提供。
 func (a *API) playground(c *gin.Context) {
 	if a.opt.Playground == nil {
-		fail(c, http.StatusNotImplemented, "Playground 未启用")
+		fail(c, http.StatusNotImplemented, "playground_disabled", "Playground 未启用")
 		return
 	}
 	a.opt.Playground(c)
@@ -151,7 +151,7 @@ func (a *API) accessMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		fail(c, http.StatusForbidden, "管理 API 仅允许本机访问；远程管理请显式关闭 admin_loopback_only")
+		fail(c, http.StatusForbidden, "admin_local_only", "管理 API 仅允许本机访问；远程管理请显式关闭 admin_loopback_only")
 		c.Abort()
 	}
 }
@@ -161,7 +161,7 @@ func (a *API) login(c *gin.Context) {
 	if wait := a.loginLimiter.blockedFor(clientIP, a.now()); wait > 0 {
 		seconds := (wait + time.Second - 1) / time.Second
 		c.Header("Retry-After", strconv.FormatInt(int64(seconds), 10))
-		fail(c, http.StatusTooManyRequests, "登录尝试过多，请稍后重试")
+		fail(c, http.StatusTooManyRequests, "login_rate_limited", "登录尝试过多，请稍后重试")
 		return
 	}
 	var req struct {
@@ -169,13 +169,13 @@ func (a *API) login(c *gin.Context) {
 		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "请输入用户名和密码")
+		fail(c, http.StatusBadRequest, "credentials_required", "请输入用户名和密码")
 		return
 	}
 	admin, err := store.GetAdminByUsername(a.opt.DB, req.Username)
 	if err != nil || !store.CheckAdminPassword(admin, req.Password) {
 		a.loginLimiter.recordFailure(clientIP, a.now())
-		fail(c, http.StatusUnauthorized, "用户名或密码错误")
+		fail(c, http.StatusUnauthorized, "invalid_credentials", "用户名或密码错误")
 		return
 	}
 	a.loginLimiter.recordSuccess(clientIP)
@@ -192,7 +192,7 @@ var adminUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{3,32}$`)
 func (a *API) setupStatus(c *gin.Context) {
 	required, err := store.SetupRequired(a.opt.DB)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "查询初始化状态失败")
+		fail(c, http.StatusInternalServerError, "setup_status_failed", "查询初始化状态失败")
 		return
 	}
 	ok(c, gin.H{"setup_required": required})
@@ -201,7 +201,7 @@ func (a *API) setupStatus(c *gin.Context) {
 // setupAdmin 首启管理员设置：仅在 admins 为空且请求来自本机时允许；成功后不自动登录。
 func (a *API) setupAdmin(c *gin.Context) {
 	if !isLoopback(c.ClientIP()) {
-		fail(c, http.StatusForbidden, "初始管理员设置仅允许本机访问")
+		fail(c, http.StatusForbidden, "setup_local_only", "初始管理员设置仅允许本机访问")
 		return
 	}
 	var req struct {
@@ -209,16 +209,16 @@ func (a *API) setupAdmin(c *gin.Context) {
 		Password string `json:"password" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误")
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
 		return
 	}
 	username := strings.TrimSpace(req.Username)
 	if !adminUsernamePattern.MatchString(username) {
-		fail(c, http.StatusBadRequest, "用户名需为 3–32 位字母、数字、下划线、点或连字符")
+		fail(c, http.StatusBadRequest, "invalid_username", "用户名需为 3–32 位字母、数字、下划线、点或连字符")
 		return
 	}
 	if err := store.ValidateAdminPassword(req.Password); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	// 单进程内串行，保证并发设置只有一个成功；跨进程由用户名唯一索引兜底
@@ -226,19 +226,19 @@ func (a *API) setupAdmin(c *gin.Context) {
 	defer a.setupMu.Unlock()
 	required, err := store.SetupRequired(a.opt.DB)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "查询初始化状态失败")
+		fail(c, http.StatusInternalServerError, "setup_status_failed", "查询初始化状态失败")
 		return
 	}
 	if !required {
-		fail(c, http.StatusForbidden, "管理员已存在，无法重复初始化")
+		fail(c, http.StatusForbidden, "already_initialized", "管理员已存在，无法重复初始化")
 		return
 	}
 	if err := store.CreateAdmin(a.opt.DB, username, req.Password); err != nil {
 		if stillRequired, _ := store.SetupRequired(a.opt.DB); !stillRequired {
-			fail(c, http.StatusForbidden, "管理员已存在，无法重复初始化")
+			fail(c, http.StatusForbidden, "already_initialized", "管理员已存在，无法重复初始化")
 			return
 		}
-		fail(c, http.StatusInternalServerError, "创建管理员失败")
+		fail(c, http.StatusInternalServerError, "setup_failed", "创建管理员失败")
 		return
 	}
 	c.Set("admin", username)
@@ -255,7 +255,7 @@ func (a *API) logout(c *gin.Context) {
 func (a *API) me(c *gin.Context) {
 	admin, err := store.GetAdminByUsername(a.opt.DB, c.GetString("admin"))
 	if err != nil {
-		fail(c, http.StatusUnauthorized, "会话无效")
+		fail(c, http.StatusUnauthorized, "session_invalid", "会话无效")
 		return
 	}
 	ok(c, gin.H{"username": admin.Username, "must_change_password": admin.MustChangePassword})
@@ -267,22 +267,22 @@ func (a *API) changePassword(c *gin.Context) {
 		NewPassword string `json:"new_password" binding:"required,min=8"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误（新密码至少 8 位）")
+		fail(c, http.StatusBadRequest, "password_too_short", "参数错误（新密码至少 8 位）")
 		return
 	}
 	admin, err := store.GetAdminByUsername(a.opt.DB, c.GetString("admin"))
 	if err != nil || !store.CheckAdminPassword(admin, req.OldPassword) {
-		fail(c, http.StatusUnauthorized, "旧密码错误")
+		fail(c, http.StatusUnauthorized, "wrong_old_password", "旧密码错误")
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "加密失败")
+		fail(c, http.StatusInternalServerError, "hash_failed", "加密失败")
 		return
 	}
 	if err := a.opt.DB.Model(&store.Admin{}).Where("id = ?", admin.ID).
 		Updates(map[string]any{"password_hash": string(hash), "must_change_password": false}).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "更新失败")
+		fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 		return
 	}
 	ok(c, gin.H{"changed": true})
@@ -290,7 +290,7 @@ func (a *API) changePassword(c *gin.Context) {
 
 func (a *API) systemUpdate(c *gin.Context) {
 	if a.opt.Update == nil {
-		fail(c, http.StatusServiceUnavailable, "更新检查未配置")
+		fail(c, http.StatusServiceUnavailable, "update_not_configured", "更新检查未配置")
 		return
 	}
 	// 检查顺序为 npm 双源 → GitHub 兜底，最坏情况需覆盖各源超时预算。
@@ -298,7 +298,7 @@ func (a *API) systemUpdate(c *gin.Context) {
 	defer cancel()
 	status, err := a.opt.Update.Check(ctx)
 	if err != nil {
-		fail(c, http.StatusBadGateway, "更新检查失败："+err.Error())
+		fail(c, http.StatusBadGateway, "update_check_failed", "更新检查失败："+err.Error())
 		return
 	}
 	ok(c, status)
@@ -307,7 +307,7 @@ func (a *API) systemUpdate(c *gin.Context) {
 // applySystemUpdate 启动一键更新；任务异步执行，前端轮询 progress。
 func (a *API) applySystemUpdate(c *gin.Context) {
 	if a.opt.SelfUpdate == nil {
-		fail(c, http.StatusServiceUnavailable, "自动更新未配置")
+		fail(c, http.StatusServiceUnavailable, "update_not_configured", "自动更新未配置")
 		return
 	}
 	var req struct {
@@ -315,16 +315,16 @@ func (a *API) applySystemUpdate(c *gin.Context) {
 		Source  string `json:"source"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
-		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
 	job, err := a.opt.SelfUpdate.Start(req.Version, req.Source)
 	if err != nil {
 		if errors.Is(err, selfupdate.ErrBusy) {
-			fail(c, http.StatusConflict, err.Error())
+			fail(c, http.StatusConflict, "conflict", err.Error())
 			return
 		}
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	ok(c, job)
@@ -332,7 +332,7 @@ func (a *API) applySystemUpdate(c *gin.Context) {
 
 func (a *API) systemUpdateProgress(c *gin.Context) {
 	if a.opt.SelfUpdate == nil {
-		fail(c, http.StatusServiceUnavailable, "自动更新未配置")
+		fail(c, http.StatusServiceUnavailable, "update_not_configured", "自动更新未配置")
 		return
 	}
 	ok(c, gin.H{
@@ -344,11 +344,11 @@ func (a *API) systemUpdateProgress(c *gin.Context) {
 
 func (a *API) cancelSystemUpdate(c *gin.Context) {
 	if a.opt.SelfUpdate == nil {
-		fail(c, http.StatusServiceUnavailable, "自动更新未配置")
+		fail(c, http.StatusServiceUnavailable, "update_not_configured", "自动更新未配置")
 		return
 	}
 	if err := a.opt.SelfUpdate.Cancel(); err != nil {
-		fail(c, http.StatusConflict, err.Error())
+		fail(c, http.StatusConflict, "conflict", err.Error())
 		return
 	}
 	ok(c, gin.H{"cancelled": true})
@@ -356,7 +356,7 @@ func (a *API) cancelSystemUpdate(c *gin.Context) {
 
 func (a *API) getSystemSettings(c *gin.Context) {
 	if a.opt.Settings == nil {
-		fail(c, http.StatusServiceUnavailable, "系统设置未配置")
+		fail(c, http.StatusServiceUnavailable, "settings_not_ready", "系统设置未配置")
 		return
 	}
 	snapshot := a.opt.Settings.Snapshot()
@@ -376,17 +376,17 @@ func (a *API) getSystemSettings(c *gin.Context) {
 
 func (a *API) updateSystemSettings(c *gin.Context) {
 	if a.opt.Settings == nil {
-		fail(c, http.StatusServiceUnavailable, "系统设置未配置")
+		fail(c, http.StatusServiceUnavailable, "settings_not_ready", "系统设置未配置")
 		return
 	}
 	var req settings.Values
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
 	next, err := a.opt.Settings.UpdateValues(req)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	if a.opt.Pool != nil {
@@ -415,13 +415,13 @@ func (a *API) sessionMiddleware() gin.HandlerFunc {
 func (a *API) authenticateSession(c *gin.Context) bool {
 	token, err := c.Cookie(CookieName)
 	if err != nil || token == "" {
-		fail(c, http.StatusUnauthorized, "未登录")
+		fail(c, http.StatusUnauthorized, "unauthorized", "未登录")
 		c.Abort()
 		return false
 	}
 	username, verr := a.opt.Session.Verify(token, time.Now())
 	if verr != nil {
-		fail(c, http.StatusUnauthorized, "会话无效或已过期")
+		fail(c, http.StatusUnauthorized, "session_expired", "会话无效或已过期")
 		c.Abort()
 		return false
 	}
@@ -491,12 +491,12 @@ func (a *API) toChannelDTO(ch *store.Channel, keyCount, availableKeyCount int64,
 func (a *API) listChannels(c *gin.Context) {
 	var channels []*store.Channel
 	if err := a.opt.DB.Order("priority asc, id asc").Find(&channels).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	var keys []*store.ChannelKey
 	if err := a.opt.DB.Order("id asc").Find(&keys).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	keysByChannel := make(map[int64][]*store.ChannelKey)
@@ -648,15 +648,15 @@ func (a *API) validateEffectiveChannelTimeouts(t store.ChannelTimeouts) error {
 func (a *API) createChannel(c *gin.Context) {
 	var req channelReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
 	if err := req.normalize(); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	if err := a.validateEffectiveChannelTimeouts(req.Timeouts); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	ch := &store.Channel{
@@ -670,7 +670,7 @@ func (a *API) createChannel(c *gin.Context) {
 		Timeouts:          req.Timeouts,
 	}
 	if err := a.opt.DB.Create(ch).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "创建失败（名称重复？）")
+		fail(c, http.StatusInternalServerError, "channel_create_failed", "创建失败（名称重复？）")
 		return
 	}
 	a.reloadPrices()
@@ -684,7 +684,7 @@ func (a *API) getChannel(c *gin.Context) {
 	}
 	var keys []*store.ChannelKey
 	if err := a.opt.DB.Where("channel_id = ?", ch.ID).Order("id asc").Find(&keys).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询 key 失败")
+		fail(c, http.StatusInternalServerError, "key_query_failed", "查询 key 失败")
 		return
 	}
 	keyItems := make([]gin.H, 0, len(keys))
@@ -736,7 +736,7 @@ func (a *API) reloadPrices() {
 // applyPresetPrice 把渠道预设目录里的价格一键写成该渠道的模型覆盖（只补缺不覆盖）。
 func (a *API) applyPresetPrice(c *gin.Context) {
 	if a.opt.Usage == nil {
-		fail(c, http.StatusServiceUnavailable, "计价配置未初始化")
+		fail(c, http.StatusServiceUnavailable, "pricing_not_ready", "计价配置未初始化")
 		return
 	}
 	ch, found := a.loadChannel(c)
@@ -744,12 +744,12 @@ func (a *API) applyPresetPrice(c *gin.Context) {
 		return
 	}
 	if ch.PresetID == "" {
-		fail(c, http.StatusBadRequest, "该渠道不是预设渠道，没有可用的预设价格")
+		fail(c, http.StatusBadRequest, "channel_not_preset", "该渠道不是预设渠道，没有可用的预设价格")
 		return
 	}
 	created, err := a.opt.Usage.ApplyPreset(c.Request.Context(), ch.ID, ch.PresetID, upstreamModels(ch))
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "写入预设价格失败")
+		fail(c, http.StatusInternalServerError, "preset_price_write_failed", "写入预设价格失败")
 		return
 	}
 	ok(c, gin.H{"created": created, "prices": a.effectivePrices(ch)})
@@ -762,15 +762,15 @@ func (a *API) updateChannel(c *gin.Context) {
 	}
 	var req channelReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
 	if err := req.normalize(); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	if err := a.validateEffectiveChannelTimeouts(req.Timeouts); err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	ch.Name, ch.Type, ch.BaseURL = req.Name, req.Type, req.BaseURL
@@ -781,13 +781,13 @@ func (a *API) updateChannel(c *gin.Context) {
 	ch.SupportsAnthropic = derefBool(req.SupportsAnthropic, ch.SupportsAnthropic)
 	ch.SupportsGemini = derefBool(req.SupportsGemini, ch.SupportsGemini)
 	if err := a.opt.DB.Save(ch).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "更新失败")
+		fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 		return
 	}
 	a.reloadPrices()
 	var keys []*store.ChannelKey
 	if err := a.opt.DB.Where("channel_id = ?", ch.ID).Find(&keys).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	status := health.DeriveStatus(ch, keys, a.opt.Pool.StateMachine().State)
@@ -805,7 +805,7 @@ func (a *API) deleteChannel(c *gin.Context) {
 		}
 		return tx.Delete(ch).Error
 	}); err != nil {
-		fail(c, http.StatusInternalServerError, "删除失败")
+		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
 		return
 	}
 	a.reloadPrices()
@@ -821,12 +821,12 @@ func (a *API) toggleChannel(c *gin.Context) {
 		Enabled *bool `json:"enabled"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误")
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
 		return
 	}
 	ch.Enabled = derefBool(req.Enabled, !ch.Enabled)
 	if err := a.opt.DB.Model(ch).Update("enabled", ch.Enabled).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "更新失败")
+		fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 		return
 	}
 	ok(c, gin.H{"enabled": ch.Enabled})
@@ -840,12 +840,12 @@ func (a *API) testChannel(c *gin.Context) {
 		return
 	}
 	if a.opt.Health == nil {
-		fail(c, http.StatusInternalServerError, "健康探测器未初始化")
+		fail(c, http.StatusInternalServerError, "prober_not_ready", "健康探测器未初始化")
 		return
 	}
 	var keys []*store.ChannelKey
 	if err := a.opt.DB.Where("channel_id = ? AND enabled = ?", ch.ID, true).Order("id asc").Find(&keys).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	timeout, nextInterval := 10*time.Second, 5*time.Minute
@@ -859,18 +859,18 @@ func (a *API) testChannel(c *gin.Context) {
 	)
 	if err != nil {
 		if errors.Is(err, health.ErrNoAvailableKey) {
-			fail(c, http.StatusBadRequest, "渠道没有可用 key")
+			fail(c, http.StatusBadRequest, "channel_no_key", "渠道没有可用 key")
 			return
 		}
 		if errors.Is(err, health.ErrChannelDisabled) {
-			fail(c, http.StatusBadRequest, "渠道已停用")
+			fail(c, http.StatusBadRequest, "channel_disabled", "渠道已停用")
 			return
 		}
 		if errors.Is(err, context.Canceled) {
-			fail(c, http.StatusRequestTimeout, "测试请求已取消")
+			fail(c, http.StatusRequestTimeout, "test_cancelled", "测试请求已取消")
 			return
 		}
-		fail(c, http.StatusInternalServerError, "测试失败")
+		fail(c, http.StatusInternalServerError, "test_failed", "测试失败")
 		return
 	}
 	ok(c, gin.H{
@@ -900,15 +900,15 @@ func (a *API) previewChannelModels(c *gin.Context) {
 	if err := a.opt.DB.Where("channel_id = ? AND enabled = ?", ch.ID, true).
 		Order("id asc").First(&key).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			fail(c, http.StatusBadRequest, "渠道没有启用的 key，请先导入 key")
+			fail(c, http.StatusBadRequest, "channel_no_enabled_key", "渠道没有启用的 key，请先导入 key")
 			return
 		}
-		fail(c, http.StatusInternalServerError, "查询 key 失败")
+		fail(c, http.StatusInternalServerError, "key_query_failed", "查询 key 失败")
 		return
 	}
 	plainKey, err := store.Decrypt(key.KeyCipher, a.opt.MasterKey)
 	if err != nil {
-		fail(c, http.StatusInternalServerError, "解密上游 key 失败")
+		fail(c, http.StatusInternalServerError, "key_decrypt_failed", "解密上游 key 失败")
 		return
 	}
 
@@ -922,11 +922,11 @@ func (a *API) previewChannelModels(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, context.DeadlineExceeded):
-			fail(c, http.StatusGatewayTimeout, "拉取模型目录超时")
+			fail(c, http.StatusGatewayTimeout, "models_fetch_timeout", "拉取模型目录超时")
 		case errors.Is(err, context.Canceled):
-			fail(c, http.StatusRequestTimeout, "拉取模型目录已取消")
+			fail(c, http.StatusRequestTimeout, "models_fetch_cancelled", "拉取模型目录已取消")
 		default:
-			fail(c, http.StatusBadGateway, "拉取模型目录失败："+err.Error())
+			fail(c, http.StatusBadGateway, "models_fetch_failed", "拉取模型目录失败："+err.Error())
 		}
 		return
 	}
@@ -981,7 +981,7 @@ type catalogModel struct {
 func (a *API) modelCatalog(c *gin.Context) {
 	var channels []*store.Channel
 	if err := a.opt.DB.Where("enabled = ?", true).Order("id asc").Find(&channels).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询模型目录失败")
+		fail(c, http.StatusInternalServerError, "catalog_query_failed", "查询模型目录失败")
 		return
 	}
 	models := router.PublicModelCatalog(channels)
@@ -1005,12 +1005,12 @@ func (a *API) modelCatalog(c *gin.Context) {
 func (a *API) loadChannel(c *gin.Context) (*store.Channel, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		fail(c, http.StatusBadRequest, "非法 id")
+		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return nil, false
 	}
 	var ch store.Channel
 	if err := a.opt.DB.First(&ch, id).Error; err != nil {
-		fail(c, http.StatusNotFound, "渠道不存在")
+		fail(c, http.StatusNotFound, "channel_not_found", "渠道不存在")
 		return nil, false
 	}
 	return &ch, true
@@ -1036,7 +1036,7 @@ func (a *API) batchAddKeys(c *gin.Context) {
 		Keys string `json:"keys" binding:"required"` // 多行纯文本
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误")
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
 		return
 	}
 	lines := strings.Split(strings.ReplaceAll(req.Keys, "\r\n", "\n"), "\n")
@@ -1060,14 +1060,14 @@ func (a *API) batchAddKeys(c *gin.Context) {
 		plaintexts = append(plaintexts, key)
 	}
 	if len(plaintexts) > maxKeyBatch {
-		fail(c, http.StatusBadRequest, fmt.Sprintf("单次最多导入 %d 把 key，请分批粘贴", maxKeyBatch))
+		fail(c, http.StatusBadRequest, "key_batch_too_large", fmt.Sprintf("单次最多导入 %d 把 key，请分批粘贴", maxKeyBatch))
 		return
 	}
 	// 与渠道存量 key 去重：同一把上游 key 重复入库会变成双倍权重，只能解密比对。
 	if len(plaintexts) > 0 {
 		var existingKeys []*store.ChannelKey
 		if err := a.opt.DB.Where("channel_id = ?", ch.ID).Find(&existingKeys).Error; err != nil {
-			fail(c, http.StatusInternalServerError, "查询已有 key 失败")
+			fail(c, http.StatusInternalServerError, "key_query_failed", "查询已有 key 失败")
 			return
 		}
 		existing := make(map[string]bool, len(existingKeys))
@@ -1093,7 +1093,7 @@ func (a *API) batchAddKeys(c *gin.Context) {
 			if a.opt.Logger != nil {
 				a.opt.Logger.Warn("encrypt channel key failed", slog.Any("error", err))
 			}
-			fail(c, http.StatusInternalServerError, "加密 key 失败")
+			fail(c, http.StatusInternalServerError, "key_encrypt_failed", "加密 key 失败")
 			return
 		}
 		items = append(items, &store.ChannelKey{ChannelID: ch.ID, KeyCipher: cipher, Enabled: true, Weight: 1, State: store.KeyStateActive})
@@ -1105,7 +1105,7 @@ func (a *API) batchAddKeys(c *gin.Context) {
 			if a.opt.Logger != nil {
 				a.opt.Logger.Warn("batch add channel keys failed", slog.Any("error", err))
 			}
-			fail(c, http.StatusInternalServerError, "导入失败，已回滚")
+			fail(c, http.StatusInternalServerError, "key_import_rolled_back", "导入失败，已回滚")
 			return
 		}
 	}
@@ -1115,12 +1115,12 @@ func (a *API) batchAddKeys(c *gin.Context) {
 func (a *API) updateKey(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		fail(c, http.StatusBadRequest, "非法 id")
+		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return
 	}
 	var key store.ChannelKey
 	if err := a.opt.DB.First(&key, id).Error; err != nil {
-		fail(c, http.StatusNotFound, "key 不存在")
+		fail(c, http.StatusNotFound, "key_not_found", "key 不存在")
 		return
 	}
 	var req struct {
@@ -1128,7 +1128,7 @@ func (a *API) updateKey(c *gin.Context) {
 		Weight  *int  `json:"weight"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误")
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
 		return
 	}
 	updates := map[string]any{}
@@ -1144,7 +1144,7 @@ func (a *API) updateKey(c *gin.Context) {
 	}
 	if len(updates) > 0 {
 		if err := a.opt.DB.Model(&key).Updates(updates).Error; err != nil {
-			fail(c, http.StatusInternalServerError, "更新失败")
+			fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 			return
 		}
 	}
@@ -1154,11 +1154,11 @@ func (a *API) updateKey(c *gin.Context) {
 func (a *API) deleteKey(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		fail(c, http.StatusBadRequest, "非法 id")
+		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return
 	}
 	if err := a.opt.DB.Delete(&store.ChannelKey{}, id).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "删除失败")
+		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
 		return
 	}
 	ok(c, gin.H{"deleted": true})
@@ -1209,7 +1209,7 @@ func toTokenDTO(t *store.Token) tokenDTO {
 func (a *API) listTokens(c *gin.Context) {
 	var tokens []*store.Token
 	if err := a.opt.DB.Order("id desc").Find(&tokens).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	items := make([]tokenDTO, 0, len(tokens))
@@ -1267,25 +1267,25 @@ func (a *API) createToken(c *gin.Context) {
 		DisableFallback bool       `json:"disable_fallback"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误："+err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
 	// 生成 24 字节随机 key；SHA-256 入库；原文仅本次响应返回一次（任务书 4.3）
 	raw := make([]byte, 24)
 	if _, err := rand.Read(raw); err != nil {
-		fail(c, http.StatusInternalServerError, "生成失败")
+		fail(c, http.StatusInternalServerError, "token_create_failed", "生成失败")
 		return
 	}
 	plain := "eg-" + hex.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(plain))
 	quota := derefInt64(req.Quota, 0)
 	if quota < 0 {
-		fail(c, http.StatusBadRequest, "额度不能为负数")
+		fail(c, http.StatusBadRequest, "negative_quota", "额度不能为负数")
 		return
 	}
 	allowedModels, allowedIPs, err := normalizeTokenRules(req.AllowedModels, req.AllowedIPs)
 	if err != nil {
-		fail(c, http.StatusBadRequest, err.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
 	t := &store.Token{
@@ -1295,7 +1295,7 @@ func (a *API) createToken(c *gin.Context) {
 		DisableFallback: req.DisableFallback,
 	}
 	if err := a.opt.DB.Create(t).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "创建失败")
+		fail(c, http.StatusInternalServerError, "create_failed", "创建失败")
 		return
 	}
 	dto := toTokenDTO(t)
@@ -1305,12 +1305,12 @@ func (a *API) createToken(c *gin.Context) {
 func (a *API) updateToken(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		fail(c, http.StatusBadRequest, "非法 id")
+		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return
 	}
 	var t store.Token
 	if err := a.opt.DB.First(&t, id).Error; err != nil {
-		fail(c, http.StatusNotFound, "令牌不存在")
+		fail(c, http.StatusNotFound, "token_not_found", "令牌不存在")
 		return
 	}
 	var req struct {
@@ -1324,7 +1324,7 @@ func (a *API) updateToken(c *gin.Context) {
 		DisableFallback *bool      `json:"disable_fallback"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		fail(c, http.StatusBadRequest, "参数错误")
+		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
 		return
 	}
 	updates := map[string]any{}
@@ -1336,7 +1336,7 @@ func (a *API) updateToken(c *gin.Context) {
 	}
 	if req.Quota != nil {
 		if *req.Quota < 0 {
-			fail(c, http.StatusBadRequest, "额度不能为负数")
+			fail(c, http.StatusBadRequest, "negative_quota", "额度不能为负数")
 			return
 		}
 		updates["quota"] = *req.Quota
@@ -1367,7 +1367,7 @@ func (a *API) updateToken(c *gin.Context) {
 		}
 		normalizedModels, normalizedIPs, err := normalizeTokenRules(models, ips)
 		if err != nil {
-			fail(c, http.StatusBadRequest, err.Error())
+			fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 			return
 		}
 		updates["allowed_models"] = normalizedModels
@@ -1375,7 +1375,7 @@ func (a *API) updateToken(c *gin.Context) {
 	}
 	if len(updates) > 0 {
 		if err := a.opt.DB.Model(&t).Updates(updates).Error; err != nil {
-			fail(c, http.StatusInternalServerError, "更新失败")
+			fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 			return
 		}
 	}
@@ -1385,11 +1385,11 @@ func (a *API) updateToken(c *gin.Context) {
 func (a *API) deleteToken(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		fail(c, http.StatusBadRequest, "非法 id")
+		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return
 	}
 	if err := a.opt.DB.Delete(&store.Token{}, id).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "删除失败")
+		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
 		return
 	}
 	ok(c, gin.H{"deleted": true})
@@ -1408,17 +1408,17 @@ func (a *API) listLogs(c *gin.Context) {
 	}
 	q, filterErr := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if filterErr != nil {
-		fail(c, http.StatusBadRequest, filterErr.Error())
+		fail(c, http.StatusBadRequest, "invalid_param", filterErr.Error())
 		return
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	var logs []*store.RequestLog
 	if err := q.Order("id desc").Offset((page - 1) * pageSize).Limit(pageSize).Find(&logs).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "查询失败")
+		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
 	ok(c, gin.H{"items": logs, "total": total, "page": page, "page_size": pageSize})
@@ -1427,12 +1427,12 @@ func (a *API) listLogs(c *gin.Context) {
 func (a *API) getLog(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
-		fail(c, http.StatusBadRequest, "非法 id")
+		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return
 	}
 	var log store.RequestLog
 	if err := a.opt.DB.First(&log, id).Error; err != nil {
-		fail(c, http.StatusNotFound, "日志不存在")
+		fail(c, http.StatusNotFound, "log_not_found", "日志不存在")
 		return
 	}
 	ok(c, gin.H{"log": log})
@@ -1445,8 +1445,9 @@ func ok(c *gin.Context, data any) {
 	httpx.OK(c, data)
 }
 
-func fail(c *gin.Context, status int, msg string) {
-	httpx.Fail(c, status, msg)
+// fail 是管理台错误信封的唯一出口：每个调用点必须给出稳定 code，前端按 code 本地化，message 只作兜底。
+func fail(c *gin.Context, status int, code, msg string) {
+	httpx.FailCode(c, status, code, msg)
 }
 
 func derefString(p *string, def string) string {

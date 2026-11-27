@@ -1,5 +1,6 @@
 // Package httpx 提供管理台与调试接口共用的响应信封和文本截断工具。
-// 信封固定为 {"ok":true,"data":...} 或 {"ok":false,"message":...}，可选稳定 code。
+// 信封固定为 {"ok":true,"data":...} 或 {"ok":false,"code":...,"message":...}：
+// 失败必须带稳定 code，前端按 code 本地化，message 只作兜底。
 package httpx
 
 import (
@@ -13,12 +14,7 @@ func OK(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "data": data})
 }
 
-// Fail 写入失败信封。
-func Fail(c *gin.Context, status int, message string) {
-	c.JSON(status, gin.H{"ok": false, "message": message})
-}
-
-// FailCode 写入带稳定错误码的失败信封，供前端按 code 本地化。
+// FailCode 写入失败信封；code 为稳定错误码，供前端按 code 本地化。
 func FailCode(c *gin.Context, status int, code, message string) {
 	c.JSON(status, gin.H{"ok": false, "code": code, "message": message})
 }

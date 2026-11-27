@@ -5,6 +5,7 @@ import type { ConfigImportResult } from '../api/types'
 import { Alert, Button, Card, ConfirmDialog, ErrorText } from './ui'
 import { notify } from './Toaster'
 import { t, tf } from '../lib/i18n'
+import { errorMessage } from '../lib/errors'
 
 /** 配置导出 / 导入：导出永不含上游 key 与令牌哈希；导入按名称幂等 upsert，导入前需确认。 */
 export default function ConfigTransferCard() {
@@ -42,7 +43,7 @@ export default function ConfigTransferCard() {
       setPending(payload)
       setPendingName(file.name)
     } catch (err) {
-      setError(tf('config.readFailed', { message: (err as Error).message }))
+      setError(tf('config.readFailed', { message: errorMessage(err) }))
     } finally {
       if (fileRef.current) fileRef.current.value = ''
     }
@@ -56,7 +57,7 @@ export default function ConfigTransferCard() {
         setResult(resp.result)
         setPending(null)
       },
-      onError: (err) => setError((err as Error).message || t('config.importFailed')),
+      onError: (err) => setError(errorMessage(err) || t('config.importFailed')),
       onSettled: () => setBusy(false),
     })
   }

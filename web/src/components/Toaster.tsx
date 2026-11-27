@@ -5,15 +5,10 @@ import { Toaster as Sonner, toast, type ExternalToast } from 'sonner'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react'
 import { t, useLocale } from '../lib/i18n'
 import { useResolvedTheme } from '../lib/theme'
+import { errorMessage } from '../lib/errors'
 
 /** 错误提示停留更久：用户需要读完才能修正。 */
 const ERROR_DURATION = 8000
-
-function messageOf(error: unknown): string {
-  if (error instanceof Error) return error.message
-  if (typeof error === 'string') return error
-  return ''
-}
 
 export const notify = {
   success: (title: ReactNode, options?: ExternalToast) => toast.success(title, options),
@@ -21,7 +16,8 @@ export const notify = {
   warning: (title: ReactNode, options?: ExternalToast) => toast.warning(title, options),
   /** 统一错误：标题「操作失败」，描述取服务端 / 异常消息；为空时只显示标题。 */
   error: (error: unknown, title?: ReactNode) => {
-    const description = messageOf(error)
+    // 服务端错误按稳定 code 本地化，细节原样附带；无 code 时回退原始 message
+    const description = errorMessage(error)
     return toast.error(title ?? t('toast.failed'), { description: description || undefined, duration: ERROR_DURATION })
   },
 }
