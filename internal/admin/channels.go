@@ -36,9 +36,41 @@ func (a *API) toChannelDTO(ch *store.Channel, keyCount, availableKeyCount int64,
 		LastProbeStatusCode: ch.LastProbeStatusCode, LastProbeLatencyMS: ch.LastProbeLatencyMS,
 		LastProbeErrorType: ch.LastProbeErrorType, LastProbeError: ch.LastProbeError,
 		NextProbeAt: ch.NextProbeAt,
-		Timeouts:    ch.Timeouts, KeyCount: keyCount,
+		Timeouts:    ch.Timeouts, KeyCount: keyCount, CatalogDiff: ch.CatalogDiff,
 		CreatedAt: ch.CreatedAt, UpdatedAt: ch.UpdatedAt,
 	}
+}
+
+// syncChannelCatalog 立即拉取一次上游目录并返回差异；只更新提示信息，不改写渠道模型列表。
+func (a *API) syncChannelCatalog(c *gin.Context) {
+	ch, found := a.loadChannel(c)
+	if !found {
+		return
+	}
+	if a.opt.Pool == nil {
+		fail(c, http.StatusServiceUnavailable, "catalog_sync_unavailable", "目录同步未启用")
+		return
+	}
+	timeout := 10 * time.Second
+	if a.opt.Settings != nil {
+		timeout = time.Duration(a.opt.Settings.Snapshot().HealthProbeTimeoutMS) * time.Millisecond
+	}
+	diff, err := health.SyncChannelCatalog(c.Request.Context(), health.CatalogSyncOptions{
+		DB: a.opt.DB, MasterKey: a.opt.MasterKey, Pool: a.opt.Pool, Client: a.opt.ModelListClient,
+		Now: a.now, Timeout: func() time.Duration { return timeout }, Logger: a.opt.Logger,
+	}, ch)
+	if err != nil {
+		switch {
+		case errors.Is(err, health.ErrNoKeyForCatalog):
+			fail(c, http.StatusBadRequest, "channel_no_enabled_key", "渠道没有可用的 key，无法拉取目录")
+		case errors.Is(err, context.DeadlineExceeded):
+			fail(c, http.StatusGatewayTimeout, "models_fetch_timeout", "拉取模型目录超时")
+		default:
+			fail(c, http.StatusBadGateway, "models_fetch_failed", "拉取模型目录失败："+err.Error())
+		}
+		return
+	}
+	ok(c, gin.H{"catalog_diff": diff})
 }
 
 func (a *API) listChannels(c *gin.Context) {

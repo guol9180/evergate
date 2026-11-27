@@ -130,9 +130,18 @@ export interface Channel {
   supports_anthropic: boolean
   supports_gemini: boolean
   timeout_config: ChannelTimeouts | null
+  /** 上游目录同步差异（只提示，不改写 models）；checked_at 为空表示尚未同步 */
+  catalog_diff?: ChannelCatalogDiff | null
   key_count: number
   created_at: string
   updated_at: string
+}
+
+export interface ChannelCatalogDiff {
+  added?: string[] | null
+  removed?: string[] | null
+  upstream_count?: number
+  checked_at?: string
 }
 
 export interface ChannelKey {

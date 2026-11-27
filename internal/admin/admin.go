@@ -126,6 +126,7 @@ func (a *API) RegisterRoutes(r gin.IRouter) {
 	session.POST("/channels/:id/test", a.testChannel)
 	session.POST("/channels/test-all", a.testAllChannels)
 	session.POST("/channels/:id/models/preview", a.previewChannelModels)
+	session.POST("/channels/:id/catalog/sync", a.syncChannelCatalog)
 	session.POST("/channels/:id/keys", a.batchAddKeys)
 	session.PUT("/keys/:id", a.updateKey)
 	session.DELETE("/keys/:id", a.deleteKey)
@@ -190,9 +191,11 @@ type channelDTO struct {
 	SupportsAnthropic   bool                  `json:"supports_anthropic"`
 	SupportsGemini      bool                  `json:"supports_gemini"`
 	Timeouts            store.ChannelTimeouts `json:"timeout_config"`
-	KeyCount            int64                 `json:"key_count"`
-	CreatedAt           time.Time             `json:"created_at"`
-	UpdatedAt           time.Time             `json:"updated_at"`
+	// CatalogDiff 是最近一次上游目录同步的差异提示（只提示，不改写模型列表）。
+	CatalogDiff store.ChannelCatalogDiff `json:"catalog_diff"`
+	KeyCount    int64                    `json:"key_count"`
+	CreatedAt   time.Time                `json:"created_at"`
+	UpdatedAt   time.Time                `json:"updated_at"`
 }
 
 type channelReq struct {

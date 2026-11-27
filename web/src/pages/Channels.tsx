@@ -2,14 +2,14 @@ import { useEffect, useId, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
-import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { AlertTriangle, ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useSyncChannelCatalog, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, Tooltip } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
-import type { Channel, EffectivePrice } from '../api/types'
+import type { Channel, ChannelCatalogDiff, EffectivePrice } from '../api/types'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset, uniquePresetName } from '../lib/channelPresets'
-import { channelStateTone, fmtMs, fmtTime, formatRemainingSeconds, keyImportMessage, stateLabel, statusRank } from '../lib/format'
+import { channelStateTone, fmtInt, fmtMs, fmtTime, formatRemainingSeconds, keyImportMessage, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
@@ -66,7 +66,7 @@ export default function Channels() {
           <Th className="w-8" /><Th>{t('table.name')}</Th><Th>{t('table.status')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.type')}</Th>
           <Th className="hidden min-[1180px]:table-cell">{t('table.priority')}</Th><Th className="hidden min-[1220px]:table-cell">{t('table.weight')}</Th>
           <Th>{t('table.model')}</Th><Th>{t('table.keys')}</Th><Th className="hidden min-[1360px]:table-cell">{t('table.lastProbe')}</Th>
-          <Th>{t('table.enabled')}</Th><Th>{t('table.test')}</Th><Th className="w-24"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
+          <Th>{t('table.enabled')}</Th><Th className="w-40"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-soft">
@@ -133,7 +133,9 @@ export default function Channels() {
 function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: { channel: Channel; expanded: boolean; onToggleExpand: () => void; onEdit: () => void; onDelete: () => void }) {
   const toggle = useToggleChannel()
   const test = useTestChannel()
+  const syncCatalog = useSyncChannelCatalog()
   const result = test.data && test.variables === c.id ? test.data : null
+  const drift = catalogDrift(c.catalog_diff)
   // 从未探测过的新渠道不能显示"正常"：状态列只反映健康度，探测前如实标注"未探测"
   const untested = !c.last_probe_at && c.status === 'active'
 
@@ -145,11 +147,23 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
             {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </IconButton>
         </Td>
-        <Td className="max-w-[170px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
+        <Td className="max-w-[156px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
         <Td>
-          <StatusBadge tone={untested ? 'neutral' : channelStateTone(c.status)}>
-            <span title={c.last_probe_error || undefined}>{untested ? t('common.notProbed') : stateLabel(c.status)}</span>
-          </StatusBadge>
+          <div className="flex flex-col items-start gap-1">
+            <StatusBadge tone={untested ? 'neutral' : channelStateTone(c.status)}>
+              <span title={c.last_probe_error || undefined}>{untested ? t('common.notProbed') : stateLabel(c.status)}</span>
+            </StatusBadge>
+            {result && (
+              <Badge
+                compact
+                tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'}
+                className="cursor-help"
+                title={result.error || result.error_type || undefined}
+              >
+                {result.result === 'success' ? tf('channels.test.success', { ms: result.latency_ms }) : result.result === 'inconclusive' ? t('channels.test.inconclusive') : t('channels.test.failed')}
+              </Badge>
+            )}
+          </div>
         </Td>
         <Td className="hidden min-[1120px]:table-cell">
           <div className="flex flex-col gap-1">
@@ -165,12 +179,21 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
         </Td>
         <Td className="hidden min-[1180px]:table-cell">{c.priority}</Td>
         <Td className="hidden min-[1220px]:table-cell">{c.weight}</Td>
-        <Td>{(c.models || []).length}</Td>
+        <Td>
+          <div>{(c.models || []).length}</div>
+          {drift && (
+            <Tooltip side="top" content={<CatalogDriftDetail diff={c.catalog_diff} />}>
+              <Badge compact tone="warning" className="mt-1 cursor-help" data-catalog-drift="true">
+                <AlertTriangle size={11} /> {driftLabel(drift)}
+              </Badge>
+            </Tooltip>
+          )}
+        </Td>
         <Td>
           <span className="font-medium">{c.available_key_count}</span>
           <span className="text-subtle"> / {c.key_count}</span>
         </Td>
-        <Td className="hidden max-w-48 min-[1360px]:table-cell">
+        <Td className="hidden max-w-44 min-[1360px]:table-cell">
           <div className="text-xs text-muted">
           {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
           </div>
@@ -182,32 +205,77 @@ function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: 
           <Switch checked={c.enabled} disabled={toggle.isPending && toggle.variables?.id === c.id} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={tf('channels.enableAria', { name: c.name })} />
         </Td>
         <Td>
-          {test.isPending && test.variables === c.id ? (
-            <IconButton variant="outline" loading label={tf('channels.testAria', { name: c.name })}>
-              <Plug size={13} />
-            </IconButton>
-          ) : result ? (
-            <Badge
-              tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'}
-              className="cursor-help"
-              title={result.error || result.error_type || undefined}
-            >
-              {result.result === 'success' ? tf('channels.test.success', { ms: result.latency_ms }) : result.result === 'inconclusive' ? t('channels.test.inconclusive') : t('channels.test.failed')}
-            </Badge>
-          ) : (
-            <IconButton variant="outline" label={tf('channels.testAria', { name: c.name })} onClick={() => test.mutate(c.id)}>
-              <Plug size={13} />
-            </IconButton>
-          )}
-        </Td>
-        <Td>
           <div className="flex justify-end gap-1 whitespace-nowrap">
+            <IconButton
+              variant="outline"
+              label={tf('channels.testAria', { name: c.name })}
+              loading={test.isPending && test.variables === c.id}
+              onClick={() => test.mutate(c.id)}
+            >
+              <Plug size={13} />
+            </IconButton>
+            <IconButton
+              variant="outline"
+              label={tf('channels.catalog.syncAria', { name: c.name })}
+              loading={syncCatalog.isPending && syncCatalog.variables === c.id}
+              onClick={() => syncCatalog.mutate(c.id, {
+                onSuccess: ({ catalog_diff }) => {
+                  const d = catalogDrift(catalog_diff)
+                  if (!d) notify.success(t('channels.catalog.upToDate'))
+                  else notify.info(tf('channels.catalog.synced', { added: d.added, removed: d.removed }))
+                },
+                onError: (err) => notify.error(err, t('channels.catalog.syncFailed')),
+              })}
+            >
+              <RefreshCw size={13} />
+            </IconButton>
             <IconButton label={tf('channels.editAria', { name: c.name })} onClick={onEdit}><Pencil size={13} /></IconButton>
             <IconButton label={tf('channels.deleteAria', { name: c.name })} danger onClick={onDelete}><Trash2 size={13} /></IconButton>
           </div>
         </Td>
       </tr>
     </>
+  )
+}
+
+/** 有差异才提示：新增 / 下线任一非零。 */
+function catalogDrift(diff: ChannelCatalogDiff | null | undefined): { added: number; removed: number } | null {
+  if (!diff || !diff.checked_at) return null
+  const added = (diff.added ?? []).length
+  const removed = (diff.removed ?? []).length
+  return added + removed > 0 ? { added, removed } : null
+}
+
+/** 只显示非零部分：+1、−2 或 +2 / −1。 */
+function driftLabel(drift: { added: number; removed: number }): string {
+  const parts: string[] = []
+  if (drift.added > 0) parts.push(`+${drift.added}`)
+  if (drift.removed > 0) parts.push(`−${drift.removed}`)
+  return parts.join(' / ')
+}
+
+function CatalogDriftDetail({ diff }: { diff: ChannelCatalogDiff | null | undefined }) {
+  if (!diff) return null
+  const added = diff.added ?? []
+  const removed = diff.removed ?? []
+  return (
+    <div className="max-w-xs space-y-1.5 text-xs">
+      <div className="font-semibold text-foreground">{t('channels.catalog.driftTitle')}</div>
+      {added.length > 0 && (
+        <div>
+          <div className="text-subtle">{tf('channels.catalog.added', { n: added.length })}</div>
+          <div className="break-all font-mono text-[11px] text-foreground-soft">{added.join(', ')}</div>
+        </div>
+      )}
+      {removed.length > 0 && (
+        <div>
+          <div className="text-subtle">{tf('channels.catalog.removed', { n: removed.length })}</div>
+          <div className="break-all font-mono text-[11px] text-foreground-soft">{removed.join(', ')}</div>
+        </div>
+      )}
+      <div className="pt-1 text-subtle">{tf('channels.catalog.checkedAt', { time: fmtTime(diff.checked_at), count: fmtInt(diff.upstream_count ?? 0) })}</div>
+      <div className="text-subtle">{t('channels.catalog.hint')}</div>
+    </div>
   )
 }
 

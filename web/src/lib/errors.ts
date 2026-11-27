@@ -13,6 +13,7 @@ const codeKeys: Record<string, MessageKey> = {
   restore_failed: 'error.restore_failed',
   already_initialized: 'error.already_initialized',
   catalog_query_failed: 'error.catalog_query_failed',
+  catalog_sync_unavailable: 'error.catalog_sync_unavailable',
   catalog_unavailable: 'error.catalog_unavailable',
   channel_create_failed: 'error.channel_create_failed',
   channel_disabled: 'error.channel_disabled',

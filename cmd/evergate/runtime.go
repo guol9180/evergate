@@ -77,6 +77,12 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		health.StartCooldownPersister(db, poolMgr, logger, 5*time.Second),
 		settings.StartLogRetentionCleaner(db, settingsMgr, logger, time.Minute),
 	)
+	runners = append(runners, health.StartCatalogSync(health.CatalogSyncOptions{
+		DB: db, MasterKey: cfg.Security.MasterKey, Pool: poolMgr, Now: nowFn, Logger: logger,
+		Timeout: func() time.Duration {
+			return time.Duration(settingsMgr.Snapshot().HealthProbeTimeoutMS) * time.Millisecond
+		},
+	}))
 	prober := health.NewProber(health.ProberOptions{
 		DB: db, MasterKey: cfg.Security.MasterKey, Pool: poolMgr, Now: nowFn,
 	})

@@ -45,8 +45,18 @@ type Channel struct {
 	// SupportsGemini 表示该渠道可原生接收 /v1beta/models/*；否则 Gemini 入口走 CC 桥接。
 	SupportsGemini bool            `gorm:"not null;default:false" json:"supports_gemini"`
 	Timeouts       ChannelTimeouts `gorm:"column:timeout_config;serializer:json" json:"timeout_config"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
+	// CatalogDiff 是最近一次上游目录同步与渠道模型的差异；只提示不自动改写模型列表，CheckedAt 零值 = 未同步。
+	CatalogDiff ChannelCatalogDiff `gorm:"column:catalog_diff;serializer:json" json:"catalog_diff"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+// ChannelCatalogDiff 上游目录相对渠道配置模型的差异（按上游模型名比较，已考虑 model_mapping）。
+type ChannelCatalogDiff struct {
+	Added         []string  `json:"added"`
+	Removed       []string  `json:"removed"`
+	UpstreamCount int       `json:"upstream_count"`
+	CheckedAt     time.Time `json:"checked_at"`
 }
 
 // ChannelTimeouts 渠道级超时覆盖（秒；nil 表示跟随全局默认）。

@@ -34,7 +34,7 @@
 | P3（已完成，3 卡待复验/延后） | 已交付：T42 渠道探测协议化、T43 渠道模型目录发现与令牌模型选择器、T40 Windows 安装器、T44 Windows 无控制台启动与系统托盘、T41 Playground 四协议调试、T39 全弹性布局与间距系统重构、T46 版本发布门禁与预发布通道、T47 发布 v0.2.0、T51 发布 v0.3.0 Windows/Linux、T53 发布 v0.3.1 Windows/Linux、T54 更新网络容错、T55 npm 镜像更新资产包、T56 发布 v0.4.0 Windows/Linux、T57 JetBrains AI Assistant 流式等待/日志刷新/OpenCode 预设与 v0.5.0 发布、T58 OpenCode Go 会话头/模型目录/日志刷新稳定性与 v0.5.1 发布、T60 JetBrains 空增量保活修复与 v0.5.2 发布、T62 JetBrains + ZAI reasoning 流兼容修复与 v0.5.3 发布、T63–T68 质量审查修复批次、T70–T72 成本统计修复与 v0.5.4/v0.5.5；实现完成待人工复验：T49 Windows 托盘 DPI 截图矩阵、T52 托盘 Logo 多 DPI 截图矩阵；延后：T48 macOS 安装器（需 Apple Developer Program） | 按任务卡验收；macOS 安装器需 Developer ID/notarization，后续通过 `ENABLE_MACOS_INSTALLER=true` 启用；Windows 固定路径安装、镜像保留数据、自启动、单实例、日志定位、Linux 归档、npm 五包与托盘 Logo 资源均已验证 |
 | P4（已完成） | 三视角审视改进批次：T73 流程治理与文档体系、T74 CI 门禁补齐、T75 后端补齐、T76 前端设计系统、T77 前端页面体验、T78 README 与用户文档、T79 i18n | 排除有支出项（Windows 代码签名、Apple 签名公证）；各卡按验收标准通过并整卡归档至 [P4](./docs/archive/P4.md)；`go test -race ./...`、`npm test`、`npm run build`、`make build` 证据已入卡 |
 | P5（已完成） | 内置浏览器体验审查修复与预设/价格/目录/首启：T96 单实例互斥按数据目录隔离、T88 全局布局与导航修复、T89 表单反馈与信息表达修复、T90 i18n 字典补全、T91 渠道预设/自定义分离与四协议、T92 预设模型价格、T98 全局控件尺寸与对齐统一、T93 下游模型目录接口、T94 首启管理员设置向导、T97 全页面 UI/UX 逐项验收、T99 统一反馈体系与三方原语替换、T100 登录空表单校验与提示文案、T101 概览事实条与侧栏底栏重排、T102 分段控件与下拉选择重做、T95 发布 v0.7.0 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint/test/build 通过；T97 矩阵全绿后才进入发版；v0.7.0 按发版检查清单发布 |
-| P6（进行中） | 2026-11-26 代码质量审查整改与交互打磨：T103 缓存 token 计价、T104 key 导入修复、T105 接口加固与信封统一、T106 工程门禁补齐、T107 全局交互动效体系、T108 请求日志详情信息表达、T109 会话 / 错误处理 / 国际化收口、T110 表单体系与 UI 细节、T111 可维护性重构、T112 转发热路径与服务生命周期、T113 令牌限流与事件告警、T114 一键备份与恢复、T115 调试台增强与观测补充 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint / test / build 通过；UI 类卡在 18787 内置浏览器逐页复验且 `audit:layout` 全绿 |
+| P6（已完成） | 2026-11-26 代码质量审查整改与交互打磨：T103 缓存 token 计价、T104 key 导入修复、T105 接口加固与信封统一、T106 工程门禁补齐、T107 全局交互动效体系、T108 请求日志详情信息表达、T109 会话 / 错误处理 / 国际化收口、T110 表单体系与 UI 细节、T111 可维护性重构、T112 转发热路径与服务生命周期、T113 令牌限流与事件告警、T114 一键备份与恢复、T115 调试台增强与观测补充 | T103–T116 全部按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint / test / build 通过；UI 类卡在 18787 内置浏览器逐页复验且 `audit:layout` 全绿；整卡归档至 [P6](./docs/archive/P6.md) |
 
 P0 功能完成定义（1–10 全部通过）：
 
@@ -59,23 +59,6 @@ P0 功能完成定义（1–10 全部通过）：
 
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
-
-#### T115: 调试台增强与观测补充（P3，产品能力）
-
-- 目标：让调试台能承担多轮与参数调试，并补齐选渠道最关键的延迟维度
-- 验收标准：① 调试台支持多轮对话、temperature / max_tokens 等常用参数、查看实际发往上游的请求体（脱敏、有大小上限），离开页面自动中止在途请求；② 用量报表新增首 token 延迟维度（按模型 / 渠道的均值与 P50），趋势图可切换指标；③ 渠道模型列表可定时同步上游目录，上游新增 / 下线模型在渠道页给出提示，不自动改写对外模型列表；④ 中英 / 浅深 / 窄屏通过，单测覆盖请求体脱敏与延迟聚合
-- 边界：调试台仍复用 relay 公共 dispatch；不采集下游请求体入库
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：in-progress
-- 进度：
-  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（产品视角）
-  - 2026-11-27 执行 ① 调试台多轮：请求新增 `history`（≤40 条 user / assistant 轮次，单条 ≤16000 字节）与 `temperature` / `top_p` / `max_tokens`（范围校验），四协议按各自字段下发（Responses 单轮仍为字符串 input、多轮用 easy-input 数组；Gemini 历史用 role=model）；`attemptOne` 在发往上游前记录请求快照（仅调试台），meta 新增 `upstream_request{method,url,body,truncated}`，body 过凭据脱敏并按 16KB 截断
-  - 2026-11-27 执行 ① 前端：Playground 改为对话线程（user / assistant 轮次气泡、流式光标、清空对话），左侧新增「采样参数」折叠区（三个输入，留空不下发），Ctrl/⌘+Enter 发送；命中链路新增「查看发往上游的请求」折叠区（方法 + URL + 缩进 JSON，截断时带 warning 徽标）；`useEffect` 卸载时自动 abort 在途请求
-  - 2026-11-27 验证 ①：Go 新增 TestPlaygroundMultiTurnAndParams（历史顺序 / 参数透传 / 快照为改写后的上游体且不含 key）、TestPlaygroundResponsesInputShapeByTurns、TestPlaygroundUpstreamRequestRedactedAndTruncated（sk- / Bearer 脱敏、多轮超 16KB 截断）、TestPlaygroundRejectsBadParamsAndHistory（5 例 400 且不触达上游）；前端 lint 0 警告、tsc 通过；audit:layout 907/1440 × 浅中 + 深英通过；18787 内置浏览器实测：两轮对话（mock 上游）→ 展开「查看发往上游的请求」显示 POST + URL + 三条 messages 的缩进 JSON → 清空对话回到空态
-
-  - 2026-11-27 执行 ② 首 token 延迟维度：`usage.BuildReport` 在聚合表之外按同一筛选扫 `request_logs`（`attachLatency`）：按模型 / 渠道用一次窗口扫描（ROW_NUMBER + COUNT OVER）算均值与最近秩 P50，按小时给均值 + 样本数；合并进 `TopModels` / `TopChannels` 的 `first_token_avg_ms / first_token_p50_ms / first_token_samples` 与 `Hourly[].first_token_avg_ms / first_token_samples`。只统计成功且有首 token 样本的请求，日志按保留策略清理后为空
-  - 2026-11-27 执行 ② 前端：`TrendChart` 新增 `metric`（请求数 / Token 用量 / 成本 / 首 token 延迟），柱状按指标切换、轴刻度紧凑格式（k / M、成本带 $），成功率折线保留，tooltip 显示当前指标与首 token；用量页趋势卡顶部用 `SegmentedControl` 切指标；Top 渠道 / Top 模型表新增「首 token」列（均值 / P50，无样本显示 —）；`bucketByLocalDay` 对延迟按样本数加权平均（不再丢字段或直接求和）；`fmtMs` 对小数均值保留一位；`eg-grid-triple` 断点改为 ≥1024 两列（第三张通栏）/ ≥1440 三列，四列表格不再被横向滚动遮住
-  - 2026-11-27 验证 ②：Go 新增 `TestReportFirstTokenLatencyByModelChannelAndHour`（m1 100/300/500 → avg 300 P50 300；m2 900/1100 → avg 1000 P50 900；失败与 0 延迟不计数；小时均值 580；按模型筛选后延迟同步过滤）；前端 `usageBucket.test.ts` 新增加权平均用例（(100×3+400×1)/4=175）；lint 0 警告、unit 17 通过、tsc + vite build 通过；audit:layout 907/1440 × 浅中 + 深英通过；18787 实测：切到「首 token 延迟」柱状图与 tooltip 正常，Top 渠道 / 模型显示「2.4ms / 1ms」等均值 / P50
 
 > 来源：P3 待复验任务（由 T73 拆分）。
 
@@ -149,7 +132,7 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 最近完成 / 已取消
 
-> 本批次已 done 的卡（T103–T114、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
+> 本批次已 done 的卡（T103–T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
 
 ## 归档索引
 

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, jsonBody } from './client'
 import { withBasePath } from '../lib/runtime'
-import type { AdminInfo, AlertRecord, AlertsPayload, AlertSetting, AuditLog, BackupsPayload, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, AlertRecord, AlertsPayload, AlertSetting, AuditLog, BackupsPayload, ChannelCatalogDiff, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -254,6 +254,15 @@ export function useTestChannel() {
     mutationFn: (id: number) => api<TestResult>(`/admin/api/channels/${id}/test`, { method: 'POST' }),
     // 手动探测会写入 last_probe_*，渠道状态由它派生；不刷新列表就会出现"状态正常但测试 ✗"的矛盾
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['channels'] }),
+  })
+}
+
+/** 立即拉取一次上游模型目录并返回差异；服务端只更新提示，不改写渠道模型列表。 */
+export function useSyncChannelCatalog() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => api<{ catalog_diff: ChannelCatalogDiff }>(`/admin/api/channels/${id}/catalog/sync`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['channels'] }),
   })
 }
 
