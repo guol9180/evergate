@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -39,7 +38,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 		r.metricAttempt(cand.Channel.ID, cand.UpstreamModel, errType)
 	}
 
-	br := bufio.NewReaderSize(resp.Body, 32*1024)
+	br := newSSELineReader(resp.Body)
 
 	// === 可重试窗口：读取首个 chunk ===
 	var ftFired atomic.Bool
@@ -83,7 +82,7 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 	defer stopKeepalive()
 
 	for {
-		line, rerr := br.ReadBytes('\n')
+		line, rerr := br.readLine()
 		if len(line) > 0 {
 			w.writeFlush(line)
 			if data, ok := sseData(line); ok {
@@ -121,9 +120,13 @@ func (r *Relay) streamResponse(c *gin.Context, resp *http.Response, key *store.C
 
 // readFirstSSEDataLine buffers comments, empty lines, and event preamble until
 // the first data line. Only data commits the retry window.
-func readFirstSSEDataLine(br *bufio.Reader) (raw, dataLine []byte, err error) {
+// 前导累计超过 maxSSEPreambleBytes 视为上游异常：没有 data 却一直发注释的上游不该吃掉内存。
+func readFirstSSEDataLine(br *sseLineReader) (raw, dataLine []byte, err error) {
 	for {
-		line, readErr := br.ReadBytes('\n')
+		line, readErr := br.readLine()
+		if _, ok := sseData(line); !ok && len(raw)+len(line) > maxSSEPreambleBytes {
+			return raw, nil, errSSEPreambleTooLarge
+		}
 		raw = append(raw, line...)
 		if len(line) > 0 {
 			if _, ok := sseData(line); ok {
@@ -185,7 +188,7 @@ func readAllWithFirstTokenTimeout(body io.Reader, ctx context.Context, cancel co
 	}
 	done := make(chan result, 1)
 	go func() {
-		data, err := io.ReadAll(body)
+		data, err := readUpstreamBody(body)
 		done <- result{data, err}
 	}()
 	select {

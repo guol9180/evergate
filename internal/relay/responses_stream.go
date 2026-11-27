@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -66,7 +65,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 		})
 		r.metricAttempt(cand.Channel.ID, cand.UpstreamModel, errType)
 	}
-	br := bufio.NewReaderSize(resp.Body, 32*1024)
+	br := newSSELineReader(resp.Body)
 	var timeout atomic.Bool
 	timer := time.AfterFunc(firstToken, func() { timeout.Store(true); cancel() })
 	_, firstDataLine, err := readFirstSSEDataLine(br)
@@ -107,7 +106,7 @@ func (r *Relay) streamResponsesResponse(c *gin.Context, resp *http.Response, key
 	}
 
 	for {
-		line, rerr := br.ReadBytes('\n')
+		line, rerr := br.readLine()
 		if len(line) > 0 {
 			if data, ok := sseData(line); ok {
 				state.consume(data)

@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -33,13 +32,18 @@ func (r *Relay) streamNativeResponsesResponse(c *gin.Context, resp *http.Respons
 		})
 	}
 
-	br := bufio.NewReaderSize(resp.Body, 32*1024)
+	br := newSSELineReader(resp.Body)
 	var timeout atomic.Bool
 	timer := time.AfterFunc(firstToken, func() { timeout.Store(true); cancel() })
 	var first sseEvent
 	var err error
+	preamble := 0
 	for {
 		event, readErr := readSSEEvent(br)
+		preamble += len(event.raw)
+		if readErr == nil && preamble > maxSSEPreambleBytes {
+			readErr = errSSEPreambleTooLarge
+		}
 		first.raw = append(first.raw, event.raw...)
 		if readErr != nil {
 			err = readErr
@@ -117,10 +121,15 @@ func (r *Relay) streamNativeResponsesResponse(c *gin.Context, resp *http.Respons
 	}
 }
 
-func readSSEEvent(br *bufio.Reader) (sseEvent, error) {
+// readSSEEvent 读到下一个空行为止；单个事件累计超过 maxSSEEventBytes 直接报错，
+// 防止不发空行的上游让 raw 无限增长。
+func readSSEEvent(br *sseLineReader) (sseEvent, error) {
 	var event sseEvent
 	for {
-		line, err := br.ReadBytes('\n')
+		line, err := br.readLine()
+		if len(event.raw)+len(line) > maxSSEEventBytes {
+			return event, errSSEEventTooLarge
+		}
 		if len(line) > 0 {
 			event.raw = append(event.raw, line...)
 			trimmed := strings.TrimRight(string(line), "\r\n")

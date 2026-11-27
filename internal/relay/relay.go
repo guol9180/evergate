@@ -705,7 +705,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		req.Header.Set(openCodeSessionHeader, session)
 	}
 
-	client := &http.Client{Transport: r.transport(connect)}
+	client := &http.Client{Transport: r.transport(connect), CheckRedirect: noRedirect}
 	start := r.opt.Now()
 	resp, err := client.Do(req)
 	if err != nil {
@@ -839,9 +839,21 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		if ct == "" {
 			ct = "application/json"
 		}
+		// 上游重定向原样透传：不跟随，避免跨域重定向时把 x-api-key 等自定义头带到别处
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			if location := resp.Header.Get("Location"); location != "" {
+				c.Header("Location", location)
+			}
+		}
 		c.Data(resp.StatusCode, ct, sanitizeUpstreamBody(errBody, plainKey))
 		return outcomeDone
 	}
+}
+
+// noRedirect 让 http.Client 把 3xx 当普通响应交回：Go 跟随重定向时只剥离 Authorization，
+// 不会剥离 x-api-key / x-goog-api-key 这类自定义凭据头。
+func noRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func readRelayRequestBody(c *gin.Context) ([]byte, error) {

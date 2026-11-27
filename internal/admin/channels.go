@@ -79,20 +79,17 @@ func (a *API) listChannels(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
-	var keys []*store.ChannelKey
-	if err := a.opt.DB.Order("id asc").Find(&keys).Error; err != nil {
+	keyTotals, enabledKeys, err := a.channelKeySummary()
+	if err != nil {
 		fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
 		return
 	}
-	keysByChannel := make(map[int64][]*store.ChannelKey)
-	for _, key := range keys {
-		keysByChannel[key.ChannelID] = append(keysByChannel[key.ChannelID], key)
-	}
+	keysByChannel := groupKeysByChannel(enabledKeys)
 	out := make([]channelDTO, 0, len(channels))
 	for _, ch := range channels {
-		channelKeys := keysByChannel[ch.ID]
-		status := health.DeriveStatus(ch, channelKeys, a.opt.Pool.StateMachine().State)
-		out = append(out, a.toChannelDTO(ch, int64(len(channelKeys)), int64(health.AvailableKeyCount(channelKeys, a.opt.Pool.StateMachine().State)), status))
+		enabled := keysByChannel[ch.ID]
+		status := health.DeriveStatus(ch, enabled, a.opt.Pool.StateMachine().State)
+		out = append(out, a.toChannelDTO(ch, keyTotals[ch.ID], int64(health.AvailableKeyCount(enabled, a.opt.Pool.StateMachine().State)), status))
 	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if health.StatusRank(out[i].Status) != health.StatusRank(out[j].Status) {
@@ -104,6 +101,34 @@ func (a *API) listChannels(c *gin.Context) {
 		return out[i].ID < out[j].ID
 	})
 	ok(c, gin.H{"items": out})
+}
+
+// channelKeySummary 为渠道列表提供 key 计数：总数走 GROUP BY，可用数只需要启用 key 的 id / enabled
+// （状态在内存状态机里），不再把整表密文行读进内存。
+func (a *API) channelKeySummary() (totals map[int64]int64, enabled []*store.ChannelKey, err error) {
+	var counts []struct {
+		ChannelID int64 `gorm:"column:channel_id"`
+		Total     int64 `gorm:"column:total"`
+	}
+	if err = a.opt.DB.Model(&store.ChannelKey{}).Select("channel_id, COUNT(*) AS total").Group("channel_id").Scan(&counts).Error; err != nil {
+		return nil, nil, err
+	}
+	totals = make(map[int64]int64, len(counts))
+	for _, row := range counts {
+		totals[row.ChannelID] = row.Total
+	}
+	if err = a.opt.DB.Model(&store.ChannelKey{}).Select("id", "channel_id", "enabled").Where("enabled = ?", true).Order("id asc").Find(&enabled).Error; err != nil {
+		return nil, nil, err
+	}
+	return totals, enabled, nil
+}
+
+func groupKeysByChannel(keys []*store.ChannelKey) map[int64][]*store.ChannelKey {
+	byChannel := make(map[int64][]*store.ChannelKey, len(keys))
+	for _, key := range keys {
+		byChannel[key.ChannelID] = append(byChannel[key.ChannelID], key)
+	}
+	return byChannel
 }
 
 func (r *channelReq) normalize() error {
@@ -347,6 +372,8 @@ func (a *API) updateChannel(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 		return
 	}
+	// 只写可编辑列：整行 Save 会把加载时的 last_probe_* / status / catalog_diff 旧值回写，覆盖并发探测的结果。
+	// 用结构体 + Select 而不是 map：map 更新不经过 serializer，models / timeout_config 会原样写坏。
 	ch.Name, ch.Type, ch.BaseURL = req.Name, req.Type, req.BaseURL
 	ch.PresetID = derefString(req.PresetID, "")
 	ch.Priority, ch.Weight = derefInt(req.Priority, ch.Priority), derefInt(req.Weight, ch.Weight)
@@ -354,7 +381,7 @@ func (a *API) updateChannel(c *gin.Context) {
 	ch.SupportsResponses = derefBool(req.SupportsResponses, ch.SupportsResponses)
 	ch.SupportsAnthropic = derefBool(req.SupportsAnthropic, ch.SupportsAnthropic)
 	ch.SupportsGemini = derefBool(req.SupportsGemini, ch.SupportsGemini)
-	if err := a.opt.DB.Save(ch).Error; err != nil {
+	if err := a.opt.DB.Model(ch).Select(channelEditableColumns).Updates(ch).Error; err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			fail(c, http.StatusConflict, "channel_name_taken", "渠道名称已被占用")
 			return
@@ -370,6 +397,12 @@ func (a *API) updateChannel(c *gin.Context) {
 	}
 	status := health.DeriveStatus(ch, keys, a.opt.Pool.StateMachine().State)
 	ok(c, a.toChannelDTO(ch, int64(len(keys)), int64(health.AvailableKeyCount(keys, a.opt.Pool.StateMachine().State)), status))
+}
+
+// channelEditableColumns 渠道表单可写的列；last_probe_* / status / catalog_diff 归后台探测所有。
+var channelEditableColumns = []string{
+	"name", "type", "base_url", "preset_id", "priority", "weight", "models", "model_mapping",
+	"supports_responses", "supports_anthropic", "supports_gemini", "timeout_config",
 }
 
 func (a *API) deleteChannel(c *gin.Context) {

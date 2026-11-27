@@ -45,7 +45,7 @@ func newEnvWithoutAdmin(t *testing.T) *testEnv {
 	return newEnvOpts(t, false)
 }
 
-func newEnvOpts(t *testing.T, withAdmin bool) *testEnv {
+func newEnvOpts(t testing.TB, withAdmin bool) *testEnv {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	db, err := store.Open(dbPath)

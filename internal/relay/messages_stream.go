@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,13 +28,18 @@ func (r *Relay) streamNativeMessagesResponse(c *gin.Context, resp *http.Response
 		})
 	}
 
-	br := bufio.NewReaderSize(resp.Body, 32*1024)
+	br := newSSELineReader(resp.Body)
 	var timeout atomic.Bool
 	timer := time.AfterFunc(firstToken, func() { timeout.Store(true); cancel() })
 	var first sseEvent
 	var err error
+	preamble := 0
 	for {
 		event, readErr := readSSEEvent(br)
+		preamble += len(event.raw)
+		if readErr == nil && preamble > maxSSEPreambleBytes {
+			readErr = errSSEPreambleTooLarge
+		}
 		first.raw = append(first.raw, event.raw...)
 		if readErr != nil {
 			err = readErr
@@ -122,13 +126,18 @@ func (r *Relay) streamMessagesBridgeResponse(c *gin.Context, resp *http.Response
 		})
 	}
 
-	br := bufio.NewReaderSize(resp.Body, 32*1024)
+	br := newSSELineReader(resp.Body)
 	var timeout atomic.Bool
 	timer := time.AfterFunc(firstToken, func() { timeout.Store(true); cancel() })
 	var first sseEvent
 	var err error
+	preamble := 0
 	for {
 		first, err = readSSEEvent(br)
+		preamble += len(first.raw)
+		if err == nil && preamble > maxSSEPreambleBytes {
+			err = errSSEPreambleTooLarge
+		}
 		if err != nil || strings.TrimSpace(string(first.data)) != "" {
 			break
 		}
