@@ -60,21 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
 
-#### T111: 可维护性重构（P2，代码审查）
-
-- 目标：在测试全绿的前提下做行为不变的结构重构，降低后续改动成本
-- 验收标准：① dispatchModel 三段重复的桥接体处理收敛为表驱动，嵌套层级明显下降；② run() 拆为引导 / 装配 / 服务生命周期三段；③ admin.go 按会话、渠道、凭据、令牌、日志、更新拆文件，路由按公开组 / 会话组注册，中间件只声明一次；④ 用量报表的聚合 SELECT 去重（totals 两条合一），审计摘要不再对每个响应做序列化，状态机与轮询器回收已删除条目；⑤ 改名遗留、变参式可选参数、time.Now() 直调等零散项清理；⑥ 重构前后 go test -p 1、-race 与覆盖率门禁结果不变，接口契约与 openapi.yaml 无 diff
-- 边界：不改行为、不改接口、不改 schema；每一步可独立提交并保持全绿
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：in-progress
-- 进度：
-  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（可维护性）
-  - 2026-11-27 执行 ③ admin.go 1500 行按领域拆为 auth / update / settings / channels / keys / tokens / logs，路由改公开组 + 会话组（中间件只声明一次），SetupRoutes 入参改 gin.IRouter；④ 用量报表 totals 与计价计数合并为一次 SELECT，审计摘要只在审计写路由按 json 标签反射取值（不再每个响应做 JSON 往返），key 删除与渠道删除回收状态机内存条目（新增 StateMachine.Forget + Manager.ForgetKey + 表驱动测试）；⑤ TokenAuth 去掉变参（logWriter 显式可 nil），管理台会话校验与令牌 DTO 改用注入时钟，删除重构后无引用的 utcTodayFrom
-  - 2026-11-27 验证 已做项：go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、调度覆盖率 92.8%（≥90%）、relay 81.1%（≥81%）、make build 通过；仓库无 openapi.yaml，接口契约以测试断言为准
-  - 2026-11-27 执行 ① 协议桥接改表驱动：新增 `internal/relay/bridge.go`，把 Responses / Messages / Gemini 的候选偏好、原生计数约束、桥接体缓存与转换失败分支收敛为 `bridgeSpecs` 表 + `prepareBridge` / `bridgeAttemptBody` 两个入口，`dispatchModel` 去掉三段近乎相同的分支，fallback.go 388 → 283 行；补 `TestBridgeSpecForMatchesExactlyOneProtocol` 锁定「每类请求恰好命中一项、chat 不命中」
-  - 2026-11-27 验证 ① 后：go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、relay 语句覆盖率 81.5%（≥81%）
-  - 2026-11-27 备注 剩余：② run() 拆引导 / 装配 / 生命周期，独立提交
-
 #### T112: 转发热路径与服务生命周期优化（P2，代码审查）
 
 - 目标：把同步写库移出首包关键路径，去掉每请求的重复配置读库与请求体重编码，补齐服务端生命周期细节
@@ -188,7 +173,7 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 最近完成 / 已取消
 
-> 本批次已 done 的卡（T103–T110、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
+> 本批次已 done 的卡（T103–T111、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
 
 ## 归档索引
 

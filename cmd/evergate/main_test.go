@@ -3,11 +3,37 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"evergate/internal/appdir"
 	"evergate/internal/config"
 )
+
+// 停止来源由托盘 / 自更新 / 退出三处并发触发，重复请求必须只关闭一次通道。
+func TestStopSignalsRequestsAreIdempotent(t *testing.T) {
+	signals := newStopSignals()
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			signals.requestUpdate()
+			signals.requestRestart()
+			signals.requestExit()
+		}()
+	}
+	wg.Wait()
+	for name, ch := range map[string]<-chan struct{}{
+		"update": signals.update, "restart": signals.restart, "exit": signals.exit,
+	} {
+		select {
+		case <-ch:
+		default:
+			t.Fatalf("%s channel was not closed", name)
+		}
+	}
+}
 
 func TestBootstrapConfigCreatesConfigAtResolvedPath(t *testing.T) {
 	root := t.TempDir()
