@@ -370,3 +370,24 @@ func TestAcquirePreferred(t *testing.T) {
 		t.Fatalf("preferred 不存在时应回退普通调度, got %+v", got)
 	}
 }
+
+func TestStateMachineForgetDropsDeletedKey(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	sm := NewStateMachine(1, ScheduleFrom(30*time.Second, 10), func() time.Time { return now })
+	sm.OnFailure(7)
+	sm.OnFailure(7)
+	if got := sm.State(7); got == "active" {
+		t.Fatalf("key 7 should be cooling down before forget, got %s", got)
+	}
+	if len(sm.Snapshot()) != 1 {
+		t.Fatalf("snapshot should hold the key before forget: %#v", sm.Snapshot())
+	}
+	sm.Forget(7)
+	// 先看快照：State() 读不到时会懒创建条目，顺序反了就测不出回收
+	if len(sm.Snapshot()) != 0 {
+		t.Fatalf("snapshot must drop deleted keys: %#v", sm.Snapshot())
+	}
+	if got := sm.State(7); got != "active" {
+		t.Fatalf("forgotten key must read as fresh active, got %s", got)
+	}
+}

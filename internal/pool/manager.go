@@ -141,3 +141,6 @@ func (m *Manager) ReportFailure(keyID int64, c retry.Classification) {
 
 // Reset 手动重新启用某 key（管理员操作优先）。
 func (m *Manager) Reset(keyID int64) { m.sm.Reset(keyID) }
+
+// ForgetKey 在 key / 渠道被删除后回收其内存状态。
+func (m *Manager) ForgetKey(keyID int64) { m.sm.Forget(keyID) }

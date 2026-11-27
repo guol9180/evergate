@@ -151,6 +151,9 @@ func (a *API) deleteKey(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
 		return
 	}
+	if a.opt.Pool != nil {
+		a.opt.Pool.ForgetKey(id)
+	}
 	ok(c, gin.H{"deleted": true})
 }
 

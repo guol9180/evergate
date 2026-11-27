@@ -337,6 +337,11 @@ func (a *API) deleteChannel(c *gin.Context) {
 	if !found {
 		return
 	}
+	var keyIDs []int64
+	if err := a.opt.DB.Model(&store.ChannelKey{}).Where("channel_id = ?", ch.ID).Pluck("id", &keyIDs).Error; err != nil {
+		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
+		return
+	}
 	if err := a.opt.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("channel_id = ?", ch.ID).Delete(&store.ChannelKey{}).Error; err != nil {
 			return err
@@ -345,6 +350,12 @@ func (a *API) deleteChannel(c *gin.Context) {
 	}); err != nil {
 		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
 		return
+	}
+	// 渠道连同 key 一起删除：同步回收状态机里这些 key 的内存条目
+	if a.opt.Pool != nil {
+		for _, keyID := range keyIDs {
+			a.opt.Pool.ForgetKey(keyID)
+		}
 	}
 	a.reloadPrices()
 	ok(c, gin.H{"deleted": true})

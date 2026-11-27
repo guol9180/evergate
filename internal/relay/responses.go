@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"evergate/internal/router"
+
 	"github.com/gin-gonic/gin"
 )
 

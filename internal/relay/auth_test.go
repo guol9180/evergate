@@ -28,7 +28,7 @@ func newAuthEnv(t *testing.T) (*gin.Engine, *gorm.DB) {
 	}
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.GET("/v1/models", TokenAuth(db), func(c *gin.Context) {
+	e.GET("/v1/models", TokenAuth(db, nil), func(c *gin.Context) {
 		id, _ := tokenFromContext(c)
 		c.JSON(200, gin.H{"token_id": id})
 	})

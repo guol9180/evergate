@@ -23,8 +23,8 @@ func newCatalogGateway(t *testing.T, env *testEnv, plain string) *httptest.Serve
 	}
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.GET("/v1/models", TokenAuth(env.db), env.HandleModels)
-	e.GET("/v1beta/models", RejectQueryKey(), TokenAuth(env.db), env.HandleGeminiModels)
+	e.GET("/v1/models", TokenAuth(env.db, nil), env.HandleModels)
+	e.GET("/v1beta/models", RejectQueryKey(), TokenAuth(env.db, nil), env.HandleGeminiModels)
 	gw := httptest.NewServer(e)
 	t.Cleanup(gw.Close)
 	return gw

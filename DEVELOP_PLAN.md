@@ -66,9 +66,12 @@ P0 功能完成定义（1–10 全部通过）：
 - 验收标准：① dispatchModel 三段重复的桥接体处理收敛为表驱动，嵌套层级明显下降；② run() 拆为引导 / 装配 / 服务生命周期三段；③ admin.go 按会话、渠道、凭据、令牌、日志、更新拆文件，路由按公开组 / 会话组注册，中间件只声明一次；④ 用量报表的聚合 SELECT 去重（totals 两条合一），审计摘要不再对每个响应做序列化，状态机与轮询器回收已删除条目；⑤ 改名遗留、变参式可选参数、time.Now() 直调等零散项清理；⑥ 重构前后 go test -p 1、-race 与覆盖率门禁结果不变，接口契约与 openapi.yaml 无 diff
 - 边界：不改行为、不改接口、不改 schema；每一步可独立提交并保持全绿
 - 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
+- 状态：in-progress
 - 进度：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（可维护性）
+  - 2026-11-27 执行 ③ admin.go 1500 行按领域拆为 auth / update / settings / channels / keys / tokens / logs，路由改公开组 + 会话组（中间件只声明一次），SetupRoutes 入参改 gin.IRouter；④ 用量报表 totals 与计价计数合并为一次 SELECT，审计摘要只在审计写路由按 json 标签反射取值（不再每个响应做 JSON 往返），key 删除与渠道删除回收状态机内存条目（新增 StateMachine.Forget + Manager.ForgetKey + 表驱动测试）；⑤ TokenAuth 去掉变参（logWriter 显式可 nil），管理台会话校验与令牌 DTO 改用注入时钟，删除重构后无引用的 utcTodayFrom
+  - 2026-11-27 验证 已做项：go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、调度覆盖率 92.8%（≥90%）、relay 81.1%（≥81%）、make build 通过；仓库无 openapi.yaml，接口契约以测试断言为准
+  - 2026-11-27 备注 剩余：① dispatchModel 桥接体表驱动、② run() 拆引导 / 装配 / 生命周期，两项需通读 relay 分派与 cmd 装配后独立提交
 
 #### T112: 转发热路径与服务生命周期优化（P2，代码审查）
 

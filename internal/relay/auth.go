@@ -23,8 +23,8 @@ const (
 
 // TokenAuth 下游令牌鉴权中间件：Bearer <key> → SHA-256 查库比对（任务书 4.3 tokens）。
 // 校验启用状态、过期时间与 IP 白名单；通过后把令牌快照放进 Context 供 relay 治理使用。
-// logWriter 可选：治理拒绝也会进入请求日志，但永不记录 token 明文。
-func TokenAuth(db *gorm.DB, logWriter ...*LogWriter) gin.HandlerFunc {
+// logWriter 可为 nil：治理拒绝也会进入请求日志，但永不记录 token 明文。
+func TokenAuth(db *gorm.DB, logWriter *LogWriter) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := downstreamToken(c)
 		if key == "" {
@@ -74,11 +74,8 @@ func downstreamToken(c *gin.Context) string {
 	return strings.TrimSpace(c.GetHeader("x-goog-api-key"))
 }
 
-func rejectToken(c *gin.Context, writers []*LogWriter, token store.Token, status int, code, message string) {
-	for _, writer := range writers {
-		if writer == nil {
-			continue
-		}
+func rejectToken(c *gin.Context, writer *LogWriter, token store.Token, status int, code, message string) {
+	if writer != nil {
 		writer.Submit(&store.RequestLog{
 			TokenID: token.ID, TokenName: token.Name, StatusCode: status,
 			ErrorType: code, ErrorMessage: message, IP: c.ClientIP(),

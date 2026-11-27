@@ -18,13 +18,13 @@ import (
 	"evergate/internal/store"
 )
 
-func toTokenDTO(t *store.Token) tokenDTO {
+func toTokenDTO(t *store.Token, now time.Time) tokenDTO {
 	remaining := int64(-1)
 	status := "active"
 	switch {
 	case !t.Enabled:
 		status = "disabled"
-	case t.ExpiredAt != nil && time.Now().UTC().After(*t.ExpiredAt):
+	case t.ExpiredAt != nil && now.After(*t.ExpiredAt):
 		status = "expired"
 	case t.Quota > 0:
 		remaining = t.Quota - t.UsedQuota
@@ -51,7 +51,7 @@ func (a *API) listTokens(c *gin.Context) {
 	}
 	items := make([]tokenDTO, 0, len(tokens))
 	for _, t := range tokens {
-		items = append(items, toTokenDTO(t))
+		items = append(items, toTokenDTO(t, a.now()))
 	}
 	ok(c, gin.H{"items": items})
 }
@@ -135,7 +135,7 @@ func (a *API) createToken(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "create_failed", "创建失败")
 		return
 	}
-	dto := toTokenDTO(t)
+	dto := toTokenDTO(t, a.now())
 	ok(c, gin.H{"token": dto, "key": plain}) // 唯一一次明文返回
 }
 

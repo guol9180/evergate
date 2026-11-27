@@ -194,6 +194,13 @@ func (sm *StateMachine) Reset(keyID int64) {
 	sm.OnSuccess(keyID)
 }
 
+// Forget 回收已删除 key 的内存状态：否则状态表会随删除只增不减，快照也会继续写已删 key。
+func (sm *StateMachine) Forget(keyID int64) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	delete(sm.states, keyID)
+}
+
 // enterCooldown 按档位表进入冷却；level 封顶于最后一档。
 func (sm *StateMachine) enterCooldown(s *keyState) {
 	if s.level > len(sm.schedule)-1 {

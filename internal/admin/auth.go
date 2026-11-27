@@ -175,7 +175,7 @@ func (a *API) authenticateSession(c *gin.Context) bool {
 		c.Abort()
 		return false
 	}
-	username, verr := a.opt.Session.Verify(token, time.Now())
+	username, verr := a.opt.Session.Verify(token, a.now())
 	if verr != nil {
 		fail(c, http.StatusUnauthorized, "session_expired", "会话无效或已过期")
 		c.Abort()

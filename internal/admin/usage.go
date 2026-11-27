@@ -198,8 +198,3 @@ func parseDateParam(value string, fallback time.Time, loc *time.Location) (time.
 	}
 	return time.ParseInLocation("2006-01-02", value, loc)
 }
-
-func utcTodayFrom(t time.Time) time.Time {
-	t = t.UTC()
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-}
