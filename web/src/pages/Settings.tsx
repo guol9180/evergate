@@ -4,7 +4,7 @@ import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import type { SystemSettings, SystemSettingsValues } from '../api/types'
-import { Alert, Badge, Button, Card, Field, Input, PageHeader, Spinner } from '../components/ui'
+import { Alert, Badge, Button, Card, Disclosure, Field, Input, PageHeader, Spinner } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelFallbackCard from '../components/ModelFallbackCard'
 import ConfigTransferCard from '../components/ConfigTransferCard'
@@ -96,36 +96,30 @@ export default function Settings() {
       )}
 
       <form onSubmit={onSubmit} className="space-y-[var(--eg-section-gap)]">
-        <Card>
-          <h2 className="mb-4 text-sm font-semibold">{t('settings.upstreamTimeout')}</h2>
-          <div className="eg-grid eg-grid-auto-wide">
-        <NumberField label={t('channels.form.connectTimeout')} hint={t('settings.connectTimeoutHint')} value={form.connectTimeoutSec} onChange={set('connectTimeoutSec')} />
+        <Disclosure title={t('settings.upstreamTimeout')} defaultOpen={true}>
+          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('channels.form.connectTimeout')} hint={t('settings.connectTimeoutHint')} value={form.connectTimeoutSec} onChange={set('connectTimeoutSec')} />
         <NumberField label={t('channels.form.firstTokenTimeout')} hint={t('settings.firstTokenTimeoutHint')} value={form.firstTokenTimeoutSec} onChange={set('firstTokenTimeoutSec')} />
         <NumberField label={t('channels.form.overallTimeout')} hint={t('settings.overallTimeoutHint')} value={form.overallTimeoutSec} onChange={set('overallTimeoutSec')} />
           </div>
-        </Card>
+        </Disclosure>
 
-        <Card>
-          <h2 className="mb-4 text-sm font-semibold">{t('settings.retryCooldown')}</h2>
-          <div className="eg-grid eg-grid-auto-wide">
-        <NumberField label={t('settings.retryChannels')} hint={t('settings.range1to10')} value={form.retryChannels} onChange={set('retryChannels')} />
+        <Disclosure title={t('settings.retryCooldown')} defaultOpen={true}>
+          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.retryChannels')} hint={t('settings.range1to10')} value={form.retryChannels} onChange={set('retryChannels')} />
         <NumberField label={t('settings.retryKeysPerChannel')} hint={t('settings.range1to10')} value={form.retryKeysPerChannel} onChange={set('retryKeysPerChannel')} />
         <NumberField label={t('settings.retryTotalSec')} hint={t('settings.retryTotalHint')} value={form.retryTotalSec} onChange={set('retryTotalSec')} />
         <NumberField label={t('settings.cooldownFailThreshold')} hint={t('settings.range1to100')} value={form.cooldownFailThreshold} onChange={set('cooldownFailThreshold')} />
         <NumberField label={t('settings.cooldownBaseSec')} hint={t('settings.cooldownBaseHint')} value={form.cooldownBaseSec} onChange={set('cooldownBaseSec')} />
         <NumberField label={t('settings.cooldownMaxSec')} hint={t('settings.cooldownMaxHint')} value={form.cooldownMaxSec} onChange={set('cooldownMaxSec')} />
           </div>
-        </Card>
+        </Disclosure>
 
-        <Card>
-          <h2 className="mb-4 text-sm font-semibold">{t('settings.maintenance')}</h2>
-          <div className="eg-grid eg-grid-auto-wide">
-        <NumberField label={t('settings.logRetentionDays')} hint={t('settings.retentionHint')} value={form.logRetentionDays} onChange={set('logRetentionDays')} />
+        <Disclosure title={t('settings.maintenance')} defaultOpen={false}>
+          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.logRetentionDays')} hint={t('settings.retentionHint')} value={form.logRetentionDays} onChange={set('logRetentionDays')} />
         <NumberField label={t('settings.healthProbeInterval')} hint={t('settings.probeIntervalHint')} value={form.healthProbeIntervalSec} onChange={set('healthProbeIntervalSec')} />
         <NumberField label={t('settings.healthProbeConcurrency')} hint={t('settings.probeConcurrencyHint')} value={form.healthProbeConcurrency} onChange={set('healthProbeConcurrency')} />
         <NumberField label={t('settings.healthProbeTimeout')} hint={t('settings.probeTimeoutHint')} value={form.healthProbeTimeoutSec} onChange={set('healthProbeTimeoutSec')} />
           </div>
-        </Card>
+        </Disclosure>
 
         <div className="flex justify-end">
           <Button type="submit" loading={save.isPending}>

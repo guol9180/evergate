@@ -14,6 +14,7 @@ import ModelMappingEditor from '../components/ModelMappingEditor'
 import PriceTable from '../components/PriceTable'
 import TestAllPanel from '../components/TestAllPanel'
 import { errorMessage } from '../lib/errors'
+import { useUnsavedGuard } from '../lib/useUnsavedGuard'
 
 export default function Channels() {
   usePageTitle(t('page.channels.title'))
@@ -297,7 +298,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const formID = 'channel-form'
   const modelsId = useId()
   const formRef = useRef<HTMLFormElement>(null)
-  const [presetId, setPresetId] = useState(channel?.preset_id || CUSTOM_CHANNEL_PRESET)
+  // 新建默认落在第一个供应商预设（预设自带模型与价格，是推荐路径）；自定义接入保留为显式选项，编辑已有渠道沿用其预设
+  const [presetId, setPresetId] = useState(channel?.preset_id || (channel ? CUSTOM_CHANNEL_PRESET : CHANNEL_PRESETS[0].id))
   const [name, setName] = useState(channel?.name ?? '')
   const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? '')
   const [priority, setPriority] = useState(String(channel?.priority ?? 0))
@@ -317,6 +319,11 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const [connectSec, setConnectSec] = useState(channel?.timeout_config?.connect_sec?.toString() ?? '')
   const [firstTokenSec, setFirstTokenSec] = useState(channel?.timeout_config?.first_token_sec?.toString() ?? '')
   const [overallSec, setOverallSec] = useState(channel?.timeout_config?.overall_sec?.toString() ?? '')
+  // 脏数据快照：与初始值逐字段比较后交给 useUnsavedGuard 做关闭确认（Esc / 遮罩 / 取消按钮）
+  const snapshot = JSON.stringify({ presetId, name, baseUrl, priority, weight, supportsResponses, supportsAnthropic, supportsGemini, models, mapping, keysText, connectSec, firstTokenSec, overallSec })
+  const initialSnapshot = useRef(snapshot)
+  const guard = useUnsavedGuard(snapshot !== initialSnapshot.current)
+  const close = guard.guard(onClose)
   const preset = findChannelPreset(presetId)
   const presetMode = preset != null
   // 预设渠道的价格由内置目录兜底：编辑时用服务端算好的生效价格（覆盖 → 全局默认 → 目录），
@@ -432,12 +439,12 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       title={channel ? t('channels.edit.title') : t('page.channels.create')}
       wide
       footer={
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+          <Button type="button" variant="outline" onClick={close}>{t('common.cancel')}</Button>
           <Button type="submit" form={formID} loading={save.isPending} disabled={createdChannelID != null}>{t('common.save')}</Button>
         </div>
       }
@@ -651,6 +658,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         )}
         {!presetMode && <ModelMappingEditor value={mapping} onChange={setMapping} />}
       </form>
+      {guard.dialog}
     </Dialog>
   )
 }
