@@ -212,7 +212,7 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 最近完成 / 已取消
 
-> 本批次已 done 的卡（T103–T108）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
+> 本批次已 done 的卡（T103–T108、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
 
 ## 归档索引
 

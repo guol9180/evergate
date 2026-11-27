@@ -125,6 +125,7 @@ func (a *API) RegisterRoutes(r gin.IRoutes) {
 	r.DELETE("/admin/api/tokens/:id", a.accessMiddleware(), a.sessionMiddleware(), a.deleteToken)
 	r.GET("/admin/api/logs", a.accessMiddleware(), a.sessionMiddleware(), a.listLogs)
 	r.GET("/admin/api/logs/stats", a.accessMiddleware(), a.sessionMiddleware(), a.logStatsHandler)
+	r.GET("/admin/api/logs/models", a.accessMiddleware(), a.sessionMiddleware(), a.logModelFacets)
 	r.GET("/admin/api/logs/export", a.accessMiddleware(), a.sessionMiddleware(), a.exportLogs)
 	r.GET("/admin/api/logs/:id", a.accessMiddleware(), a.sessionMiddleware(), a.getLog)
 	r.GET("/admin/api/config/export", a.accessMiddleware(), a.sessionMiddleware(), a.exportConfig)

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, jsonBody } from './client'
 import { withBasePath } from '../lib/runtime'
-import type { AdminInfo, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -319,6 +319,16 @@ export function useLogs(filters: LogFilters, refetchInterval: number | false = f
     queryFn: () => api<LogsPage>(`/admin/api/logs?${buildLogQuery(filters)}`),
     placeholderData: (prev) => prev,
     refetchInterval,
+  })
+}
+
+/** 模型候选跟随其他筛选（调用方不传 model），让下拉只列当前范围内真实出现过的模型。 */
+export function useLogModels(filters: Omit<LogFilters, 'model' | 'page' | 'page_size'>) {
+  return useQuery({
+    queryKey: ['log-models', filters],
+    queryFn: () => api<{ items: LogModelFacet[] }>(`/admin/api/logs/models?${buildLogQuery(filters)}`),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
   })
 }
 

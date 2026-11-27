@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ChevronDown, ChevronUp, Download, Filter, RefreshCw, RotateCcw, ScrollText, Search } from 'lucide-react'
-import { buildLogQuery, downloadAdminFile, useChannels, useLogs, useTokens } from '../api/hooks'
+import { buildLogQuery, downloadAdminFile, useChannels, useLogModels, useLogs, useTokens } from '../api/hooks'
 import { Alert, Badge, Button, Card, ContentSwap, CopyButton, Disclosure, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import RetryTimeline, { lastAttempt } from '../components/RetryTimeline'
@@ -26,6 +26,27 @@ function endOfDayRFC3339(date: string): string | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
 }
 
+/** 时间范围快捷项：今天 / 近 7 天 / 近 30 天，自定义时才用日期输入。 */
+type Range = '' | 'today' | '7d' | '30d' | 'custom'
+
+function rangeStartRFC3339(range: Range, startDate: string): string | undefined {
+  switch (range) {
+    case 'today': {
+      const d = new Date()
+      d.setHours(0, 0, 0, 0)
+      return d.toISOString()
+    }
+    case '7d':
+      return new Date(Date.now() - 7 * 86_400_000).toISOString()
+    case '30d':
+      return new Date(Date.now() - 30 * 86_400_000).toISOString()
+    case 'custom':
+      return startOfDayRFC3339(startDate)
+    default:
+      return undefined
+  }
+}
+
 /** 详情里「按此筛选」只改对应条件，其余保留。 */
 type DetailFilter = { channel_id?: string; token_id?: string; model?: string }
 
@@ -35,6 +56,7 @@ export default function Logs() {
   const [status, setStatus] = useState('')
   const [channelId, setChannelId] = useState('')
   const [tokenId, setTokenId] = useState('')
+  const [range, setRange] = useState<Range>('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [page, setPage] = useState(1)
@@ -51,17 +73,21 @@ export default function Logs() {
     status: status || undefined,
     channel_id: channelId || undefined,
     token_id: tokenId || undefined,
-    start: startOfDayRFC3339(startDate),
-    end: endOfDayRFC3339(endDate),
+    start: rangeStartRFC3339(range, startDate),
+    end: range === 'custom' ? endOfDayRFC3339(endDate) : undefined,
   }
   const logs = useLogs({ ...filters, page, page_size: pageSize }, autoRefresh ? AUTO_REFRESH_MS : false)
+  // 模型候选跟随其他筛选：只列当前范围内真实出现过的模型，用户不必记得精确模型名
+  const modelFacets = useLogModels({ status: filters.status, channel_id: filters.channel_id, token_id: filters.token_id, start: filters.start, end: filters.end })
+  const modelOptions = (modelFacets.data?.items ?? []).map((facet) => ({ value: facet.model, label: tf('logs.filter.modelOption', { model: facet.model, n: fmtInt(facet.requests) }) }))
+  if (model && !modelOptions.some((option) => option.value === model)) modelOptions.unshift({ value: model, label: model })
 
   const total = logs.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const resetPage = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setPage(1) }
-  const hasFilters = Boolean(model || status || channelId || tokenId || startDate || endDate)
-  const clearFilters = () => {
-    setModel(''); setStatus(''); setChannelId(''); setTokenId(''); setStartDate(''); setEndDate(''); setPage(1)
+  const hasFilters = Boolean(model || status || channelId || tokenId || range)
+  const reset = () => {
+    setModel(''); setStatus(''); setChannelId(''); setTokenId(''); setRange(''); setStartDate(''); setEndDate(''); setPage(1)
   }
   // 轮询期间的 isFetching 不算「手动刷新」：只有用户点了按钮才转圈
   const refresh = async () => {
@@ -107,10 +133,17 @@ export default function Logs() {
           </>
         )}
       />
-      {/* 筛选栏（gpt-load LogsFilterForm 模式）：渠道/令牌用下拉而不是让用户记数字 ID */}
+      {/* 筛选栏全部可选可重置：模型 / 渠道 / 令牌 / 状态用下拉，时间用快捷范围，不再让用户手敲精确值 */}
       <Card>
         <div className="eg-grid eg-grid-auto items-end">
-          <Field label={t('logs.filter.model')}><Input placeholder={t('logs.filter.modelPlaceholder')} value={model} onChange={(e) => resetPage(setModel)(e.target.value)} /></Field>
+          <Field label={t('logs.filter.model')}>
+            <Select
+              value={model}
+              onValueChange={resetPage(setModel)}
+              aria-label={t('logs.filter.model')}
+              options={[{ value: '', label: t('logs.filter.allModels') }, ...modelOptions]}
+            />
+          </Field>
           <Field label={t('logs.filter.status')}>
             <Select
               value={status}
@@ -118,6 +151,8 @@ export default function Logs() {
               aria-label={t('logs.filter.status')}
               options={[
                 { value: '', label: t('logs.filter.all') },
+                { value: 'success', label: t('logs.filter.success') },
+                { value: 'error', label: t('logs.filter.error') },
                 { value: '200', label: t('logs.filter.200') },
                 { value: '401', label: t('logs.filter.401') },
                 { value: '429', label: t('logs.filter.429') },
@@ -147,9 +182,32 @@ export default function Logs() {
               ]}
             />
           </Field>
-          <Field label={t('logs.filter.start')}><Input type="date" value={startDate} onChange={(e) => resetPage(setStartDate)(e.target.value)} /></Field>
-          <Field label={t('logs.filter.end')}><Input type="date" value={endDate} onChange={(e) => resetPage(setEndDate)(e.target.value)} /></Field>
-          <span className="pb-2 text-xs text-subtle"><Search size={14} className="inline" aria-hidden="true" /> {t('common.search')} · {t('logs.filter.tzHint')}</span>
+          <Field label={t('logs.filter.range')}>
+            <Select
+              value={range}
+              onValueChange={(value) => { resetPage(setRange)(value as Range); if (value !== 'custom') { setStartDate(''); setEndDate('') } }}
+              aria-label={t('logs.filter.range')}
+              options={[
+                { value: '', label: t('logs.filter.rangeAll') },
+                { value: 'today', label: t('logs.filter.rangeToday') },
+                { value: '7d', label: t('logs.filter.range7d') },
+                { value: '30d', label: t('logs.filter.range30d') },
+                { value: 'custom', label: t('logs.filter.rangeCustom') },
+              ]}
+            />
+          </Field>
+          {range === 'custom' && (
+            <>
+              <Field label={t('logs.filter.start')}><Input type="date" value={startDate} onChange={(e) => resetPage(setStartDate)(e.target.value)} /></Field>
+              <Field label={t('logs.filter.end')}><Input type="date" value={endDate} onChange={(e) => resetPage(setEndDate)(e.target.value)} /></Field>
+            </>
+          )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pb-2">
+            <Button size="sm" variant="outline" disabled={!hasFilters} onClick={reset}>
+              <RotateCcw size={13} /> {t('logs.filter.reset')}
+            </Button>
+            <span className="text-xs text-subtle"><Search size={14} className="inline" aria-hidden="true" /> {t('common.search')}{range === 'custom' ? ` · ${t('logs.filter.tzHint')}` : ''}</span>
+          </div>
         </div>
       </Card>
 
@@ -161,7 +219,7 @@ export default function Logs() {
               filtered={hasFilters}
               title={t(hasFilters ? 'empty.filtered.logs.title' : 'empty.logs.title')}
               hint={t(hasFilters ? 'empty.filtered.logs.hint' : 'empty.logs.hint')}
-              action={hasFilters ? <Button size="sm" variant="outline" onClick={clearFilters}>{t('common.clearFilters')}</Button> : undefined}
+              action={hasFilters ? <Button size="sm" variant="outline" onClick={reset}>{t('common.clearFilters')}</Button> : undefined}
             />
           ) : (
             <div className="overflow-x-auto">
@@ -241,20 +299,20 @@ function LogDrawer({ log, onClose, onFilter }: { log: RequestLog | null; onClose
   )
 }
 
-// 日志详情：顶部摘要带先回答「成败 / 模型 / 渠道 / 耗时 / 成本」，再按请求 / 路由 / 用量 / 错误 / 轨迹分组。
+// 日志详情：摘要带先回答「成败 / 模型 / 渠道 / 耗时 / 成本」；下方分组只放摘要带没有的信息，同一事实不出现第二次。
 function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: DetailFilter) => void }) {
   const ok = log.status_code >= 200 && log.status_code < 400
   const tone = httpStatusTone(log.status_code)
   const last = lastAttempt(log.retry_trace)
   const channelID = log.channel_id || last?.channel_id
-  const channelName = log.channel_name || last?.channel_name || ''
   const keyID = log.key_id || last?.key_id
+  // 失败请求没有命中渠道，摘要带直接给最后尝试的渠道并标注
+  const channelLabel = log.channel_name || (last?.channel_name ? tf('logs.detail.lastAttemptOf', { channel: last.channel_name, note: t('logs.detail.lastAttempt') }) : '')
   const chain = modelChain(log)
   const upstream = describeUpstreamError(log.error_message)
   const priced = log.cost_status === 'priced'
   const attempts = log.retry_trace ?? []
   const tint = tone === 'success' ? 'border-success-border bg-success-subtle' : tone === 'warning' ? 'border-warning-border bg-warning-subtle' : 'border-danger-border bg-danger-subtle'
-  const channelLabel = log.channel_name || (last?.channel_name ? tf('logs.detail.lastAttemptOf', { channel: last.channel_name, note: t('logs.detail.lastAttempt') }) : '')
 
   return (
     <div className="space-y-[var(--eg-control-gap)]">
@@ -262,6 +320,7 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge tone={tone}>{log.status_code} {ok ? t('logs.detail.success') : t('logs.detail.failed')}</StatusBadge>
           {log.stream && <Badge tone="neutral" compact>{t('log.field.stream')}</Badge>}
+          {log.source === 'playground' && <Badge tone="brand" compact>{t('log.source.playground')}</Badge>}
           <span className="text-xs text-muted">{fmtTime(log.created_at)}</span>
           <span className="ml-auto font-mono text-xs text-subtle">#{log.id}</span>
         </div>
@@ -275,7 +334,7 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
           <CopyButton compact value={log.upstream_model || log.model} label={t('common.copy')} side="bottom" />
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <span>{t('table.channel')}{colon()}<span className="font-medium text-foreground-soft">{channelName || '—'}</span></span>
+          <span>{t('table.channel')}{colon()}<span className="font-medium text-foreground-soft">{channelLabel || '—'}</span></span>
           <span>{t('log.field.keyId')} <span className="font-medium text-foreground-soft">{keyID ? `#${keyID}` : '—'}</span></span>
           <span>{t('table.token')}{colon()}<span className="font-medium text-foreground-soft">{log.token_name || '—'}</span></span>
         </div>
@@ -301,28 +360,6 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
         </div>
       </section>
 
-      <Disclosure title={t('logs.section.request')}>
-        <FieldGrid rows={[
-          { label: t('table.time'), value: fmtTime(log.created_at) },
-          { label: t('log.field.source'), value: log.source === 'playground' ? t('log.source.playground') : t('log.source.api') },
-          { label: t('log.field.stream'), value: log.stream ? t('common.yes') : t('common.no') },
-          { label: t('table.token'), value: log.token_name || '—' },
-          { label: t('log.field.originalModel'), value: log.original_model || '—', mono: true, copy: log.original_model || undefined },
-          { label: t('table.model'), value: log.model, mono: true, copy: log.model },
-          { label: t('table.upstreamModel'), value: log.upstream_model || '—', mono: true, copy: log.upstream_model || undefined },
-          { label: t('log.field.clientIP'), value: log.ip || '—', mono: true, copy: log.ip || undefined },
-        ]} />
-      </Disclosure>
-
-      <Disclosure title={t('logs.section.routing')}>
-        <FieldGrid rows={[
-          { label: t('table.channel'), value: channelLabel || '—', copy: channelName || undefined },
-          { label: t('logs.detail.retryCount'), value: attempts.length > 1 ? tf('logs.retryCount', { n: attempts.length - 1 }) : '0' },
-          { label: t('table.firstToken'), value: fmtMs(log.first_token_ms || undefined) },
-          { label: t('table.totalMs'), value: fmtMs(log.total_ms || undefined) },
-        ]} />
-      </Disclosure>
-
       <Disclosure title={t('logs.section.usage')} badge={priced ? undefined : <Badge tone="warning" compact>{fmtRequestCost(log.cost_micros, log.cost_status)}</Badge>}>
         <div className="grid grid-cols-3 gap-2">
           <TokenStat label={t('log.field.promptTokens')} value={fmtInt(log.prompt_tokens)} />
@@ -332,10 +369,10 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
           {!!log.cache_write_tokens && <TokenStat label={t('log.field.cacheWriteTokens')} value={fmtInt(log.cache_write_tokens)} />}
           {!!log.reasoning_tokens && <TokenStat label={t('log.field.reasoningTokens')} value={fmtInt(log.reasoning_tokens)} />}
         </div>
+        {/* 成本数值已在摘要带；这里只补来源与未计价原因 */}
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line-soft pt-3 text-xs">
-          <span className="text-subtle">{t('table.cost')}</span>
-          <span className={`text-sm font-semibold tabular-nums ${priced ? 'text-foreground' : 'text-warning-text'}`}>{fmtRequestCost(log.cost_micros, log.cost_status)}</span>
-          {log.price_source && <PriceSourceBadge source={log.price_source} />}
+          <span className="text-subtle">{t('usage.price.sourceLabel')}</span>
+          {log.price_source ? <PriceSourceBadge source={log.price_source} /> : <span className="text-foreground-soft">{t('cost.unknown')}</span>}
         </div>
         {!priced && (
           <Alert
@@ -363,19 +400,17 @@ function LogDetail({ log, onFilter }: { log: RequestLog; onFilter: (patch: Detai
         <RetryTimeline attempts={log.retry_trace} />
       </Disclosure>
 
-      <Disclosure title={t('logs.section.secondary')} defaultOpen={false}>
+      <Disclosure title={t('logs.section.context')} defaultOpen={false}>
         <FieldGrid rows={[
-          { label: t('log.field.requestId'), value: `#${log.id}` },
-          { label: t('log.field.tokenId'), value: log.token_id ? `#${log.token_id}` : '—' },
-          { label: t('log.field.keyId'), value: keyID ? `#${keyID}` : '—' },
+          { label: t('log.field.clientIP'), value: log.ip || '—', mono: true, copy: log.ip || undefined },
           { label: t('log.field.userAgent'), value: log.user_agent || '—', mono: true, copy: log.user_agent || undefined, wide: true },
           { label: t('log.field.configOverride'), value: log.config_override || '—', mono: true, wide: true },
+          { label: t('log.field.tokenId'), value: log.token_id ? `#${log.token_id}` : '—' },
         ]} />
       </Disclosure>
     </div>
   )
 }
-
 /** 模型映射链：原始模型（仅降级时存在）→ 对外模型 → 上游模型；相邻重名合并。 */
 function modelChain(log: RequestLog): { model: string; role: 'original' | 'public' | 'upstream' }[] {
   const chain: { model: string; role: 'original' | 'public' | 'upstream' }[] = [{ model: log.model, role: 'public' }]

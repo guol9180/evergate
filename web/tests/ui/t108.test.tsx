@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import Logs from '../../src/pages/Logs'
 import RetryTimeline, { lastAttempt } from '../../src/components/RetryTimeline'
+import { fmtTime } from '../../src/lib/format'
 import type { RequestLog, RetryAttempt } from '../../src/api/types'
 
 const state = vi.hoisted(() => ({
@@ -23,6 +24,7 @@ vi.mock('../../src/api/hooks', async (importOriginal) => {
       state.lastInterval = interval
       return { data: { items: state.logs, total: state.logs.length }, isPending: false, isFetching: false, refetch: state.refetch }
     },
+    useLogModels: () => ({ data: { items: [{ model: 'gpt-4o', requests: 2 }, { model: 'custom-model', requests: 1 }] }, isPending: false }),
   }
 })
 
@@ -72,18 +74,25 @@ describe('Logs list and detail (T108)', () => {
     expect(within(dataRows()[0]).getByText('OpenAI 主渠道')).toBeTruthy()
   })
 
-  it('groups the detail and highlights the fallback boundary without echoing data-layer copy', async () => {
+  it('groups the detail without repeating summary facts and highlights the fallback boundary', async () => {
     renderLogs()
     fireEvent.click(screen.getByText('DeepSeek 备用'))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('503 失败')).toBeTruthy()
-    for (const section of ['请求', '路由与性能', '用量与成本', '错误', '重试轨迹', '次要信息']) {
+    for (const section of ['用量与成本', '错误', '重试轨迹', '请求上下文']) {
       expect(within(dialog).getByText(section)).toBeTruthy()
     }
-    // 次要信息默认折叠
-    expect(within(dialog).getByText('次要信息').closest('details')?.open).toBe(false)
-    // 摘要带给出最后尝试的渠道与「最后尝试」标注
-    expect(within(dialog).getAllByText(/DeepSeek 备用/).length).toBeGreaterThan(0)
+    // 摘要带已经回答的事实不再在下方分组里重复：时间 / 模型 / 渠道 / 耗时只出现一次
+    expect(within(dialog).queryByText('请求')).toBeNull()
+    expect(within(dialog).queryByText('路由与性能')).toBeNull()
+    expect(within(dialog).getAllByText(fmtTime(failedLog.created_at)).length).toBe(1)
+    expect(within(dialog).getAllByText('1.30s').length).toBe(1)
+    // 对外模型只在摘要带出现一次（降级边界里的 from / to 是轨迹事实，不算重复）
+    expect(within(dialog).getByText('gpt-4o', { selector: '[title="模型"]' })).toBeTruthy()
+    // 请求上下文默认折叠
+    expect(within(dialog).getByText('请求上下文').closest('details')?.open).toBe(false)
+    // 摘要带给出最后尝试的渠道并标注
+    expect(within(dialog).getByText(/DeepSeek 备用（最后尝试）/)).toBeTruthy()
     // 降级边界：标题 + 本地化原因，不回显后端写入的中文展示文案
     expect(within(dialog).getByText('模型降级')).toBeTruthy()
     expect(within(dialog).getByText('预算降级')).toBeTruthy()
@@ -124,6 +133,41 @@ describe('Logs list and detail (T108)', () => {
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/没有生效价格/)).toBeTruthy()
     expect(within(dialog).getByRole('link', { name: '去设置价格' }).getAttribute('href')).toBe('/usage')
+  })
+
+  it('offers logged models as options instead of a free-text input', () => {
+    renderLogs()
+    const trigger = screen.getByRole('combobox', { name: '模型' })
+    expect(screen.queryByPlaceholderText('精确匹配，如 gpt-4o')).toBeNull()
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    expect(screen.getByRole('option', { name: '全部模型' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'gpt-4o（2 次）' })).toBeTruthy()
+  })
+
+  it('filters by status group and quick time range, and resets everything', async () => {
+    renderLogs()
+    const status = screen.getByRole('combobox', { name: '状态码' })
+    fireEvent.keyDown(status, { key: 'ArrowDown' })
+    fireEvent.keyDown(screen.getByRole('option', { name: '失败（4xx / 5xx）' }), { key: 'Enter' })
+    expect(state.lastFilters).toMatchObject({ status: 'error' })
+
+    const range = screen.getByRole('combobox', { name: '时间范围' })
+    expect(screen.queryByLabelText('开始日期')).toBeNull()
+    fireEvent.keyDown(range, { key: 'ArrowDown' })
+    fireEvent.keyDown(screen.getByRole('option', { name: '今天' }), { key: 'Enter' })
+    expect(state.lastFilters).toMatchObject({ status: 'error', end: undefined })
+    const localMidnight = new Date()
+    localMidnight.setHours(0, 0, 0, 0)
+    expect(state.lastFilters?.start).toBe(localMidnight.toISOString())
+
+    // 自定义才显示日期输入
+    fireEvent.keyDown(range, { key: 'ArrowDown' })
+    fireEvent.keyDown(screen.getByRole('option', { name: '自定义…' }), { key: 'Enter' })
+    expect(screen.getByLabelText('开始日期')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: '重置' }))
+    expect(state.lastFilters).toMatchObject({ status: undefined, start: undefined, end: undefined, page: 1 })
+    expect(screen.getByRole('button', { name: '重置' }).hasAttribute('disabled')).toBe(true)
   })
 
   it('copies key fields through the shared CopyButton', async () => {

@@ -42,11 +42,19 @@ func applyLogFilters(c *gin.Context, q *gorm.DB) (*gorm.DB, error) {
 		q = q.Where("model = ?", v)
 	}
 	if v := c.Query("status"); v != "" {
-		code, err := parseQueryInt64(c, "status")
-		if err != nil {
-			return nil, err
+		// success / error 是分组筛选（与 computeLogStats 的 2xx/3xx 成功口径一致），其余按具体状态码
+		switch v {
+		case "success":
+			q = q.Where("status_code < ?", http.StatusBadRequest)
+		case "error":
+			q = q.Where("status_code >= ?", http.StatusBadRequest)
+		default:
+			code, err := parseQueryInt64(c, "status")
+			if err != nil {
+				return nil, err
+			}
+			q = q.Where("status_code = ?", code)
 		}
-		q = q.Where("status_code = ?", code)
 	}
 	if v := c.Query("start"); v != "" {
 		t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
@@ -63,6 +71,29 @@ func applyLogFilters(c *gin.Context, q *gorm.DB) (*gorm.DB, error) {
 		q = q.Where("created_at <= ?", t.UTC())
 	}
 	return q, nil
+}
+
+// logModelFacets 返回当前筛选下日志里出现过的对外模型及请求数，供筛选栏做候选：
+// 用户不必记得精确模型名。只 GROUP BY model（走已有索引），最多 500 个。
+func (a *API) logModelFacets(c *gin.Context) {
+	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
+	if err != nil {
+		fail(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	var rows []struct {
+		Model    string `gorm:"column:model"`
+		Requests int64  `gorm:"column:requests"`
+	}
+	if err := q.Select("model, COUNT(*) AS requests").Group("model").Order("requests DESC, model ASC").Limit(500).Scan(&rows).Error; err != nil {
+		fail(c, http.StatusInternalServerError, "查询失败")
+		return
+	}
+	items := make([]gin.H, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, gin.H{"model": row.Model, "requests": row.Requests})
+	}
+	ok(c, gin.H{"items": items})
 }
 
 // logStats 聚合结果：基于全部匹配行计算，不受分页限制（修复 Dashboard 只看最新 100 条的口径偏差）。

@@ -285,6 +285,12 @@ export interface LogsPage {
   page_size: number
 }
 
+/** 日志筛选栏的模型候选：当前筛选下真实出现过的对外模型及请求数 */
+export interface LogModelFacet {
+  model: string
+  requests: number
+}
+
 export interface UsageTotals {
   requests: number
   success: number
