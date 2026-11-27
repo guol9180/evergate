@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, ChevronDown, ChevronUp, Download, Filter, RefreshCw, RotateCcw, ScrollText, Search } from 'lucide-react'
+import { ArrowRight, ChevronDown, ChevronUp, Download, Filter, RefreshCw, RotateCcw, ScrollText } from 'lucide-react'
 import { buildLogQuery, downloadAdminFile, useChannels, useLogModels, useLogs, useTokens } from '../api/hooks'
 import { Alert, Badge, Button, Card, ContentSwap, CopyButton, Disclosure, Drawer, Empty, Field, Input, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch, Td, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
@@ -202,13 +202,14 @@ export default function Logs() {
               <Field label={t('logs.filter.end')}><Input type="date" value={endDate} onChange={(e) => resetPage(setEndDate)(e.target.value)} /></Field>
             </>
           )}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pb-2">
-            <Button size="sm" variant="outline" disabled={!hasFilters} onClick={reset}>
-              <RotateCcw size={13} /> {t('logs.filter.reset')}
+          {/* 重置与页头按钮同规格（h-9 outline），靠右对齐到输入框底边；筛选即时生效不必再提示 */}
+          <div className="flex justify-end">
+            <Button variant="outline" disabled={!hasFilters} onClick={reset}>
+              <RotateCcw size={14} /> {t('logs.filter.reset')}
             </Button>
-            <span className="text-xs text-subtle"><Search size={14} className="inline" aria-hidden="true" /> {t('common.search')}{range === 'custom' ? ` · ${t('logs.filter.tzHint')}` : ''}</span>
           </div>
         </div>
+        {range === 'custom' && <p className="mt-2 text-xs text-subtle">{t('logs.filter.tzHint')}</p>}
       </Card>
 
       <Card>
