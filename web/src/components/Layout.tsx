@@ -93,18 +93,18 @@ export default function Layout() {
         </div>
         <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3" aria-label={t('nav.main')}>
           {nav.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              title={t(item.label)}
-              className={({ isActive }) =>
-                `eg-nav-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${isActive ? 'bg-brand-subtle font-medium text-brand-text' : 'text-muted hover:bg-surface-soft'}`
-              }
-            >
-              <item.icon size={16} aria-hidden="true" />
-              <span className="eg-sidebar-label">{t(item.label)}</span>
-            </NavLink>
+            <Tooltip key={item.to} content={sidebarExpanded ? undefined : t(item.label)} side="right">
+              <NavLink
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `eg-nav-link flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${isActive ? 'bg-brand-subtle font-medium text-brand-text' : 'text-muted hover:bg-surface-soft'}`
+                }
+              >
+                <item.icon size={16} aria-hidden="true" />
+                <span className="eg-sidebar-label">{t(item.label)}</span>
+              </NavLink>
+            </Tooltip>
           ))}
         </nav>
         <div className="space-y-3 border-t border-line-soft p-3">

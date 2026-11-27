@@ -300,7 +300,9 @@ tbody tr {
   .eg-press:active:not(:disabled) {
     transform: none;
   }
-  .eg-switch-thumb {
+  /* 图表激活点描边走语义 token：SVG 属性不支持 var()，用类名承接 */
+.eg-chart-dot { stroke: var(--eg-surface); }
+.eg-switch-thumb {
     transition: none;
   }
   .eg-expand-in {

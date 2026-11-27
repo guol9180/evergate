@@ -66,10 +66,11 @@ P0 功能完成定义（1–10 全部通过）：
 - 验收标准：① 引入 react-hook-form + zod，渠道 / 令牌 / 价格 / 降级链 / 设置 / 登录表单迁移，校验文案走 i18n，保存入参强类型；② 表单有未保存更改时关闭需确认，Esc 与点遮罩不丢输入；③ Switch 改用 Radix Switch，侧栏收起态导航项改用 Tooltip 与底部操作一致，Dialog / Drawer 仅在有描述时设置 aria-describedby；④ 图表与弹层颜色全部走语义 token，分页器图标统一为 lucide；⑤ 此前两个未决观察项（新建渠道默认选中项、设置页长表单分区）在本卡内定案并落地；⑥ audit:layout 全绿，18787 逐表单复验，单测覆盖脏数据保护与校验
 - 边界：新增依赖 react-hook-form、zod、@hookform/resolvers、@radix-ui/react-switch，实施前告知用户；不改表单字段集合
 - 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
+- 状态：in-progress
 - 进度：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（可维护性 / UI 细节）
   - 2026-11-26 决策 用户同意新增 react-hook-form、zod、@hookform/resolvers、@radix-ui/react-switch
+  - 2026-11-27 执行 开工；依赖已向用户告知后安装，按 ③ Switch / Tooltip / aria → ① 表单迁移（登录 → 设置 → 令牌 → 渠道 → 价格 → 降级链）→ ② 脏数据保护 → ④⑤ 的顺序分步提交
 
 #### T111: 可维护性重构（P2，代码审查）
 

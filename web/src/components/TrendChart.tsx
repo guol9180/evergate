@@ -87,7 +87,7 @@ export function TrendChart({ data, className = 'h-56' }: { data: UsageDailyPoint
             strokeWidth={2}
             connectNulls={false}
             dot={rows.length <= 14 ? { r: 2.5, fill: 'var(--color-success-solid)', strokeWidth: 0 } : false}
-            activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff' }}
+            activeDot={{ r: 4, strokeWidth: 2, className: 'eg-chart-dot' }}
           />
         </ComposedChart>
       </ResponsiveContainer>

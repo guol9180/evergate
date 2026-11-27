@@ -31,7 +31,7 @@ function Landing() {
 }
 
 describe('Login', () => {
-  it('validates empty credentials inline without calling the API', () => {
+  it('validates empty credentials inline without calling the API', async () => {
     loginMutation.mutate.mockClear()
     render(
       <MemoryRouter initialEntries={['/login']}>
@@ -39,7 +39,8 @@ describe('Login', () => {
       </MemoryRouter>,
     )
     fireEvent.click(screen.getByRole('button', { name: '登录' }))
-    expect(screen.getByText('请输入用户名')).toBeTruthy()
+    // zod resolver 异步校验：错误在下一拍渲染
+    expect(await screen.findByText('请输入用户名')).toBeTruthy()
     expect(screen.getByText('请输入密码')).toBeTruthy()
     expect(screen.getByLabelText('用户名').getAttribute('aria-invalid')).toBe('true')
     expect(screen.getByLabelText('密码').getAttribute('aria-invalid')).toBe('true')
@@ -61,10 +62,10 @@ describe('Login', () => {
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'admin123' } })
     fireEvent.click(screen.getByRole('button', { name: '登录' }))
 
-    expect(loginMutation.mutate).toHaveBeenCalledWith(
+    await waitFor(() => expect(loginMutation.mutate).toHaveBeenCalledWith(
       { username: 'admin', password: 'admin123' },
       expect.any(Object),
-    )
+    ))
     await waitFor(() => expect(screen.getByText('change password')).toBeTruthy())
   })
 

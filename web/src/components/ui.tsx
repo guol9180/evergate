@@ -13,9 +13,10 @@ import {
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
+import * as SwitchPrimitive from '@radix-ui/react-switch'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
-import { Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert, CircleCheck, Copy, Inbox, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, CircleCheck, Copy, Inbox, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
 import { copyText } from '../lib/clipboard'
@@ -233,20 +234,19 @@ export function CopyButton({ value, label, compact = false, className = '', side
   )
 }
 
+/** 开关（Radix Switch）：role / aria-checked / 键盘空格切换由原语负责，调用方只给 checked / onChange。 */
 export function Switch({ checked, onChange, disabled, label, id }: { checked: boolean; onChange: (value: boolean) => void; disabled?: boolean; label: string; id?: string }) {
   return (
-    <button
-      type="button"
+    <SwitchPrimitive.Root
       id={id}
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
+      checked={checked}
+      onCheckedChange={onChange}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 ${checked ? 'bg-brand' : 'bg-line-strong'}`}
+      aria-label={label}
+      className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 data-[state=checked]:bg-brand data-[state=unchecked]:bg-line-strong"
     >
-      <span className={`eg-switch-thumb inline-block h-4 w-4 transform rounded-full bg-surface shadow transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
-    </button>
+      <SwitchPrimitive.Thumb className="eg-switch-thumb pointer-events-none block h-4 w-4 rounded-full bg-surface shadow transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0.5" />
+    </SwitchPrimitive.Root>
   )
 }
 
@@ -443,7 +443,7 @@ function useRestoreFocus(open: boolean) {
  * 模态对话框（Radix Dialog）：Portal、焦点陷阱、Esc、点击遮罩关闭、焦点归还、滚动锁由 Radix 负责；
  * 这里只负责版式与令牌。面板用 inset-0 + margin:auto 居中，避免 transform 居中与入场动画互相覆盖。
  */
-export function Dialog({ open, onClose, title, children, footer, wide, role = 'dialog' }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean; role?: 'dialog' | 'alertdialog' }) {
+export function Dialog({ open, onClose, title, description, children, footer, wide, role = 'dialog' }: { open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children: ReactNode; footer?: ReactNode; wide?: boolean; role?: 'dialog' | 'alertdialog' }) {
   const descId = useId()
   const restoreFocus = useRestoreFocus(open)
   return (
@@ -453,7 +453,7 @@ export function Dialog({ open, onClose, title, children, footer, wide, role = 'd
         <DialogPrimitive.Content
           role={role}
           aria-modal="true"
-          aria-describedby={descId}
+          aria-describedby={description ? descId : undefined}
           onCloseAutoFocus={restoreFocus}
           className={`eg-dialog-panel fixed inset-0 z-50 m-auto flex h-fit max-h-[90vh] w-[calc(100%-2*var(--eg-page-x))] ${wide ? 'max-w-2xl' : 'max-w-md'} flex-col overflow-hidden rounded-xl bg-surface shadow-xl outline-none`}
         >
@@ -463,7 +463,8 @@ export function Dialog({ open, onClose, title, children, footer, wide, role = 'd
             </DialogPrimitive.Title>
             <CloseButton />
           </div>
-          <div id={descId} className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
+          {description && <p id={descId} className={`${dialogBody} border-b border-line-soft pb-3 text-xs leading-5 text-muted`}>{description}</p>}
+          <div className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
           {footer && <div className="eg-dialog-footer shrink-0 border-t border-line-soft bg-surface">{footer}</div>}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
@@ -472,7 +473,7 @@ export function Dialog({ open, onClose, title, children, footer, wide, role = 'd
 }
 
 /** 右侧抽屉：与 Dialog 同一 Radix 底座，只换面板位置与入场动画。 */
-export function Drawer({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean }) {
+export function Drawer({ open, onClose, title, description, children, wide }: { open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children: ReactNode; wide?: boolean }) {
   const descId = useId()
   const restoreFocus = useRestoreFocus(open)
   return (
@@ -481,7 +482,7 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
         <DialogPrimitive.Overlay className="eg-overlay fixed inset-0 z-50 bg-overlay" />
         <DialogPrimitive.Content
           aria-modal="true"
-          aria-describedby={descId}
+          aria-describedby={description ? descId : undefined}
           onCloseAutoFocus={restoreFocus}
           className={`eg-drawer-panel fixed inset-y-0 right-0 z-50 flex h-full w-full ${wide ? 'sm:w-[min(640px,94vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-surface shadow-2xl outline-none`}
         >
@@ -491,7 +492,8 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
             </DialogPrimitive.Title>
             <CloseButton />
           </div>
-          <div id={descId} className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
+          {description && <p id={descId} className={`${dialogBody} border-b border-line-soft pb-3 text-xs leading-5 text-muted`}>{description}</p>}
+          <div className={`${dialogBody} flex-1 overflow-auto`}>{children}</div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
@@ -742,8 +744,8 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
           />
         )}
         <div className="flex items-center gap-1">
-          <IconButton variant="outline" label={t('pagination.first')} disabled={page <= 1} onClick={() => goto(1)}>«</IconButton>
-          <IconButton variant="outline" label={t('pagination.prev')} disabled={page <= 1} onClick={() => goto(page - 1)}>‹</IconButton>
+          <IconButton variant="outline" label={t('pagination.first')} disabled={page <= 1} onClick={() => goto(1)}><ChevronsLeft size={14} /></IconButton>
+          <IconButton variant="outline" label={t('pagination.prev')} disabled={page <= 1} onClick={() => goto(page - 1)}><ChevronLeft size={14} /></IconButton>
           {pages.map((p, i) => (
             p === null
               ? <span key={`gap-${i}`} className="px-1 text-subtle" aria-hidden="true">…</span>
@@ -760,8 +762,8 @@ export function Pagination({ page, totalPages, total, pageSize, sizes = [20, 50,
                 </Button>
               )
           ))}
-          <IconButton variant="outline" label={t('pagination.next')} disabled={page >= totalPages} onClick={() => goto(page + 1)}>›</IconButton>
-          <IconButton variant="outline" label={t('pagination.last')} disabled={page >= totalPages} onClick={() => goto(totalPages)}>»</IconButton>
+          <IconButton variant="outline" label={t('pagination.next')} disabled={page >= totalPages} onClick={() => goto(page + 1)}><ChevronRight size={14} /></IconButton>
+          <IconButton variant="outline" label={t('pagination.last')} disabled={page >= totalPages} onClick={() => goto(totalPages)}><ChevronsRight size={14} /></IconButton>
         </div>
       </div>
     </nav>
