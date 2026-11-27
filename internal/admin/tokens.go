@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -111,6 +112,11 @@ func (a *API) createToken(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
 		return
 	}
+	name, err := validateTokenName(req.Name)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
+		return
+	}
 	// 生成 24 字节随机 key；SHA-256 入库；原文仅本次响应返回一次（任务书 4.3）
 	raw := make([]byte, 24)
 	if _, err := rand.Read(raw); err != nil {
@@ -136,7 +142,7 @@ func (a *API) createToken(c *gin.Context) {
 		return
 	}
 	t := &store.Token{
-		Name: req.Name, KeyHash: hex.EncodeToString(sum[:]), Enabled: true,
+		Name: name, KeyHash: hex.EncodeToString(sum[:]), Enabled: true,
 		Quota: quota, ExpiredAt: req.ExpiredAt,
 		AllowedModels: allowedModels, AllowedIPs: allowedIPs,
 		DisableFallback: req.DisableFallback,
@@ -179,7 +185,12 @@ func (a *API) updateToken(c *gin.Context) {
 	}
 	updates := map[string]any{}
 	if req.Name != nil {
-		updates["name"] = *req.Name
+		name, err := validateTokenName(*req.Name)
+		if err != nil {
+			fail(c, http.StatusBadRequest, "invalid_param", err.Error())
+			return
+		}
+		updates["name"] = name
 	}
 	if req.Enabled != nil {
 		updates["enabled"] = *req.Enabled
@@ -252,11 +263,28 @@ func (a *API) deleteToken(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return
 	}
-	if err := a.opt.DB.Delete(&store.Token{}, id).Error; err != nil {
+	res := a.opt.DB.Delete(&store.Token{}, id)
+	if res.Error != nil {
 		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
 		return
 	}
+	if res.RowsAffected == 0 {
+		fail(c, http.StatusNotFound, "token_not_found", "令牌不存在")
+		return
+	}
 	ok(c, gin.H{"deleted": true})
+}
+
+// validateTokenName 令牌名去空白后必须非空且不超过列宽；SQLite 不强制 VARCHAR 长度，只能在这里拦。
+func validateTokenName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	switch {
+	case name == "":
+		return "", errors.New("名称不能为空")
+	case utf8.RuneCountInString(name) > 100:
+		return "", errors.New("名称不能超过 100 字符")
+	}
+	return name, nil
 }
 
 // ---------- 请求日志 ----------

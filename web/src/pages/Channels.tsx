@@ -16,7 +16,7 @@ import { t, tf } from '../lib/i18n'
 import ModelMappingEditor from '../components/ModelMappingEditor'
 import PriceTable from '../components/PriceTable'
 import TestAllPanel from '../components/TestAllPanel'
-import { errorMessage } from '../lib/errors'
+import { errorCode, errorMessage } from '../lib/errors'
 import { useUnsavedGuard } from '../lib/useUnsavedGuard'
 
 export default function Channels() {
@@ -564,6 +564,13 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           ...(Object.keys(timeouts).length ? { timeout_config: timeouts } : {}),
         },
         {
+          // 名称冲突定位到名称字段（自定义接入才有该字段）；预设模式名称不可改，仍走顶部提示
+          onError: (error) => {
+            if (errorCode(error) === 'channel_name_taken' && !presetMode) {
+              form.setError('name', { type: 'server', message: errorMessage(error) })
+              setFocus('name')
+            }
+          },
           onSuccess: (saved) => {
             notify.success(t('toast.channel.saved'))
             if (!channel && values.keysText.trim()) {
@@ -595,7 +602,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     >
       <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]" noValidate>
         {/* 提交错误放弹窗正文顶部：打开即见，不藏在「保存」按钮上方 */}
-        {save.isError
+        {save.isError && !(errorCode(save.error) === 'channel_name_taken' && !presetMode)
           ? <Alert tone="danger">{errorMessage(save.error)}</Alert>
           : addKeys.isError
             ? (

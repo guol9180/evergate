@@ -21,6 +21,7 @@ const codeKeys: Record<string, MessageKey> = {
   channel_no_key: 'error.channel_no_key',
   channel_not_found: 'error.channel_not_found',
   channel_not_preset: 'error.channel_not_preset',
+  channel_name_taken: 'error.channel_name_taken',
   channels_query_failed: 'error.channels_query_failed',
   config_channels_invalid: 'error.config_channels_invalid',
   config_fallbacks_invalid: 'error.config_fallbacks_invalid',

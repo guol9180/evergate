@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -19,6 +20,9 @@ import (
 
 // logExportMaxRows 单次 CSV 导出行数上限（防止内存失控；更大范围请缩小筛选）。
 const logExportMaxRows = 10000
+
+// errLogEndBeforeStart 与用量接口同口径：start 晚于 end 时拒绝，而不是返回空结果让用户以为没有日志。
+var errLogEndBeforeStart = errors.New("结束时间不能早于开始时间")
 
 // applyLogFilters 把 /logs、/logs/stats、/logs/export 共用的查询参数映射到 WHERE 条件。
 // 非法筛选值返回带字段名的错误，由调用方转成 400，避免静默忽略导致筛选结果与预期不符。
@@ -55,21 +59,46 @@ func applyLogFilters(c *gin.Context, q *gorm.DB) (*gorm.DB, error) {
 			q = q.Where("status_code = ?", code)
 		}
 	}
-	if v := c.Query("start"); v != "" {
-		t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
-		if err != nil {
-			return nil, fmt.Errorf("start 必须是 RFC3339 时间（如 2026-01-02T15:04:05Z）")
-		}
-		q = q.Where("created_at >= ?", t.UTC())
+	start, hasStart, err := parseRFC3339Query(c, "start")
+	if err != nil {
+		return nil, err
 	}
-	if v := c.Query("end"); v != "" {
-		t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
-		if err != nil {
-			return nil, fmt.Errorf("end 必须是 RFC3339 时间（如 2026-01-02T15:04:05Z）")
-		}
-		q = q.Where("created_at <= ?", t.UTC())
+	if hasStart {
+		q = q.Where("created_at >= ?", start)
+	}
+	end, hasEnd, err := parseRFC3339Query(c, "end")
+	if err != nil {
+		return nil, err
+	}
+	if hasEnd {
+		q = q.Where("created_at <= ?", end)
+	}
+	if hasStart && hasEnd && start.After(end) {
+		return nil, errLogEndBeforeStart
 	}
 	return q, nil
+}
+
+// parseRFC3339Query 解析可选的 RFC3339 查询参数；缺省时 has=false。
+func parseRFC3339Query(c *gin.Context, name string) (time.Time, bool, error) {
+	v := c.Query(name)
+	if v == "" {
+		return time.Time{}, false, nil
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(v))
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("%s 必须是 RFC3339 时间（如 2026-01-02T15:04:05Z）", name)
+	}
+	return t.UTC(), true, nil
+}
+
+// failLogFilter 把筛选校验错误转成 400：区间倒置用稳定码 end_before_start，其余参数错误沿用 invalid_param。
+func failLogFilter(c *gin.Context, err error) {
+	if errors.Is(err, errLogEndBeforeStart) {
+		fail(c, http.StatusBadRequest, "end_before_start", err.Error())
+		return
+	}
+	fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 }
 
 // logModelFacets 返回当前筛选下日志里出现过的对外模型及请求数，供筛选栏做候选：
@@ -77,7 +106,7 @@ func applyLogFilters(c *gin.Context, q *gorm.DB) (*gorm.DB, error) {
 func (a *API) logModelFacets(c *gin.Context) {
 	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if err != nil {
-		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
+		failLogFilter(c, err)
 		return
 	}
 	var rows []struct {
@@ -108,7 +137,7 @@ type logStats struct {
 func (a *API) logStatsHandler(c *gin.Context) {
 	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if err != nil {
-		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
+		failLogFilter(c, err)
 		return
 	}
 	var agg struct {
@@ -174,7 +203,7 @@ func percentileRank(n int64, p float64) int {
 func (a *API) exportLogs(c *gin.Context) {
 	q, err := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if err != nil {
-		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
+		failLogFilter(c, err)
 		return
 	}
 	var logs []*store.RequestLog

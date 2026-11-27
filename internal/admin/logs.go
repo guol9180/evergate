@@ -22,7 +22,7 @@ func (a *API) listLogs(c *gin.Context) {
 	}
 	q, filterErr := applyLogFilters(c, a.opt.DB.Model(&store.RequestLog{}))
 	if filterErr != nil {
-		fail(c, http.StatusBadRequest, "invalid_param", filterErr.Error())
+		failLogFilter(c, filterErr)
 		return
 	}
 	var total int64

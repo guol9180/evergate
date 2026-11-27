@@ -89,6 +89,15 @@ export default function Logs() {
   const reset = () => {
     setModel(''); setStatus(''); setChannelId(''); setTokenId(''); setRange(''); setStartDate(''); setEndDate(''); setPage(1)
   }
+  // 自定义区间两端互相约束：选择器用 min/max 禁掉倒置日期；手输越界时把另一端拉齐，不让 start > end 发到服务端
+  const pickStart = (value: string) => {
+    resetPage(setStartDate)(value)
+    if (value && endDate && value > endDate) setEndDate(value)
+  }
+  const pickEnd = (value: string) => {
+    resetPage(setEndDate)(value)
+    if (value && startDate && value < startDate) setStartDate(value)
+  }
   // 轮询期间的 isFetching 不算「手动刷新」：只有用户点了按钮才转圈
   const refresh = async () => {
     setRefreshing(true)
@@ -198,8 +207,8 @@ export default function Logs() {
           </Field>
           {range === 'custom' && (
             <>
-              <Field label={t('logs.filter.start')}><Input type="date" value={startDate} onChange={(e) => resetPage(setStartDate)(e.target.value)} /></Field>
-              <Field label={t('logs.filter.end')}><Input type="date" value={endDate} onChange={(e) => resetPage(setEndDate)(e.target.value)} /></Field>
+              <Field label={t('logs.filter.start')}><Input type="date" value={startDate} max={endDate || undefined} onChange={(e) => pickStart(e.target.value)} /></Field>
+              <Field label={t('logs.filter.end')}><Input type="date" value={endDate} min={startDate || undefined} onChange={(e) => pickEnd(e.target.value)} /></Field>
             </>
           )}
           {/* 重置与页头按钮同规格（h-9 outline），靠右对齐到输入框底边；筛选即时生效不必再提示 */}

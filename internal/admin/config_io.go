@@ -72,6 +72,9 @@ type configTokenEntry struct {
 	AllowedModels   []string `json:"allowed_models"`
 	AllowedIPs      []string `json:"allowed_ips"`
 	DisableFallback bool     `json:"disable_fallback"`
+	// 0 = 不限；版本 1 早期导出文件没有这两项，导入时按 0 处理。
+	RPMLimit         int `json:"rpm_limit"`
+	ConcurrencyLimit int `json:"concurrency_limit"`
 }
 
 type configExport struct {
@@ -169,7 +172,7 @@ func (a *API) exportConfig(c *gin.Context) {
 	for _, t := range tokens {
 		entry := configTokenEntry{
 			Name: t.Name, Enabled: t.Enabled, Quota: t.Quota, AllowedModels: t.AllowedModels, AllowedIPs: t.AllowedIPs,
-			DisableFallback: t.DisableFallback,
+			DisableFallback: t.DisableFallback, RPMLimit: t.RPMLimit, ConcurrencyLimit: t.ConcurrencyLimit,
 		}
 		if t.ExpiredAt != nil {
 			iso := t.ExpiredAt.UTC().Format("2006-01-02T15:04:05Z")
@@ -360,6 +363,9 @@ func (a *API) importConfig(c *gin.Context) {
 			if t.Quota < 0 {
 				return &importFailure{status: http.StatusBadRequest, code: "negative_quota", message: fmt.Sprintf("tokens[%s]: 额度不能为负数", name)}
 			}
+			if t.RPMLimit < 0 || t.ConcurrencyLimit < 0 {
+				return &importFailure{status: http.StatusBadRequest, code: "config_tokens_invalid", message: fmt.Sprintf("tokens[%s]: 限流值不能为负数", name)}
+			}
 			raw := make([]byte, 24)
 			if _, rerr := rand.Read(raw); rerr != nil {
 				return fmt.Errorf("生成令牌失败: %w", rerr)
@@ -368,6 +374,7 @@ func (a *API) importConfig(c *gin.Context) {
 			token := store.Token{
 				Name: name, KeyHash: hex.EncodeToString(sum[:]), Enabled: false, Quota: t.Quota,
 				AllowedModels: allowedModels, AllowedIPs: allowedIPs, DisableFallback: t.DisableFallback,
+				RPMLimit: t.RPMLimit, ConcurrencyLimit: t.ConcurrencyLimit,
 			}
 			if t.ExpiredAt != nil {
 				if parsed, perr := time.Parse(time.RFC3339, *t.ExpiredAt); perr == nil {

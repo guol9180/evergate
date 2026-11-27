@@ -131,6 +131,11 @@ func (a *API) updateKey(c *gin.Context) {
 		}
 	}
 	if req.Weight != nil {
+		// 与渠道权重同范围；0 会被调度器当成 1，放进来只会让用户误以为配置生效
+		if *req.Weight < 1 || *req.Weight > 10000 {
+			fail(c, http.StatusBadRequest, "invalid_param", "weight 必须在 1-10000")
+			return
+		}
 		updates["weight"] = *req.Weight
 	}
 	if req.RPMLimit != nil {
@@ -155,8 +160,13 @@ func (a *API) deleteKey(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_id", "非法 id")
 		return
 	}
-	if err := a.opt.DB.Delete(&store.ChannelKey{}, id).Error; err != nil {
+	res := a.opt.DB.Delete(&store.ChannelKey{}, id)
+	if res.Error != nil {
 		fail(c, http.StatusInternalServerError, "delete_failed", "删除失败")
+		return
+	}
+	if res.RowsAffected == 0 {
+		fail(c, http.StatusNotFound, "key_not_found", "key 不存在")
 		return
 	}
 	if a.opt.Pool != nil {

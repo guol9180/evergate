@@ -44,6 +44,8 @@ func OpenWithOptions(path string, opt Options) (*gorm.DB, error) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		// GORM 自带日志静默：运行日志统一走 slog（见 AGENTS.md 代码风格）。
 		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
+		// 唯一索引 / 外键冲突翻译为 gorm.ErrDuplicatedKey 等哨兵，管理台据此返回稳定错误码而不是 500。
+		TranslateError: true,
 		// 红线：所有时间以 UTC 存储（见 AGENTS.md 代码风格）。
 		NowFunc: func() time.Time { return time.Now().UTC() },
 	})

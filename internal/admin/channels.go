@@ -240,7 +240,11 @@ func (a *API) createChannel(c *gin.Context) {
 		Timeouts:          req.Timeouts,
 	}
 	if err := a.opt.DB.Create(ch).Error; err != nil {
-		fail(c, http.StatusInternalServerError, "channel_create_failed", "创建失败（名称重复？）")
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			fail(c, http.StatusConflict, "channel_name_taken", "渠道名称已被占用")
+			return
+		}
+		fail(c, http.StatusInternalServerError, "channel_create_failed", "创建失败")
 		return
 	}
 	a.reloadPrices()
@@ -351,6 +355,10 @@ func (a *API) updateChannel(c *gin.Context) {
 	ch.SupportsAnthropic = derefBool(req.SupportsAnthropic, ch.SupportsAnthropic)
 	ch.SupportsGemini = derefBool(req.SupportsGemini, ch.SupportsGemini)
 	if err := a.opt.DB.Save(ch).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			fail(c, http.StatusConflict, "channel_name_taken", "渠道名称已被占用")
+			return
+		}
 		fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 		return
 	}
