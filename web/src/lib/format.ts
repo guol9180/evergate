@@ -23,6 +23,20 @@ export function fmtInt(n: number | null | undefined): string {
   return n.toLocaleString(getLocale())
 }
 
+/** 字节数 → 人类可读（B / KB / MB / GB），保留一位小数并去掉末尾 0。 */
+export function fmtBytes(bytes: number | null | undefined): string {
+  if (bytes == null) return '—'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  const text = unit === 0 ? String(value) : value.toFixed(1).replace(/\.0$/, '')
+  return `${text} ${units[unit]}`
+}
+
 /** 微美元 → 美元展示；去掉末尾多余的 0。 */
 export function fmtMoney(micros: number | null | undefined): string {
   return `$${((micros ?? 0) / 1_000_000).toFixed(6).replace(/\.?0+$/, '')}`

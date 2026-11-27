@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, jsonBody } from './client'
 import { withBasePath } from '../lib/runtime'
-import type { AdminInfo, AlertRecord, AlertsPayload, AlertSetting, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, AlertRecord, AlertsPayload, AlertSetting, AuditLog, BackupsPayload, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -90,6 +90,42 @@ export function useAlerts() {
   return useQuery({
     queryKey: ['alerts'],
     queryFn: () => api<AlertsPayload>('/admin/api/alerts'),
+  })
+}
+
+// ---------- 整库备份 ----------
+export function useBackups() {
+  return useQuery({
+    queryKey: ['backups'],
+    queryFn: () => api<BackupsPayload>('/admin/api/backups'),
+  })
+}
+
+export function useCreateBackup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<{ name: string }>('/admin/api/backups', { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  })
+}
+
+export function useDeleteBackup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (name: string) => api<{ deleted: boolean }>(`/admin/api/backups/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
+  })
+}
+
+export function useRestoreBackup() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api<{ restart_required: boolean; safety_backup: string }>('/admin/api/backups/restore', { method: 'POST', body: form })
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['backups'] }),
   })
 }
 

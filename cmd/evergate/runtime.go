@@ -161,6 +161,7 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		ConfigPath:     b.paths.ConfigPath,
 		DataDir:        b.paths.DataDir,
 		ConfigSource:   b.paths.Source,
+		DBPath:         b.sqlitePath,
 		Playground:     relayHandler.HandlePlayground,
 		SelfUpdate:     updater,
 		Alerts:         alertMgr,

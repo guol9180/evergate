@@ -460,3 +460,17 @@ export interface AlertsPayload {
   records: AlertRecord[]
   events: string[]
 }
+
+/** 整库备份条目（管理台列表 / 下载 / 删除）。 */
+export interface BackupInfo {
+  name: string
+  size: number
+  time: string
+  version: string
+}
+
+export interface BackupsPayload {
+  items: BackupInfo[]
+  dir: string
+  restart_pending: boolean
+}

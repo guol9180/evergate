@@ -74,7 +74,7 @@ func Migrate(db *gorm.DB) error {
 // 备份失败只告警不阻断：迁移本身仍是前进方向，丢失备份好于拒绝启动。
 func MigrateWithBackup(db *gorm.DB, dbPath, version string, logger *slog.Logger) error {
 	if reason, ok := shouldBackupBeforeMigrate(db, dbPath, version); ok {
-		if err := backupDatabase(db, dbPath); err != nil {
+		if _, err := backupDatabase(db, dbPath); err != nil {
 			if logger != nil {
 				logger.Warn("database backup before migration failed",
 					slog.String("reason", reason), slog.Any("error", err))

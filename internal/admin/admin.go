@@ -46,6 +46,8 @@ type Options struct {
 	ConfigPath      string
 	DataDir         string
 	ConfigSource    string
+	// DBPath 是 SQLite 主库路径；整库备份 / 恢复依赖它，空表示未启用备份功能。
+	DBPath string
 	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
 	Playground gin.HandlerFunc
 	// Alerts 负责 Webhook 告警配置与发送；nil 表示未启用。
@@ -139,6 +141,11 @@ func (a *API) RegisterRoutes(r gin.IRouter) {
 	session.GET("/config/export", a.exportConfig)
 	session.POST("/config/import", a.importConfig)
 	session.GET("/audit-logs", a.listAuditLogs)
+	session.GET("/backups", a.listBackups)
+	session.POST("/backups", a.createBackup)
+	session.GET("/backups/:name", a.downloadBackup)
+	session.DELETE("/backups/:name", a.deleteBackup)
+	session.POST("/backups/restore", a.restoreBackup)
 	session.GET("/alerts", a.getAlerts)
 	session.PUT("/alerts", a.updateAlerts)
 	session.POST("/alerts/test", a.testAlert)

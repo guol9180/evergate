@@ -139,6 +139,14 @@ func bootstrap(f bootstrapFlags) (*bootstrapped, error) {
 		})
 	}
 
+	// 上次通过管理台上传的恢复文件在这里真正替换主库（此前已自动备份过当前库）。
+	restored, err := store.ApplyPendingRestore(sqlitePath)
+	if err != nil {
+		return abort(fmt.Errorf("apply pending restore: %w", err))
+	}
+	if restored {
+		logger.Warn("database restored from uploaded backup", slog.String("db", sqlitePath))
+	}
 	db, err := store.OpenWithOptions(sqlitePath, store.Options{Synchronous: cfg.Storage.SQLiteSynchronous})
 	if err != nil {
 		return abort(fmt.Errorf("open database: %w", err))

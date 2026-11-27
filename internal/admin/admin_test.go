@@ -26,6 +26,7 @@ import (
 type testEnv struct {
 	engine  *gin.Engine
 	db      *gorm.DB
+	dbPath  string
 	gw      *httptest.Server
 	pool    *pool.Manager
 	setting *settings.Manager
@@ -46,7 +47,8 @@ func newEnvWithoutAdmin(t *testing.T) *testEnv {
 
 func newEnvOpts(t *testing.T, withAdmin bool) *testEnv {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	db, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -74,8 +76,8 @@ func newEnvOpts(t *testing.T, withAdmin bool) *testEnv {
 	api := New(Options{
 		DB: db, MasterKey: master, Pool: pl, Session: NewSessionManager("test-secret", time.Hour),
 		Settings: settingMgr, Health: prober, Usage: usageMgr,
-		ConfigPath: filepath.Join(t.TempDir(), "evergate.yml"),
-		DataDir:    filepath.Join(t.TempDir(), "data"), ConfigSource: "default",
+		ConfigPath: filepath.Join(t.TempDir(), "evergate.yml"), DBPath: dbPath,
+		DataDir: filepath.Join(t.TempDir(), "data"), ConfigSource: "default",
 		Playground: func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"ok": true, "data": gin.H{"stub": true}}) },
 	})
 	gin.SetMode(gin.TestMode)
@@ -88,7 +90,7 @@ func newEnvOpts(t *testing.T, withAdmin bool) *testEnv {
 			_ = sqlDB.Close()
 		}
 	})
-	return &testEnv{engine: e, db: db, gw: gw, pool: pl, setting: settingMgr, usage: usageMgr, master: master}
+	return &testEnv{engine: e, db: db, dbPath: dbPath, gw: gw, pool: pl, setting: settingMgr, usage: usageMgr, master: master}
 }
 
 func (e *testEnv) req(t *testing.T, method, path, cookie, body string) (int, string, *http.Response) {

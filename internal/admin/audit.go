@@ -42,6 +42,9 @@ var auditActions = map[string]string{
 	"POST /admin/api/system/update/cancel":             "system.update_cancel",
 	"GET /admin/api/config/export":                     "config.export",
 	"POST /admin/api/config/import":                    "config.import",
+	"POST /admin/api/backups":                          "backup.create",
+	"DELETE /admin/api/backups/:name":                  "backup.delete",
+	"POST /admin/api/backups/restore":                  "backup.restore",
 }
 
 // auditSummaryKeys 白名单：只有这些字段允许进入审计摘要，防止 key/token 等明文被写入。

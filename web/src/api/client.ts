@@ -31,7 +31,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: 'same-origin',
     ...init,
     headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      // FormData 由浏览器自带 boundary，不能手动指定 Content-Type
+      ...(init?.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...init?.headers,
     },
   })
