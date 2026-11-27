@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm, type UseFormRegisterReturn } from 'react-hook-form'
+import { z } from 'zod'
 import { Save } from 'lucide-react'
 import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
@@ -12,55 +14,53 @@ import AuditLogCard from '../components/AuditLogCard'
 import { fmtTime } from '../lib/format'
 import { errorMessage } from '../lib/errors'
 
-type FormState = {
-  connectTimeoutSec: string
-  firstTokenTimeoutSec: string
-  overallTimeoutSec: string
-  retryChannels: string
-  retryKeysPerChannel: string
-  retryTotalSec: string
-  cooldownFailThreshold: string
-  cooldownBaseSec: string
-  cooldownMaxSec: string
-  logRetentionDays: string
-  healthProbeIntervalSec: string
-  healthProbeConcurrency: string
-  healthProbeTimeoutSec: string
-}
+// 全部字段按字符串编辑、提交时转数字；前端只拦非正数，整数与上限由后端校验并带 code 返回
+const positive = (message: string) => z.string().trim().refine((value) => value !== '' && Number.isFinite(Number(value)) && Number(value) > 0, message)
+const schema = z.object({
+  connectTimeoutSec: positive(t('settings.positiveNumber')),
+  firstTokenTimeoutSec: positive(t('settings.positiveNumber')),
+  overallTimeoutSec: positive(t('settings.positiveNumber')),
+  retryChannels: positive(t('settings.positiveNumber')),
+  retryKeysPerChannel: positive(t('settings.positiveNumber')),
+  retryTotalSec: positive(t('settings.positiveNumber')),
+  cooldownFailThreshold: positive(t('settings.positiveNumber')),
+  cooldownBaseSec: positive(t('settings.positiveNumber')),
+  cooldownMaxSec: positive(t('settings.positiveNumber')),
+  logRetentionDays: positive(t('settings.positiveNumber')),
+  healthProbeIntervalSec: positive(t('settings.positiveNumber')),
+  healthProbeConcurrency: positive(t('settings.positiveNumber')),
+  healthProbeTimeoutSec: positive(t('settings.positiveNumber')),
+})
+type FormState = z.infer<typeof schema>
 
 export default function Settings() {
   usePageTitle(t('page.settings.title'))
   const settings = useSystemSettings()
   const save = useUpdateSystemSettings()
-  const [form, setForm] = useState<FormState | null>(null)
-
-  useEffect(() => {
-    if (settings.data?.settings && form === null) {
-      setForm(toForm(settings.data.settings))
-    }
-  }, [settings.data, form])
+  const form = useForm<FormState>({
+    resolver: zodResolver(schema),
+    // values 随服务端数据重置：保存后重新拉取即同步，不需要手动 useEffect 回填
+    values: settings.data?.settings ? toForm(settings.data.settings) : undefined,
+  })
+  const { register, handleSubmit, formState, setFocus } = form
 
   if (settings.isPending) {
     return <div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>
   }
-  if (settings.isError || !form) {
+  if (settings.isError) {
     return (
       <div className="eg-page-stack">
         <PageHeader title={t('page.settings.title')} description={t('page.settings.desc')} />
-        <Alert tone="danger">{settings.isError ? errorMessage(settings.error) : t('common.settingsMissing')}</Alert>
+        <Alert tone="danger">{errorMessage(settings.error)}</Alert>
       </div>
     )
   }
 
-  const set = (key: keyof FormState) => (value: string) => setForm({ ...form, [key]: value })
   const current = settings.data?.settings
-
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    save.mutate(toSettings(form), {
-      onSuccess: () => notify.success(t('settings.saved')),
-    })
-  }
+  const onSubmit = handleSubmit(
+    (values) => save.mutate(toSettings(values), { onSuccess: () => notify.success(t('settings.saved')) }),
+    (errors) => setFocus(Object.keys(errors)[0] as keyof FormState),
+  )
 
   return (
     <div className="eg-page-stack">
@@ -97,27 +97,27 @@ export default function Settings() {
 
       <form onSubmit={onSubmit} className="space-y-[var(--eg-section-gap)]">
         <Disclosure title={t('settings.upstreamTimeout')} defaultOpen={true}>
-          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('channels.form.connectTimeout')} hint={t('settings.connectTimeoutHint')} value={form.connectTimeoutSec} onChange={set('connectTimeoutSec')} />
-        <NumberField label={t('channels.form.firstTokenTimeout')} hint={t('settings.firstTokenTimeoutHint')} value={form.firstTokenTimeoutSec} onChange={set('firstTokenTimeoutSec')} />
-        <NumberField label={t('channels.form.overallTimeout')} hint={t('settings.overallTimeoutHint')} value={form.overallTimeoutSec} onChange={set('overallTimeoutSec')} />
+          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('channels.form.connectTimeout')} hint={t('settings.connectTimeoutHint')} error={formState.errors.connectTimeoutSec?.message} registration={register('connectTimeoutSec')} />
+        <NumberField label={t('channels.form.firstTokenTimeout')} hint={t('settings.firstTokenTimeoutHint')} error={formState.errors.firstTokenTimeoutSec?.message} registration={register('firstTokenTimeoutSec')} />
+        <NumberField label={t('channels.form.overallTimeout')} hint={t('settings.overallTimeoutHint')} error={formState.errors.overallTimeoutSec?.message} registration={register('overallTimeoutSec')} />
           </div>
         </Disclosure>
 
         <Disclosure title={t('settings.retryCooldown')} defaultOpen={true}>
-          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.retryChannels')} hint={t('settings.range1to10')} value={form.retryChannels} onChange={set('retryChannels')} />
-        <NumberField label={t('settings.retryKeysPerChannel')} hint={t('settings.range1to10')} value={form.retryKeysPerChannel} onChange={set('retryKeysPerChannel')} />
-        <NumberField label={t('settings.retryTotalSec')} hint={t('settings.retryTotalHint')} value={form.retryTotalSec} onChange={set('retryTotalSec')} />
-        <NumberField label={t('settings.cooldownFailThreshold')} hint={t('settings.range1to100')} value={form.cooldownFailThreshold} onChange={set('cooldownFailThreshold')} />
-        <NumberField label={t('settings.cooldownBaseSec')} hint={t('settings.cooldownBaseHint')} value={form.cooldownBaseSec} onChange={set('cooldownBaseSec')} />
-        <NumberField label={t('settings.cooldownMaxSec')} hint={t('settings.cooldownMaxHint')} value={form.cooldownMaxSec} onChange={set('cooldownMaxSec')} />
+          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.retryChannels')} hint={t('settings.range1to10')} error={formState.errors.retryChannels?.message} registration={register('retryChannels')} />
+        <NumberField label={t('settings.retryKeysPerChannel')} hint={t('settings.range1to10')} error={formState.errors.retryKeysPerChannel?.message} registration={register('retryKeysPerChannel')} />
+        <NumberField label={t('settings.retryTotalSec')} hint={t('settings.retryTotalHint')} error={formState.errors.retryTotalSec?.message} registration={register('retryTotalSec')} />
+        <NumberField label={t('settings.cooldownFailThreshold')} hint={t('settings.range1to100')} error={formState.errors.cooldownFailThreshold?.message} registration={register('cooldownFailThreshold')} />
+        <NumberField label={t('settings.cooldownBaseSec')} hint={t('settings.cooldownBaseHint')} error={formState.errors.cooldownBaseSec?.message} registration={register('cooldownBaseSec')} />
+        <NumberField label={t('settings.cooldownMaxSec')} hint={t('settings.cooldownMaxHint')} error={formState.errors.cooldownMaxSec?.message} registration={register('cooldownMaxSec')} />
           </div>
         </Disclosure>
 
         <Disclosure title={t('settings.maintenance')} defaultOpen={false}>
-          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.logRetentionDays')} hint={t('settings.retentionHint')} value={form.logRetentionDays} onChange={set('logRetentionDays')} />
-        <NumberField label={t('settings.healthProbeInterval')} hint={t('settings.probeIntervalHint')} value={form.healthProbeIntervalSec} onChange={set('healthProbeIntervalSec')} />
-        <NumberField label={t('settings.healthProbeConcurrency')} hint={t('settings.probeConcurrencyHint')} value={form.healthProbeConcurrency} onChange={set('healthProbeConcurrency')} />
-        <NumberField label={t('settings.healthProbeTimeout')} hint={t('settings.probeTimeoutHint')} value={form.healthProbeTimeoutSec} onChange={set('healthProbeTimeoutSec')} />
+          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.logRetentionDays')} hint={t('settings.retentionHint')} error={formState.errors.logRetentionDays?.message} registration={register('logRetentionDays')} />
+        <NumberField label={t('settings.healthProbeInterval')} hint={t('settings.probeIntervalHint')} error={formState.errors.healthProbeIntervalSec?.message} registration={register('healthProbeIntervalSec')} />
+        <NumberField label={t('settings.healthProbeConcurrency')} hint={t('settings.probeConcurrencyHint')} error={formState.errors.healthProbeConcurrency?.message} registration={register('healthProbeConcurrency')} />
+        <NumberField label={t('settings.healthProbeTimeout')} hint={t('settings.probeTimeoutHint')} error={formState.errors.healthProbeTimeoutSec?.message} registration={register('healthProbeTimeoutSec')} />
           </div>
         </Disclosure>
 
@@ -135,10 +135,10 @@ export default function Settings() {
   )
 }
 
-function NumberField({ label, hint, value, onChange }: { label: string; hint?: string; value: string; onChange: (value: string) => void }) {
+function NumberField({ label, hint, error, registration }: { label: string; hint?: string; error?: string; registration: UseFormRegisterReturn }) {
   return (
-    <Field label={label} hint={hint}>
-      <Input type="number" min="0" step="0.1" value={value} onChange={(e) => onChange(e.target.value)} required />
+    <Field label={label} hint={hint} error={error}>
+      <Input type="number" min="0" step="0.1" {...registration} />
     </Field>
   )
 }
