@@ -1,7 +1,10 @@
-import { type FormEvent, useId, useRef, useState } from 'react'
+import { useId, useState } from 'react'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
+import { z } from 'zod'
 import { ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, focusFirstInvalid } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel, EffectivePrice } from '../api/types'
@@ -295,40 +298,79 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const channelDetail = useChannel(channel?.id ?? null)
   const usagePrices = useUsagePrices()
   const upsertPrice = useUpsertPriceOverride()
+  const addKeys = useBatchAddKeys()
   const formID = 'channel-form'
   const modelsId = useId()
-  const formRef = useRef<HTMLFormElement>(null)
-  // 新建默认落在第一个供应商预设（预设自带模型与价格，是推荐路径）；自定义接入保留为显式选项，编辑已有渠道沿用其预设
-  const [presetId, setPresetId] = useState(channel?.preset_id || (channel ? CUSTOM_CHANNEL_PRESET : CHANNEL_PRESETS[0].id))
-  const [name, setName] = useState(channel?.name ?? '')
-  const [baseUrl, setBaseUrl] = useState(channel?.base_url ?? '')
-  const [priority, setPriority] = useState(String(channel?.priority ?? 0))
-  const [weight, setWeight] = useState(String(channel?.weight ?? 1))
-  const [supportsResponses, setSupportsResponses] = useState(channel?.supports_responses ?? false)
-  const [supportsAnthropic, setSupportsAnthropic] = useState(channel?.supports_anthropic ?? false)
-  const [supportsGemini, setSupportsGemini] = useState(channel?.supports_gemini ?? false)
-  const [models, setModels] = useState((channel?.models || []).join('\n'))
-  const [mapping, setMapping] = useState<Record<string, string>>(channel?.model_mapping ?? {})
   const [showModelPicker, setShowModelPicker] = useState(false)
-  const [timeoutErrors, setTimeoutErrors] = useState<{ connect?: string; firstToken?: string; overall?: string }>({})
-  // 新建时可内联导入 key：省去"保存 → 回列表 → 展开 → 粘贴 key → 再编辑"的四次往返（T77）。
-  const [keysText, setKeysText] = useState('')
   // 渠道已创建但内联导入 key 失败时记下 id：保持弹窗可重试，避免再次保存变成重名创建。
   const [createdChannelID, setCreatedChannelID] = useState<number | null>(null)
-  const addKeys = useBatchAddKeys()
-  const [connectSec, setConnectSec] = useState(channel?.timeout_config?.connect_sec?.toString() ?? '')
-  const [firstTokenSec, setFirstTokenSec] = useState(channel?.timeout_config?.first_token_sec?.toString() ?? '')
-  const [overallSec, setOverallSec] = useState(channel?.timeout_config?.overall_sec?.toString() ?? '')
-  // 脏数据快照：与初始值逐字段比较后交给 useUnsavedGuard 做关闭确认（Esc / 遮罩 / 取消按钮）
-  const snapshot = JSON.stringify({ presetId, name, baseUrl, priority, weight, supportsResponses, supportsAnthropic, supportsGemini, models, mapping, keysText, connectSec, firstTokenSec, overallSec })
-  const initialSnapshot = useRef(snapshot)
-  const guard = useUnsavedGuard(snapshot !== initialSnapshot.current)
-  const close = guard.guard(onClose)
+
+  // schema 即校验规则与表单值类型；文本字段保留字符串，提交时再转数字 / 拆行
+  const optionalInt = (min: number, max: number) =>
+    z.string().trim().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= min && Number(value) <= max), t('channels.form.timeoutInt'))
+  const schema = z
+    .object({
+      presetId: z.string(),
+      name: z.string(),
+      baseUrl: z.string().trim().refine((value) => {
+        if (!/^https?:\/\//.test(value)) return false
+        try { new URL(value); return true } catch { return false }
+      }, t('channels.form.urlInvalid')),
+      keysText: z.string(),
+      supportsResponses: z.boolean(),
+      supportsAnthropic: z.boolean(),
+      supportsGemini: z.boolean(),
+      priority: z.string().refine((value) => value === '' || (/^-?\d+$/.test(value) && Number(value) >= -1000 && Number(value) <= 1000), t('channels.form.intInvalid')),
+      weight: z.string().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10000), t('channels.form.intInvalid')),
+      connectSec: optionalInt(1, 300),
+      firstTokenSec: optionalInt(1, 3600),
+      overallSec: optionalInt(1, 86400),
+      models: z.string(),
+      mapping: z.record(z.string(), z.string()),
+    })
+    // 名称只在自定义接入时必填：预设模式新建由预设默认名自动生成（重名追加 -2 / -3）
+    .superRefine((values, ctx) => {
+      if (findChannelPreset(values.presetId) == null && !values.name.trim()) {
+        ctx.addIssue({ code: 'custom', path: ['name'], message: t('channels.form.nameRequired') })
+      }
+    })
+  type FormValues = z.infer<typeof schema>
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      // 新建默认落在第一个供应商预设（预设自带模型与价格，是推荐路径）；自定义接入保留为显式选项
+      presetId: channel?.preset_id || (channel ? CUSTOM_CHANNEL_PRESET : CHANNEL_PRESETS[0].id),
+      name: channel?.name ?? '',
+      baseUrl: channel?.base_url ?? '',
+      keysText: '',
+      supportsResponses: channel?.supports_responses ?? false,
+      supportsAnthropic: channel?.supports_anthropic ?? false,
+      supportsGemini: channel?.supports_gemini ?? false,
+      priority: String(channel?.priority ?? 0),
+      weight: String(channel?.weight ?? 1),
+      connectSec: channel?.timeout_config?.connect_sec?.toString() ?? '',
+      firstTokenSec: channel?.timeout_config?.first_token_sec?.toString() ?? '',
+      overallSec: channel?.timeout_config?.overall_sec?.toString() ?? '',
+      models: (channel?.models || []).join('\n'),
+      mapping: channel?.model_mapping ?? {},
+    },
+  })
+  const { register, handleSubmit, formState, watch, setValue, setFocus } = form
+  const presetId = watch('presetId')
+  const supportsResponses = watch('supportsResponses')
+  const supportsAnthropic = watch('supportsAnthropic')
+  const supportsGemini = watch('supportsGemini')
+  const models = watch('models')
+  const keysText = watch('keysText')
   const preset = findChannelPreset(presetId)
   const presetMode = preset != null
+  // 有未保存更改时关闭需确认（Esc / 遮罩 / 取消按钮都走这里）
+  const guard = useUnsavedGuard(formState.isDirty)
+  const close = guard.guard(onClose)
+
   // 预设渠道的价格由内置目录兜底：编辑时用服务端算好的生效价格（覆盖 → 全局默认 → 目录），
   // 新建时还没有渠道记录，只能按目录预览当前填写的模型。
-  const typedModels = splitLines(models).map((model) => mapping[model] || model)
+  const typedModels = splitLines(models).map((model) => watch('mapping')[model] || model)
   const catalogPrices: EffectivePrice[] = presetMode && usagePrices.data
     ? Array.from(new Set(typedModels)).flatMap((model) => {
       const entry = usagePrices.data?.catalog?.entries.find((item) => item.preset_id === presetId && item.model === model)
@@ -351,18 +393,17 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     : catalogPrices
 
   const applyPreset = (id: string) => {
-    setPresetId(id)
+    setValue('presetId', id, { shouldDirty: true })
     const next = findChannelPreset(id)
     if (!next) return
-    setBaseUrl(next.baseUrl)
-    setSupportsResponses(next.supportsResponses)
-    setSupportsAnthropic(next.supportsAnthropic)
-    setSupportsGemini(next.supportsGemini ?? false)
-    setName(next.defaultName)
+    setValue('baseUrl', next.baseUrl, { shouldDirty: true })
+    setValue('supportsResponses', next.supportsResponses, { shouldDirty: true })
+    setValue('supportsAnthropic', next.supportsAnthropic, { shouldDirty: true })
+    setValue('supportsGemini', next.supportsGemini ?? false, { shouldDirty: true })
+    setValue('name', next.defaultName, { shouldDirty: true })
   }
-
   // 切换为自定义：保留预设已填的地址与协议作为起点，解锁名称 / 协议 / 调度字段；保存时清空 preset_id
-  const switchToCustom = () => setPresetId(CUSTOM_CHANNEL_PRESET)
+  const switchToCustom = () => setValue('presetId', CUSTOM_CHANNEL_PRESET, { shouldDirty: true })
 
   // 数据层 type 只是派生值：Gemini / Anthropic 原生优先，其余归 openai-compatible；预设渠道沿用预设的 type
   const derivedType = supportsGemini ? 'gemini' : supportsAnthropic ? 'anthropic' : 'openai-compatible'
@@ -383,58 +424,48 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
     })
   }
 
-  const onSubmit = (e: FormEvent) => {
-    e.preventDefault()
-    const timeouts: Record<string, number> = {}
-    const invalid = (value: string) => value.trim() !== '' && (!Number.isFinite(Number(value)) || Number(value) <= 0)
-    const nextErrors = {
-      connect: invalid(connectSec) ? t('channels.form.timeoutInt') : undefined,
-      firstToken: invalid(firstTokenSec) ? t('channels.form.timeoutInt') : undefined,
-      overall: invalid(overallSec) ? t('channels.form.timeoutInt') : undefined,
-    }
-    setTimeoutErrors(nextErrors)
-    if (nextErrors.connect || nextErrors.firstToken || nextErrors.overall) {
-      focusFirstInvalid(formRef.current)
-      return
-    }
-    if (connectSec.trim()) timeouts.connect_sec = Number(connectSec)
-    if (firstTokenSec.trim()) timeouts.first_token_sec = Number(firstTokenSec)
-    if (overallSec.trim()) timeouts.overall_timeout = Number(overallSec)
-    if (overallSec.trim()) timeouts.overall_sec = Number(overallSec)
-    delete timeouts.overall_timeout
-    // 预设模式新建：名称由预设默认名自动生成，重名追加 -2 / -3
-    const finalName = presetMode && !channel
-      ? uniquePresetName(preset.defaultName, (channels.data?.items ?? []).map((item) => item.name))
-      : name
-    save.mutate(
-      {
-        id: channel?.id,
-        name: finalName,
-        type,
-        preset_id: presetMode ? presetId : '',
-        base_url: baseUrl,
-        priority: Number(priority) || 0,
-        weight: Number(weight) || 1,
-        models: models.split('\n').map((s) => s.trim()).filter(Boolean),
-        model_mapping: Object.keys(mapping).length ? mapping : null,
-        supports_responses: supportsResponses,
-        supports_anthropic: supportsAnthropic,
-        supports_gemini: supportsGemini,
-        ...(Object.keys(timeouts).length ? { timeout_config: timeouts } : {}),
-      },
-      {
-        onSuccess: (saved) => {
-          notify.success(t('toast.channel.saved'))
-          if (!channel && keysText.trim()) {
-            setCreatedChannelID(saved.id)
-            importKeys(saved.id)
-            return
-          }
-          onClose()
+  const onSubmit = handleSubmit(
+    (values) => {
+      const timeouts: Record<string, number> = {}
+      if (values.connectSec.trim()) timeouts.connect_sec = Number(values.connectSec)
+      if (values.firstTokenSec.trim()) timeouts.first_token_sec = Number(values.firstTokenSec)
+      if (values.overallSec.trim()) timeouts.overall_sec = Number(values.overallSec)
+      const currentPreset = findChannelPreset(values.presetId)
+      const finalName = currentPreset && !channel
+        ? uniquePresetName(currentPreset.defaultName, (channels.data?.items ?? []).map((item) => item.name))
+        : values.name
+      save.mutate(
+        {
+          id: channel?.id,
+          name: finalName,
+          type,
+          preset_id: currentPreset ? values.presetId : '',
+          base_url: values.baseUrl.trim(),
+          priority: Number(values.priority || '0') || 0,
+          weight: Number(values.weight || '1') || 1,
+          models: splitLines(values.models),
+          model_mapping: Object.keys(values.mapping).length ? values.mapping : null,
+          supports_responses: values.supportsResponses,
+          supports_anthropic: values.supportsAnthropic,
+          supports_gemini: values.supportsGemini,
+          ...(Object.keys(timeouts).length ? { timeout_config: timeouts } : {}),
         },
-      },
-    )
-  }
+        {
+          onSuccess: (saved) => {
+            notify.success(t('toast.channel.saved'))
+            if (!channel && values.keysText.trim()) {
+              setCreatedChannelID(saved.id)
+              importKeys(saved.id)
+              return
+            }
+            onClose()
+          },
+        },
+      )
+    },
+    // 校验失败：焦点落到第一个出错字段
+    (errors) => setFocus(Object.keys(errors)[0] as keyof FormValues),
+  )
 
   return (
     <Dialog
@@ -449,7 +480,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         </div>
       }
     >
-      <form id={formID} ref={formRef} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]" noValidate>
+      <form id={formID} onSubmit={onSubmit} className="space-y-[var(--eg-control-gap)]" noValidate>
         {/* 提交错误放弹窗正文顶部：打开即见，不藏在「保存」按钮上方 */}
         {save.isError
           ? <Alert tone="danger">{errorMessage(save.error)}</Alert>
@@ -501,14 +532,14 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           </Alert>
         )}
         {!presetMode && (
-          <Field label={t('channels.form.name')}><Input value={name} onChange={(e) => setName(e.target.value)} required placeholder="openai-main" /></Field>
+          <Field label={t('channels.form.name')} error={formState.errors.name?.message}><Input {...register('name')} placeholder="openai-main" /></Field>
         )}
-        <Field label="Base URL" hint={tf('channels.form.baseUrlHint', { paths: [supportsAnthropic ? '/v1/messages' : '', supportsResponses ? '/responses' : '', supportsGemini ? '/v1beta/models/{model}' : '', '/chat/completions'].filter(Boolean).join(', ') })}>
-          <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} required placeholder="https://api.openai.com/v1" />
+        <Field label="Base URL" hint={tf('channels.form.baseUrlHint', { paths: [supportsAnthropic ? '/v1/messages' : '', supportsResponses ? '/responses' : '', supportsGemini ? '/v1beta/models/{model}' : '', '/chat/completions'].filter(Boolean).join(', ') })} error={formState.errors.baseUrl?.message}>
+          <Input {...register('baseUrl')} placeholder="https://api.openai.com/v1" />
         </Field>
         {!channel && (
           <Field label={t('channels.form.keys')} hint={t('channels.form.keysHint')}>
-            <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-...\nsk-...'} autoComplete="off" className="font-mono text-xs" />
+            <Textarea rows={3} {...register('keysText')} placeholder={'sk-...\nsk-...'} autoComplete="off" className="font-mono text-xs" />
           </Field>
         )}
         {!presetMode && (
@@ -529,41 +560,41 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               title={t('channels.proto.responses.title')}
               description={t('channels.proto.responses.desc')}
               checked={supportsResponses}
-              onChange={setSupportsResponses}
+              onChange={(enabled) => setValue('supportsResponses', enabled, { shouldDirty: true })}
               label={t('channels.proto.responses.title')}
             />
             <SettingRow
               title={t('channels.proto.anthropic.title')}
               description={t('channels.proto.anthropic.desc')}
               checked={supportsAnthropic}
-              onChange={setSupportsAnthropic}
+              onChange={(enabled) => setValue('supportsAnthropic', enabled, { shouldDirty: true })}
               label={t('channels.proto.anthropic.title')}
             />
             <SettingRow
               title={t('channels.proto.gemini.title')}
               description={t('channels.proto.gemini.desc')}
               checked={supportsGemini}
-              onChange={setSupportsGemini}
+              onChange={(enabled) => setValue('supportsGemini', enabled, { shouldDirty: true })}
               label={t('channels.proto.gemini.title')}
             />
           </div>
         )}
         {!presetMode && (
           <div className="eg-grid eg-grid-auto-wide">
-            <Field label={t('channels.form.priority')} hint={t('channels.form.priorityHint')}><Input type="number" value={priority} onChange={(e) => setPriority(e.target.value)} /></Field>
-            <Field label={t('channels.form.weight')} hint={t('channels.form.weightHint')}><Input type="number" value={weight} onChange={(e) => setWeight(e.target.value)} /></Field>
+            <Field label={t('channels.form.priority')} hint={t('channels.form.priorityHint')} error={formState.errors.priority?.message}><Input type="number" {...register('priority')} /></Field>
+            <Field label={t('channels.form.weight')} hint={t('channels.form.weightHint')} error={formState.errors.weight?.message}><Input type="number" {...register('weight')} /></Field>
           </div>
         )}
         {!presetMode && (
           <div className="eg-grid eg-grid-auto-wide">
-            <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')} error={timeoutErrors.connect}>
-              <Input type="number" min={1} max={300} value={connectSec} onChange={(e) => { setConnectSec(e.target.value); setTimeoutErrors((current) => ({ ...current, connect: undefined })) }} placeholder={t('common.blankPlaceholder')} />
+            <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')} error={formState.errors.connectSec?.message}>
+              <Input type="number" min={1} max={300} {...register('connectSec')} placeholder={t('common.blankPlaceholder')} />
             </Field>
-            <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')} error={timeoutErrors.firstToken}>
-              <Input type="number" min={1} max={3600} value={firstTokenSec} onChange={(e) => { setFirstTokenSec(e.target.value); setTimeoutErrors((current) => ({ ...current, firstToken: undefined })) }} placeholder={t('common.blankPlaceholder')} />
+            <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')} error={formState.errors.firstTokenSec?.message}>
+              <Input type="number" min={1} max={3600} {...register('firstTokenSec')} placeholder={t('common.blankPlaceholder')} />
             </Field>
-            <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')} error={timeoutErrors.overall}>
-              <Input type="number" min={1} max={86400} value={overallSec} onChange={(e) => { setOverallSec(e.target.value); setTimeoutErrors((current) => ({ ...current, overall: undefined })) }} placeholder={t('common.blankPlaceholder')} />
+            <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')} error={formState.errors.overallSec?.message}>
+              <Input type="number" min={1} max={86400} {...register('overallSec')} placeholder={t('common.blankPlaceholder')} />
             </Field>
           </div>
         )}
@@ -588,7 +619,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               {t('channels.form.fetch')}
             </Button>
           </div>
-          <Textarea id={modelsId} rows={4} value={models} onChange={(e) => setModels(e.target.value)} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} />
+          <Textarea id={modelsId} rows={4} {...register('models')} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} />
           <div className="text-xs text-subtle">
             {!channel
               ? t('channels.form.modelsHintNew')
@@ -614,7 +645,7 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
               }}
               onApply={(selected, mode, withPrices) => {
                 const next = applyModelSelection(splitLines(models), selected, mode)
-                setModels(next.join('\n'))
+                setValue('models', next.join('\n'), { shouldDirty: true })
                 // 上游目录声明了价格时勾选"同时写入价格覆盖"，就把价格固化成渠道覆盖，之后目录变动不影响计费
                 if (withPrices && channel) {
                   const picked = new Set(selected)
@@ -656,13 +687,12 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
             )}
           </div>
         )}
-        {!presetMode && <ModelMappingEditor value={mapping} onChange={setMapping} />}
+        {!presetMode && <ModelMappingEditor value={watch('mapping')} onChange={(next) => setValue('mapping', next, { shouldDirty: true })} />}
       </form>
       {guard.dialog}
     </Dialog>
   )
 }
-
 function splitLines(text: string): string[] {
   return text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
 }
