@@ -1,13 +1,13 @@
 import { type FormEvent, useId, useState } from 'react'
-import { Check, Copy, KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken } from '../api/hooks'
 import type { Token } from '../api/types'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, Field, IconButton, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, Dialog, Empty, Field, IconButton, Input, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime, tokenStatusLabel, tokenStatusTone } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
-import { clientEnvSnippet, copyText, modelListSnippets } from '../lib/clipboard'
+import { clientEnvSnippet, modelListSnippets } from '../lib/clipboard'
 import { currentBasePath } from '../lib/runtime'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
@@ -17,15 +17,6 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
   const baseURL = `${window.location.origin}${currentBasePath() || ''}/v1`
   const snippet = clientEnvSnippet(apiKey, baseURL)
   const modelsSnippet = modelListSnippets(baseURL)
-  const [copiedKey, setCopiedKey] = useState<'' | 'ok' | 'fail'>('')
-  const [copiedSnippet, setCopiedSnippet] = useState<'' | 'ok' | 'fail'>('')
-  const [copiedModels, setCopiedModels] = useState<'' | 'ok' | 'fail'>('')
-
-  const copy = async (text: string, setter: (v: '' | 'ok' | 'fail') => void) => {
-    const ok = await copyText(text)
-    setter(ok ? 'ok' : 'fail')
-    if (ok) setTimeout(() => setter(''), 1500)
-  }
 
   return (
     <Dialog open onClose={onClose} title={t('tokens.created.title')}>
@@ -35,7 +26,7 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
           <div className="mb-1.5 text-xs font-medium text-foreground-soft">{t('tokens.created.label')}</div>
           <div className="flex items-center gap-2 rounded-lg border border-line bg-surface-soft p-3">
             <code className="flex-1 break-all font-mono text-sm">{apiKey}</code>
-            <CopyButton state={copiedKey} onCopy={() => void copy(apiKey, setCopiedKey)} />
+            <CopyButton value={apiKey} />
           </div>
         </div>
         <div>
@@ -46,7 +37,7 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
           <div className="relative rounded-lg border border-line bg-surface-soft p-3 pr-12">
             <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-5 text-foreground-soft">{snippet}</pre>
             <div className="absolute right-2 top-2">
-              <CopyButton state={copiedSnippet} onCopy={() => void copy(snippet, setCopiedSnippet)} />
+              <CopyButton value={snippet} />
             </div>
           </div>
         </div>
@@ -58,7 +49,7 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
           <div className="relative rounded-lg border border-line bg-surface-soft p-3 pr-12">
             <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-5 text-foreground-soft">{modelsSnippet}</pre>
             <div className="absolute right-2 top-2">
-              <CopyButton state={copiedModels} onCopy={() => void copy(modelsSnippet, setCopiedModels)} />
+              <CopyButton value={modelsSnippet} />
             </div>
           </div>
         </div>
@@ -66,15 +57,6 @@ function TokenCreatedDialog({ apiKey, onClose }: { apiKey: string; onClose: () =
         <Button className="w-full" onClick={onClose}>{t('tokens.created.close')}</Button>
       </div>
     </Dialog>
-  )
-}
-
-function CopyButton({ state, onCopy }: { state: '' | 'ok' | 'fail'; onCopy: () => void }) {
-  return (
-    <Button size="sm" variant="outline" onClick={onCopy} aria-live="polite">
-      {state === 'ok' ? <Check size={14} className="text-success-text" /> : <Copy size={14} />}
-      {state === 'ok' ? t('copy.copied') : state === 'fail' ? t('copy.failed') : t('copy.button')}
-    </Button>
   )
 }
 

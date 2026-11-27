@@ -274,6 +274,8 @@ export interface RequestLog {
   price_source?: '' | 'override' | 'default' | 'catalog'
   ip: string
   user_agent: string
+  /** 请求级覆盖的脱敏摘要；为空表示没有覆盖 */
+  config_override?: string
 }
 
 export interface LogsPage {

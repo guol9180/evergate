@@ -15,9 +15,10 @@ import * as SelectPrimitive from '@radix-ui/react-select'
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
 import * as TooltipPrimitive from '@radix-ui/react-tooltip'
 import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
-import { Check, CircleAlert, CircleCheck, ChevronDown, ChevronUp, Inbox, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ChevronUp, CircleAlert, CircleCheck, Copy, Inbox, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
+import { copyText } from '../lib/clipboard'
 
 export type { Tone }
 
@@ -30,7 +31,7 @@ export const toneClass: Record<Tone, string> = {
   brand: 'bg-brand-subtle text-brand-text',
 }
 
-export function Button({ variant = 'default', size = 'md', loading = false, className = '', children, disabled, ...props }: React.ComponentProps<'button'> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'icon'; loading?: boolean }) {
+export function Button({ variant = 'default', size = 'md', loading = false, className = '', children, disabled, ...props }: React.ComponentProps<'button'> & { variant?: 'default' | 'outline' | 'ghost' | 'danger'; size?: 'sm' | 'md' | 'icon' | 'icon-sm'; loading?: boolean }) {
   const base = 'eg-press relative inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 disabled:pointer-events-none'
   const variants = {
     default: 'bg-brand text-white hover:bg-brand-strong',
@@ -38,7 +39,7 @@ export function Button({ variant = 'default', size = 'md', loading = false, clas
     ghost: 'text-muted hover:bg-surface-strong',
     danger: 'bg-danger-solid text-white hover:opacity-90',
   }
-  const sizes = { sm: 'h-7 px-2.5 text-xs', md: 'h-9 px-4 text-sm', icon: 'h-7 w-7 px-0' }
+  const sizes = { sm: 'h-7 px-2.5 text-xs', md: 'h-9 px-4 text-sm', icon: 'h-7 w-7 px-0', 'icon-sm': 'h-6 w-6 px-0' }
   return (
     <button
       type={props.type ?? 'button'}
@@ -188,13 +189,47 @@ export function Tooltip({ content, side = 'top', children, className = '' }: { c
 }
 
 /** 图标按钮：Button + Tooltip + aria-label 只在这里组合；表格行操作 / 分页箭头 / 侧栏共用。 */
-export function IconButton({ label, danger = false, side, variant = 'ghost', loading = false, className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: 'default' | 'outline' | 'ghost' | 'danger'; loading?: boolean }) {
+export function IconButton({ label, danger = false, side, variant = 'ghost', loading = false, size = 'icon', className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: 'default' | 'outline' | 'ghost' | 'danger'; loading?: boolean; size?: 'icon' | 'icon-sm' }) {
   return (
     <Tooltip content={label} side={side}>
-      <Button size="icon" variant={variant} aria-label={label} loading={loading} className={`${danger ? 'text-danger-text hover:bg-danger-subtle' : ''} ${className}`} {...props}>
+      <Button size={size} variant={variant} aria-label={label} loading={loading} className={`${danger ? 'text-danger-text hover:bg-danger-subtle' : ''} ${className}`} {...props}>
         {children}
       </Button>
     </Tooltip>
+  )
+}
+
+/**
+ * 复制按钮（全站唯一出处）：compact 为字段旁的图标形态，默认为带文字的小按钮。
+ * 结果直接在按钮上短暂反馈（aria-live），不弹 Toast：复制是轻量动作，不值得一条通知。
+ */
+export function CopyButton({ value, label, compact = false, className = '', side = 'top' }: {
+  value: string
+  label?: string
+  compact?: boolean
+  className?: string
+  side?: 'top' | 'right' | 'bottom' | 'left'
+}) {
+  const [state, setState] = useState<'' | 'ok' | 'fail'>('')
+  useEffect(() => {
+    if (!state) return
+    const timer = window.setTimeout(() => setState(''), 1500)
+    return () => window.clearTimeout(timer)
+  }, [state])
+  const copy = async () => setState(await copyText(value) ? 'ok' : 'fail')
+  const text = state === 'ok' ? t('copy.copied') : state === 'fail' ? t('copy.failed') : label ?? t('copy.button')
+  if (compact) {
+    return (
+      <IconButton label={text} side={side} size="icon-sm" className={className} onClick={() => void copy()} aria-live="polite">
+        {state === 'ok' ? <Check size={13} className="text-success-text" /> : <Copy size={13} />}
+      </IconButton>
+    )
+  }
+  return (
+    <Button size="sm" variant="outline" className={className} onClick={() => void copy()} aria-live="polite">
+      {state === 'ok' ? <Check size={14} className="text-success-text" /> : <Copy size={14} />}
+      {text}
+    </Button>
   )
 }
 
@@ -448,7 +483,7 @@ export function Drawer({ open, onClose, title, children, wide }: { open: boolean
           aria-modal="true"
           aria-describedby={descId}
           onCloseAutoFocus={restoreFocus}
-          className={`eg-drawer-panel fixed inset-y-0 right-0 z-50 flex h-full w-full ${wide ? 'sm:w-[min(560px,92vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-surface shadow-2xl outline-none`}
+          className={`eg-drawer-panel fixed inset-y-0 right-0 z-50 flex h-full w-full ${wide ? 'sm:w-[min(640px,94vw)]' : 'sm:w-[min(420px,92vw)]'} flex-col bg-surface shadow-2xl outline-none`}
         >
           <div className={`${dialogBody} flex items-center justify-between border-b border-line-soft`}>
             <DialogPrimitive.Title asChild>
@@ -600,6 +635,29 @@ export function Empty({ icon, title, hint, action, filtered = false, className =
       {hint && <p className="max-w-sm text-xs text-muted">{hint}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
+  )
+}
+
+/**
+ * 折叠分组：原生 <details>，展开状态、键盘与无障碍语义由浏览器负责，不引入折叠库；
+ * 这里只统一版式与箭头旋转。defaultOpen 只决定初始状态，之后由用户掌控。
+ */
+export function Disclosure({ title, badge, defaultOpen = true, children, className = '' }: {
+  title: ReactNode
+  badge?: ReactNode
+  defaultOpen?: boolean
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <details open={defaultOpen} className={`group rounded-lg border border-line ${className}`}>
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground-soft select-none [&::-webkit-details-marker]:hidden">
+        <ChevronRight size={14} className="shrink-0 text-subtle transition-transform group-open:rotate-90" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        {badge && <span className="shrink-0">{badge}</span>}
+      </summary>
+      <div className="border-t border-line-soft px-3 py-3">{children}</div>
+    </details>
   )
 }
 

@@ -309,11 +309,13 @@ export function buildLogQuery(filters: LogFilters): string {
   return params.toString()
 }
 
-export function useLogs(filters: LogFilters) {
+/** refetchInterval 只影响轮询，不进 queryKey：开关自动刷新不会让缓存失效。 */
+export function useLogs(filters: LogFilters, refetchInterval: number | false = false) {
   return useQuery({
     queryKey: ['logs', filters],
     queryFn: () => api<LogsPage>(`/admin/api/logs?${buildLogQuery(filters)}`),
     placeholderData: (prev) => prev,
+    refetchInterval,
   })
 }
 
