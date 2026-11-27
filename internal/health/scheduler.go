@@ -23,6 +23,8 @@ type SchedulerOptions struct {
 	Logger    *slog.Logger
 	Now       func() time.Time
 	WaitFunc  func(context.Context, time.Duration, <-chan struct{}) bool
+	// OnEvent 透传给探测器，用于渠道 down / 恢复告警。
+	OnEvent func(event string, summary string, details map[string]any)
 }
 
 type scheduler struct {
@@ -46,7 +48,7 @@ func StartProbes(opt SchedulerOptions) (stop func()) {
 	opt.WaitFunc = nil
 	s := &scheduler{prober: NewProber(ProberOptions{
 		DB: opt.DB, MasterKey: opt.MasterKey, Pool: opt.Pool,
-		Client: opt.Client, Now: opt.Now,
+		Client: opt.Client, Now: opt.Now, OnEvent: opt.OnEvent,
 	}), opt: opt}
 
 	ctx, cancel := context.WithCancel(context.Background())

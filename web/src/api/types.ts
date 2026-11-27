@@ -433,3 +433,30 @@ export interface ConfigImportResult {
   skipped: number
   errors?: string[]
 }
+
+/** 告警通道配置（单例）。 */
+export interface AlertSetting {
+  id: number
+  enabled: boolean
+  preset: 'generic' | 'wecom' | 'feishu' | 'telegram' | 'bark'
+  url: string
+  events: string[]
+  updated_at: string
+}
+
+export interface AlertRecord {
+  id: number
+  created_at: string
+  event: string
+  preset: string
+  result: 'sent' | 'failed' | 'test'
+  status_code: number
+  error: string
+  message: string
+}
+
+export interface AlertsPayload {
+  setting: AlertSetting
+  records: AlertRecord[]
+  events: string[]
+}

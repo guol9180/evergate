@@ -61,6 +61,8 @@ type Options struct {
 	Tracer    *telemetry.Tracer // 可为 nil：禁用链路导出
 	// KeyLimiter 是上游 key 的 RPM 计数器；nil 时 New 创建默认实例。
 	KeyLimiter *ratelimit.Limiter
+	// OnAlert 接收运行事件（key_disabled / token_quota_low / token_quota_exhausted），nil 时不发。
+	OnAlert func(event, summary string, details map[string]any)
 }
 
 // Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
@@ -580,6 +582,19 @@ func (r *Relay) settleTokenUsage(c *gin.Context, hit *hitRecord) (string, string
 	if result.RowsAffected == 0 {
 		return "quota_exceeded", "successful response usage exceeded remaining token quota; quota not charged"
 	}
+	if r.opt.OnAlert != nil && token.Quota > 0 {
+		remaining := quotaRemainingFromContext(c) - charged
+		switch {
+		case remaining <= 0:
+			r.opt.OnAlert("token_quota_exhausted", token.Name, map[string]any{
+				"token": token.Name, "quota": token.Quota,
+			})
+		case remaining*5 <= token.Quota:
+			r.opt.OnAlert("token_quota_low", token.Name, map[string]any{
+				"token": token.Name, "remaining": remaining, "quota": token.Quota,
+			})
+		}
+	}
 	return "", ""
 }
 
@@ -916,6 +931,11 @@ func outcomeName(out attemptOutcome) string {
 func (r *Relay) reportKeyFailure(keyID int64, class retry.Classification, message string) {
 	r.opt.Pool.ReportFailure(keyID, class)
 	r.persistKeyAttempt(keyID, false, message)
+	if class.Kind == retry.KindAuth && r.opt.OnAlert != nil {
+		r.opt.OnAlert("key_disabled", fmt.Sprintf("upstream key #%d", keyID), map[string]any{
+			"key_id": keyID, "reason": message,
+		})
+	}
 }
 
 // recordKeyFailure 仅记录失败统计，不惩罚 key（模型不存在/内容策略等 key 无辜场景）。

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, jsonBody } from './client'
 import { withBasePath } from '../lib/runtime'
-import type { AdminInfo, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
+import type { AdminInfo, AlertRecord, AlertsPayload, AlertSetting, AuditLog, Channel, ChannelDetail, EffectivePrice, ConfigImportResult, LogModelFacet, LogStats, LogsPage, ModelCatalogItem, ModelFallback, ModelPreview, SetupStatus, SystemSettings, SystemSettingsResponse, SystemSettingsValues, TestAllItem, TestResult, Token, UpdateJob, UpdateProgress, UpdateStatus, UsagePrices, UsageReport } from './types'
 
 // ---------- 会话 ----------
 export function useMe() {
@@ -86,6 +86,30 @@ export function useCancelUpdate() {
 }
 
 // ---------- 系统设置 ----------
+export function useAlerts() {
+  return useQuery({
+    queryKey: ['alerts'],
+    queryFn: () => api<AlertsPayload>('/admin/api/alerts'),
+  })
+}
+
+export function useSaveAlerts() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { enabled: boolean; preset: string; url: string; events: string[] }) =>
+      api<{ setting: AlertSetting }>('/admin/api/alerts', { method: 'PUT', body: JSON.stringify(data) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  })
+}
+
+export function useTestAlert() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => api<{ record: AlertRecord }>('/admin/api/alerts/test', { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
+  })
+}
+
 export function useSystemSettings() {
   return useQuery({
     queryKey: ['system-settings'],

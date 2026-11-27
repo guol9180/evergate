@@ -47,8 +47,10 @@ type Options struct {
 	Logger         *slog.Logger
 	Now            func() time.Time
 	RequestRestart func()
-	GOOS           string
-	GOARCH         string
+	// OnFailure 在更新任务失败时回调（用于告警），调用时已释放内部锁。
+	OnFailure func(message string)
+	GOOS      string
+	GOARCH    string
 }
 
 // Capability 描述当前安装是否允许自更新，用于管理台提前提示。
@@ -309,8 +311,8 @@ func (m *Manager) setStageWithSource(id, stage string, progress int, source, mes
 
 func (m *Manager) fail(id, message string) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.job == nil || m.job.ID != id {
+		m.mu.Unlock()
 		return
 	}
 	m.job.FailedStage = m.job.Stage
@@ -319,7 +321,11 @@ func (m *Manager) fail(id, message string) {
 	m.job.Message = "更新已中止，当前版本仍可继续使用"
 	m.job.Cancelable = false
 	m.job.UpdatedAt = m.opt.Now()
+	m.mu.Unlock()
 	m.opt.Logger.Warn("self-update failed", slog.String("error", message))
+	if m.opt.OnFailure != nil {
+		m.opt.OnFailure(message)
+	}
 }
 
 // Cancel 中止尚未进入安装器阶段的更新任务。

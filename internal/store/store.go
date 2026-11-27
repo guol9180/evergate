@@ -103,5 +103,7 @@ func AllModels() []any {
 		&RuntimeSetting{},
 		&AuditLog{},
 		&SchemaMeta{},
+		&AlertSetting{},
+		&AlertRecord{},
 	}
 }

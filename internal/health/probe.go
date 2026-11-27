@@ -41,6 +41,8 @@ type ProberOptions struct {
 	Pool      *pool.Manager
 	Client    HTTPClient
 	Now       func() time.Time
+	// OnEvent 在渠道健康状态变化时回调（channel_down / channel_recovered）。
+	OnEvent func(event string, summary string, details map[string]any)
 }
 
 // Prober 执行协议对应的模型列表 GET，并同步驱动 key 状态机与渠道健康字段。
@@ -191,6 +193,7 @@ func (p *Prober) persist(ch *store.Channel, keyID int64, result ProbeResult, sta
 	if p.opt.DB == nil {
 		return nil
 	}
+	previous := ch.Status
 	if err := p.opt.DB.Transaction(func(tx *gorm.DB) error {
 		keyUpdates := map[string]any{}
 		switch result.Result {
@@ -228,7 +231,29 @@ func (p *Prober) persist(ch *store.Channel, keyID int64, result ProbeResult, sta
 	ch.LastProbeErrorType = result.ErrorType
 	ch.LastProbeError = result.Error
 	ch.NextProbeAt = &result.NextProbeAt
+	p.notifyStatusChange(ch, previous, status, result)
 	return nil
+}
+
+// notifyStatusChange 只在进入 / 离开 down 时发事件，避免每次探测都打扰。
+func (p *Prober) notifyStatusChange(ch *store.Channel, previous, current string, result ProbeResult) {
+	if p.opt.OnEvent == nil || previous == current {
+		return
+	}
+	details := map[string]any{
+		"channel":    ch.Name,
+		"channel_id": ch.ID,
+		"status":     current,
+	}
+	switch {
+	case current == store.ChannelStatusDown:
+		details["probe_status"] = result.StatusCode
+		details["error"] = result.Error
+		p.opt.OnEvent("channel_down", ch.Name, details)
+	case previous == store.ChannelStatusDown:
+		details["probe_status"] = result.StatusCode
+		p.opt.OnEvent("channel_recovered", ch.Name, details)
+	}
 }
 
 func summarizeBody(body []byte) string {

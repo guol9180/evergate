@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"evergate/internal/alert"
 	"evergate/internal/health"
 	"evergate/internal/httpx"
 	"evergate/internal/pool"
@@ -47,6 +48,8 @@ type Options struct {
 	ConfigSource    string
 	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
 	Playground gin.HandlerFunc
+	// Alerts 负责 Webhook 告警配置与发送；nil 表示未启用。
+	Alerts *alert.Manager
 	// OnConfigChange 在会话写操作成功后调用，用于让转发热路径的配置快照失效。
 	OnConfigChange func()
 	// Logger 用于审计写入失败等非业务告警；nil 时静默。
@@ -136,6 +139,9 @@ func (a *API) RegisterRoutes(r gin.IRouter) {
 	session.GET("/config/export", a.exportConfig)
 	session.POST("/config/import", a.importConfig)
 	session.GET("/audit-logs", a.listAuditLogs)
+	session.GET("/alerts", a.getAlerts)
+	session.PUT("/alerts", a.updateAlerts)
+	session.POST("/alerts/test", a.testAlert)
 	session.POST("/playground", a.playground)
 }
 

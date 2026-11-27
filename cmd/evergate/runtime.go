@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"evergate/internal/admin"
+	"evergate/internal/alert"
 	"evergate/internal/appdir"
 	"evergate/internal/config"
 	"evergate/internal/health"
@@ -53,6 +54,8 @@ func assemble(b *bootstrapped) (*runtime, error) {
 
 	// 全局 UTC 时钟（AGENTS 红线：所有时间以 UTC 存储）
 	nowFn := func() time.Time { return time.Now().UTC() }
+	// 告警：事件异步推送，失败只记日志，不阻塞转发。
+	alertMgr := alert.New(db, logger, nowFn)
 	settingsMgr, err := settings.Load(db, cfg, nowFn)
 	if err != nil {
 		return nil, fmt.Errorf("load runtime settings: %w", err)
@@ -81,6 +84,9 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		health.StartProbes(health.SchedulerOptions{
 			DB: db, MasterKey: cfg.Security.MasterKey, Pool: poolMgr,
 			Settings: settingsMgr, Logger: logger, Now: nowFn,
+			OnEvent: func(event, summary string, details map[string]any) {
+				alertMgr.Notify(event, summary, details)
+			},
 		}),
 		usage.StartAggregator(db, logger, time.Minute),
 	)
@@ -118,6 +124,9 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		Logger:         logger,
 		Now:            time.Now,
 		RequestRestart: signals.requestUpdate,
+		OnFailure: func(message string) {
+			alertMgr.Notify(alert.EventUpdateFailed, "self-update failed", map[string]any{"error": message})
+		},
 	})
 	selfupdate.CleanupBackups(updater.Executable(), 1)
 	relayHandler := relay.New(relay.Options{
@@ -133,6 +142,9 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		Usage:     usageMgr,
 		Metrics:   metricsReg,
 		Tracer:    b.tracer,
+		OnAlert: func(event, summary string, details map[string]any) {
+			alertMgr.Notify(event, summary, details)
+		},
 	})
 	runners = append(runners, relayHandler.Close)
 	adminAPI := admin.New(admin.Options{
@@ -151,6 +163,7 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		ConfigSource:   b.paths.Source,
 		Playground:     relayHandler.HandlePlayground,
 		SelfUpdate:     updater,
+		Alerts:         alertMgr,
 		OnConfigChange: relayHandler.InvalidateConfig,
 		Logger:         logger,
 	})

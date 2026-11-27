@@ -60,20 +60,6 @@ P0 功能完成定义（1–10 全部通过）：
 > 来源：2026-11-26 全量代码质量审查（规范 / 可维护性 / 性能 / 安全 / 产品 / 工程化六维，结论已向用户汇报）与用户补充的两项优化（请求日志详情信息表达、全局交互动效与按钮反馈）。用户指令：审查项全部排期修复。
 > 用户约束不变：测试与验证不得使用真实环境（已安装实例 8787）；有成熟三方组件不手搓；新增依赖须先告知。
 
-#### T113: 令牌限流与事件告警（P2，产品能力）
-
-- 目标：补上「一个客户端打满上游没有刹车」与「挂了半天不知道」两个产品空白
-- 验收标准：① 令牌支持 RPM 与并发上限（0 = 不限），超限返回 OpenAI 格式 429 rate_limit_exceeded 并写入请求日志；上游 key 支持 RPM 上限（启用现有 rpm_limit 字段），逼近上限的 key 本轮不参与调度；② 令牌表单与列表、key 面板可配置并展示限流值；③ 告警：可配置 Webhook（通用 JSON + 企业微信 / 飞书 / Telegram / Bark 预设），事件覆盖渠道 down 与恢复、key 因 401 / 403 被禁用、令牌额度低于 20% 与耗尽、更新失败；④ 告警异步发送不阻塞请求，有去重与冷却，失败只记日志，负载不含任何密钥；⑤ 设置页可发送测试告警并查看最近发送记录；⑥ 表驱动与 httptest 集成测试覆盖限流边界与告警负载
-- 边界：单进程内存计数，不引入 Redis；不做多渠道告警编排与静默时段
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：in-progress
-- 进度：
-  - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（产品视角）
-  - 2026-11-27 执行 ① 令牌限流：新增 `internal/ratelimit`（固定分钟窗口 RPM + 并发名额，重复释放安全）；`relay.TokenLimits` 中间件在鉴权后执行两类上限，超限返回 429 `type=rate_limit_exceeded` + `Retry-After` 并写请求日志（error_type = rpm_limit_exceeded / concurrency_limit_exceeded）；上游 key 达 RPM 上限时该 key 本轮不参与调度（`relay.Options.KeyLimiter`）；Token 模型加 rpm_limit / concurrency_limit
-  - 2026-11-27 执行 ② 配置与展示：管理台令牌创建 / 更新与 DTO 支持两个限流字段（负数 400）；令牌表单新增 RPM 与并发两栏、列表新增「限流」列（∞ 表示不限）；渠道 key 面板新增 RPM 内联编辑（失焦 / 回车提交）
-  - 2026-11-27 验证 ①②：新增 ratelimit 表驱动单测（边界、跨分钟重置、按 subject 隔离、并发名额复用）、`TestTokenLimitsRPMReturnsOpenAI429`、`TestTokenLimitsConcurrencyHoldsUntilHandlerReturns`、`TestUpstreamKeyRPMExcludesKey`；前端 lint 0 警告、unit 73 通过；18787 实测：令牌 rpm=1 时首请求 200、次请求 429 `rpm_limit_exceeded` 且 `Retry-After: 53`，请求日志落 429 行，重置后恢复
-  - 2026-11-27 备注 剩余：③④⑤ 告警通道与设置页、⑥ 告警负载与集成测试
-
 #### T114: 一键备份与恢复（P2，产品能力）
 
 - 目标：管理台可随时备份整库（含加密后的上游 key）并从备份恢复，不再只能手工拷文件
@@ -166,7 +152,7 @@ P0 功能完成定义（1–10 全部通过）：
 
 ### 最近完成 / 已取消
 
-> 本批次已 done 的卡（T103–T112、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
+> 本批次已 done 的卡（T103–T113、T116）已归档到 [docs/archive/P6.md](./docs/archive/P6.md)；主文件只保留非 done 卡。
 
 ## 归档索引
 

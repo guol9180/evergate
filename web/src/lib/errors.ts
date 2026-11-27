@@ -4,6 +4,8 @@ import { colon, dict, t, type MessageKey } from './i18n'
 /** 服务端稳定错误码 → 字典键；新增 code 必须同时补这里与 error.* 文案（tests/errorCodes.test.ts 守卫）。 */
 const codeKeys: Record<string, MessageKey> = {
   admin_local_only: 'error.admin_local_only',
+  alerts_disabled: 'error.alerts_disabled',
+  alert_send_failed: 'error.alert_send_failed',
   already_initialized: 'error.already_initialized',
   catalog_query_failed: 'error.catalog_query_failed',
   catalog_unavailable: 'error.catalog_unavailable',

@@ -245,3 +245,25 @@ type SchemaMeta struct {
 	Key   string `gorm:"primaryKey;size:64" json:"key"`
 	Value string `gorm:"type:text" json:"value"`
 }
+
+// AlertSetting 是告警通道配置（单例行，id 固定 1）。
+type AlertSetting struct {
+	ID        int64     `gorm:"primaryKey" json:"id"`
+	Enabled   bool      `gorm:"not null;default:false" json:"enabled"`
+	Preset    string    `gorm:"size:32;not null;default:'generic'" json:"preset"`
+	URL       string    `gorm:"not null;default:''" json:"url"`
+	Events    []string  `gorm:"serializer:json" json:"events"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// AlertRecord 是告警发送记录（只保留最近若干条，用于设置页回看）。
+type AlertRecord struct {
+	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	CreatedAt  time.Time `gorm:"index" json:"created_at"`
+	Event      string    `gorm:"size:64;not null" json:"event"`
+	Preset     string    `gorm:"size:32;not null;default:''" json:"preset"`
+	Result     string    `gorm:"size:16;not null" json:"result"` // sent / failed / test
+	StatusCode int       `json:"status_code"`
+	Error      string    `json:"error"`
+	Message    string    `json:"message"`
+}

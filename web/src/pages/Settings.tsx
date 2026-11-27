@@ -11,6 +11,7 @@ import { notify } from '../components/Toaster'
 import ModelFallbackCard from '../components/ModelFallbackCard'
 import ConfigTransferCard from '../components/ConfigTransferCard'
 import AuditLogCard from '../components/AuditLogCard'
+import AlertCard from '../components/AlertCard'
 import { fmtTime } from '../lib/format'
 import { errorMessage } from '../lib/errors'
 
@@ -130,6 +131,7 @@ export default function Settings() {
 
       <ModelFallbackCard />
       <ConfigTransferCard />
+      <AlertCard />
       <AuditLogCard />
     </div>
   )
