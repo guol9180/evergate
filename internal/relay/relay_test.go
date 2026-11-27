@@ -134,6 +134,7 @@ func (e *testEnv) addChannelCaps(t *testing.T, name, baseURL string, priority in
 			t.Fatalf("create key: %v", err)
 		}
 	}
+	e.InvalidateConfig() // 测试直接建库，模拟管理台写操作后的失效
 }
 
 func (e *testEnv) chat(t *testing.T, body string) (*http.Response, string) {

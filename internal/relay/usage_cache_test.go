@@ -200,6 +200,7 @@ func TestCacheTokensBilledAndChargedAcrossProtocols(t *testing.T) {
 		if err := env.db.Model(&store.Channel{}).Where("id = ?", 1).Update("preset_id", "anthropic").Error; err != nil {
 			t.Fatalf("set preset: %v", err)
 		}
+		env.InvalidateConfig() // 测试直接改库，模拟管理台写操作后的失效
 		if err := env.usage.Reload(); err != nil {
 			t.Fatalf("reload prices: %v", err)
 		}

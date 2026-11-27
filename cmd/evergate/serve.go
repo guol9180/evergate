@@ -127,11 +127,7 @@ func serve(b *bootstrapped, rt *runtime) error {
 	case <-rt.signals.exit:
 		logger.Info("tray exit requested, draining requests (max 30s)")
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := rt.server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("graceful shutdown: %w", err)
-	}
+	shutdownServer(rt.server, 30*time.Second, logger)
 	b.releaseInstance()
 	if spec, ok := rt.updater.PendingLaunch(); ok {
 		if err := selfupdate.Spawn(spec); err != nil {
@@ -152,4 +148,15 @@ func serve(b *bootstrapped, rt *runtime) error {
 	}
 	logger.Info("evergate stopped")
 	return nil
+}
+
+// shutdownServer 优雅排空在途请求；超过 timeout 后强制关闭残留连接（长连接客户端可能永不返回），
+// 停机超时属于可预期情况，只记录告警，不再作为启动失败返回。
+func shutdownServer(srv *http.Server, timeout time.Duration, logger *slog.Logger) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Warn("graceful shutdown timed out, closing remaining connections", slog.Any("error", err))
+		_ = srv.Close()
+	}
 }

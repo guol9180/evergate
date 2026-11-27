@@ -134,22 +134,23 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		Tracer:    b.tracer,
 	})
 	adminAPI := admin.New(admin.Options{
-		DB:           db,
-		MasterKey:    cfg.Security.MasterKey,
-		Pool:         poolMgr,
-		AllowRemote:  !cfg.Server.ShouldRestrictAdminToLoopback(),
-		Now:          nowFn,
-		Session:      admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
-		Update:       updateChecker,
-		Settings:     settingsMgr,
-		Health:       prober,
-		Usage:        usageMgr,
-		ConfigPath:   b.paths.ConfigPath,
-		DataDir:      b.paths.DataDir,
-		ConfigSource: b.paths.Source,
-		Playground:   relayHandler.HandlePlayground,
-		SelfUpdate:   updater,
-		Logger:       logger,
+		DB:             db,
+		MasterKey:      cfg.Security.MasterKey,
+		Pool:           poolMgr,
+		AllowRemote:    !cfg.Server.ShouldRestrictAdminToLoopback(),
+		Now:            nowFn,
+		Session:        admin.NewSessionManager(cfg.Security.SessionSecret, 24*time.Hour),
+		Update:         updateChecker,
+		Settings:       settingsMgr,
+		Health:         prober,
+		Usage:          usageMgr,
+		ConfigPath:     b.paths.ConfigPath,
+		DataDir:        b.paths.DataDir,
+		ConfigSource:   b.paths.Source,
+		Playground:     relayHandler.HandlePlayground,
+		SelfUpdate:     updater,
+		OnConfigChange: relayHandler.InvalidateConfig,
+		Logger:         logger,
 	})
 
 	engine := server.New(server.Options{
@@ -171,11 +172,12 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		WebFS: web.DistFS,
 	})
 
-	addr := fmt.Sprintf(":%d", cfg.Server.Port)
+	addr := cfg.Server.ListenAddr()
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           engine,
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 		// 不设 WriteTimeout：SSE 长流式不能被全局写超时打断（任务书 4.5⑥）。
 	}
 

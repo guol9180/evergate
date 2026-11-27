@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -26,9 +28,18 @@ type Config struct {
 // Server 是 HTTP 服务引导配置。
 type Server struct {
 	Port              int    `yaml:"port"`
+	Host              string `yaml:"host"`
 	BasePath          string `yaml:"base_path"`
 	OpenBrowser       *bool  `yaml:"open_browser"`
 	AdminLoopbackOnly *bool  `yaml:"admin_loopback_only"`
+}
+
+// ListenAddr 返回 HTTP 监听地址；未配置 host 时监听所有网卡（与历史行为一致）。
+func (s Server) ListenAddr() string {
+	if s.Host == "" {
+		return fmt.Sprintf(":%d", s.Port)
+	}
+	return net.JoinHostPort(s.Host, strconv.Itoa(s.Port))
 }
 
 // Storage 是存储引导配置。
@@ -118,6 +129,21 @@ func (s Server) ShouldRestrictAdminToLoopback() bool {
 
 func boolPtr(v bool) *bool { return &v }
 
+// validListenHost 允许 IPv4 / IPv6 字面量与主机名（不含协议、端口与路径）。
+func validListenHost(host string) bool {
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	for _, char := range host {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '.' || char == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // Load 读取 path 的 YAML 配置。文件不存在时返回默认值与 nil 错误（由调用方提示）；
 // YAML 中缺省的字段保留默认值。
 func Load(path string) (Config, error) {
@@ -148,6 +174,9 @@ func (c Config) Validate() error {
 	}
 	if c.Server.BasePath != "" && (!strings.HasPrefix(c.Server.BasePath, "/") || strings.HasSuffix(c.Server.BasePath, "/")) {
 		return fmt.Errorf("server.base_path 必须以 / 开头且不以 / 结尾，当前 %q", c.Server.BasePath)
+	}
+	if c.Server.Host != "" && !validListenHost(c.Server.Host) {
+		return fmt.Errorf("server.host 只允许 IP 或主机名，当前 %q", c.Server.Host)
 	}
 	for _, char := range c.Server.BasePath {
 		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||

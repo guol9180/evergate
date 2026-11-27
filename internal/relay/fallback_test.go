@@ -167,6 +167,7 @@ func TestFallbackRuleUpdateTakesEffectWithoutRestart(t *testing.T) {
 	if err := env.db.Model(rule).Update("fallbacks", []string{}).Error; err != nil {
 		t.Fatal(err)
 	}
+	env.InvalidateConfig() // 测试直接改库，模拟管理台写操作后的失效
 	resp, body := authPost(t, gateway, "/v1/chat/completions", plain, `{"model":"expensive","messages":[{"role":"user","content":"hi"}]}`)
 	if resp.StatusCode != http.StatusServiceUnavailable || !strings.Contains(body, "all_channels_exhausted") {
 		t.Fatalf("after update: %d %s", resp.StatusCode, body)

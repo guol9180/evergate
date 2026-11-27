@@ -90,6 +90,7 @@ func TestRequestConfigValidateChannelTargets(t *testing.T) {
 	if err := env.db.Model(&store.Channel{}).Where("id = ?", id).Update("enabled", false).Error; err != nil {
 		t.Fatalf("disable channel: %v", err)
 	}
+	env.InvalidateConfig() // 测试直接改库，模拟管理台写操作后的失效
 	resp, body := postWithHeaders(t, gateway, "/v1/chat/completions", plain,
 		overrideHeader(fmt.Sprintf(`{"channels":[%d]}`, id)), `{"model":"gpt-x","messages":[]}`)
 	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "does not exist or is disabled") {

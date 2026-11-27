@@ -47,6 +47,8 @@ type Options struct {
 	ConfigSource    string
 	// Playground 由 relay.HandlePlayground 提供；nil 表示未启用（测试或裁剪构建）。
 	Playground gin.HandlerFunc
+	// OnConfigChange 在会话写操作成功后调用，用于让转发热路径的配置快照失效。
+	OnConfigChange func()
 	// Logger 用于审计写入失败等非业务告警；nil 时静默。
 	Logger *slog.Logger
 }
@@ -71,6 +73,15 @@ func New(opt Options) *API {
 	return &API{opt: opt, now: opt.Now, loginLimiter: newLoginLimiter()}
 }
 
+// invalidateOnWrite 在任何成功的非 GET 写操作后让转发配置快照失效。
+// 挂在会话路由组上只声明一次，新增写接口不会漏掉失效。
+func (a *API) invalidateOnWrite(c *gin.Context) {
+	c.Next()
+	if c.Request.Method != http.MethodGet && c.Writer.Status() < http.StatusBadRequest {
+		a.opt.OnConfigChange()
+	}
+}
+
 // RegisterRoutes 注册 /admin/api 全部路由（由 server.SetupRoutes 挂载）：
 // 公开组只做本机访问限制（登录 / 首启 / 登出），会话组再套会话校验，中间件只在这里声明一次。
 func (a *API) RegisterRoutes(r gin.IRouter) {
@@ -81,6 +92,9 @@ func (a *API) RegisterRoutes(r gin.IRouter) {
 	public.POST("/auth/logout", a.logout)
 	// 会话保护区（sessionMiddleware 放行 me/password 以强制首登改密）
 	session := r.Group("/admin/api", a.accessMiddleware(), a.sessionMiddleware())
+	if a.opt.OnConfigChange != nil {
+		session.Use(a.invalidateOnWrite)
+	}
 	session.GET("/auth/me", a.me)
 	session.PUT("/auth/password", a.changePassword)
 	session.GET("/system/update", a.systemUpdate)

@@ -70,6 +70,39 @@ func TestLoadOpenBrowserOverride(t *testing.T) {
 	}
 }
 
+func TestServerListenAddr(t *testing.T) {
+	cases := []struct {
+		host string
+		port int
+		want string
+	}{
+		{"", 8787, ":8787"},
+		{"127.0.0.1", 18787, "127.0.0.1:18787"},
+		{"::1", 8787, "[::1]:8787"},
+		{"localhost", 8787, "localhost:8787"},
+	}
+	for _, tc := range cases {
+		s := Default().Server
+		s.Host, s.Port = tc.host, tc.port
+		if got := s.ListenAddr(); got != tc.want {
+			t.Fatalf("host %q port %d: got %q, want %q", tc.host, tc.port, got, tc.want)
+		}
+		if err := (Config{Server: s, Storage: Default().Storage, Defaults: Default().Defaults}).Validate(); err != nil {
+			t.Fatalf("host %q should be valid: %v", tc.host, err)
+		}
+	}
+}
+
+func TestServerHostRejectsSchemeAndPort(t *testing.T) {
+	for _, host := range []string{"http://127.0.0.1", "127.0.0.1:8787", "0.0.0.0/24", "bad host"} {
+		cfg := Default()
+		cfg.Server.Host = host
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("host %q should be rejected", host)
+		}
+	}
+}
+
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "evergate.yml")
 	if err := writeTestFile(path, "server:\n  port: 18787\n  prot: 8787\n"); err != nil {

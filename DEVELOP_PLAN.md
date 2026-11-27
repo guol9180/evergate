@@ -66,10 +66,17 @@ P0 功能完成定义（1–10 全部通过）：
 - 验收标准：① key 成功 / 失败统计的持久化移到首包写出之后或并入异步刷盘，内存状态机仍即时，压测给出首 token 延迟 P50 / P95 的前后对比；② 渠道、降级规则等低频配置走内存快照 + 变更失效，单请求配置读库由 4 次以上降到不超过 1 次，管理台变更后立即生效；③ 请求体一次解析并按上游模型缓存重写结果，1MB / 8MB 请求体下有 CPU 与分配的前后对比；④ Transport 缓存按时长分桶并设容量上限；⑤ 日志统计的分位数下推到 SQL，不再全量读入内存；⑥ http.Server 设空闲连接超时，新增 server.host 监听地址配置（默认行为不变），优雅停机超时不再按启动失败处理并强制关闭残留连接；⑦ SQLite synchronous=NORMAL 作为可选项并提供实测对比
 - 边界：不改调度语义、重试预算与 SSE 红线，不做多进程与外部缓存；决策项：synchronous=NORMAL 能降低写延迟，代价是断电可能丢最后几次提交，默认值由用户确认
 - 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
+- 状态：in-progress
 - 进度：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（性能）
   - 2026-11-26 决策 用户确认 synchronous=NORMAL 作为可选项并给出实测对比
+  - 2026-11-27 执行 ⑤ 日志统计：`/logs/stats` 改为一条聚合（总数 / 成功数 / 延迟条数 / 延迟总和）+ 两条 `ORDER BY total_ms LIMIT 1 OFFSET` 取 P50 / P95，删除整表读入内存的 computeLogStats 与其断言辅助；最近秩法拆为 percentileRank 表驱动
+  - 2026-11-27 验证 ⑤：TestPercentileRankTableDriven + TestLogsStatsAndCSVExport 通过（4 条日志 p50=300 p95=700 与筛选后成功率 50% 与旧口径一致）、admin 包测试全 ok
+  - 2026-11-27 执行 ⑥ 服务生命周期：`server.host` 监听地址配置（空 = 全部网卡，校验只接受 IP / 主机名）、http.Server 加 120s 空闲超时、停机拆出 shutdownServer（30s 排空后强制 Close 残留连接并只告警，不再当作启动错误）
+  - 2026-11-27 执行 ④ Transport：连接超时按 5s 分桶共用连接池，缓存上限 16 个档位、超限回收最久未用并关闭其空闲连接
+  - 2026-11-27 执行 ② 配置快照：relay 缓存启用渠道与模型降级规则（RWMutex + 懒加载），管理台会话组挂 invalidateOnWrite 中间件，任何成功的非 GET 写操作后调用 relay.InvalidateConfig；热路径配置读库由每请求 2 次（渠道 + 降级规则）降为 0 次
+  - 2026-11-27 验证 ②④⑥：新增 TestChatRequestDoesNotReadConfigTables（warm 后一次对话请求对 channels / model_fallbacks 的查询计数为 0）、TestConfigSnapshotCachesUntilInvalidated、TestFallbackRuleSnapshotRefreshesAfterInvalidation、TestInvalidateOnWriteOnlyAfterSuccessfulWrites、TestServerListenAddr、TestServerHostRejectsSchemeAndPort、TestShutdownServerDrainsIdleServer、TestShutdownServerClosesHungConnectionsOnTimeout、TestTransportBucketSharesNearbyTimeouts、TestTransportCacheIsBounded；go test -p 1 ./... 全 ok、gofmt / vet / staticcheck 干净、relay 81.6%、make build 通过
+  - 2026-11-27 备注 剩余：① key 统计异步刷盘与首 token 压测、③ 请求体单次解析与按模型缓存、⑦ synchronous=NORMAL 可选开关
 
 #### T113: 令牌限流与事件告警（P2，产品能力）
 

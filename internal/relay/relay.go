@@ -62,9 +62,17 @@ type Options struct {
 
 // Relay 转发器。零拷贝流式路径见 stream.go；本文件负责编排与重试。
 type Relay struct {
-	opt        Options
-	mu         sync.Mutex
-	transports map[time.Duration]*http.Transport
+	opt            Options
+	mu             sync.Mutex
+	transports     map[time.Duration]*transportEntry
+	transportClock uint64
+
+	// cfgMu 保护低频配置快照；写操作由 InvalidateConfig 整体失效。
+	cfgMu        sync.RWMutex
+	channels     []*store.Channel
+	channelsRead bool
+	fallbacks    []store.ModelFallback
+	fallbackRead bool
 }
 
 // New 创建 Relay。
@@ -84,7 +92,7 @@ func New(opt Options) *Relay {
 	if opt.Tracer == nil {
 		opt.Tracer = telemetry.New(telemetry.Config{}, opt.Logger)
 	}
-	return &Relay{opt: opt, transports: make(map[time.Duration]*http.Transport)}
+	return &Relay{opt: opt, transports: make(map[time.Duration]*transportEntry)}
 }
 
 // attemptOutcome 单次尝试的结果，决定下一步走向。
@@ -280,8 +288,8 @@ func filterChannels(channels []*store.Channel, model string, ids []int64) ([]*st
 
 // modelCatalog 返回启用渠道的对外模型，并按令牌允许模型过滤（令牌未限制或未鉴权时返回全部）。
 func (r *Relay) modelCatalog(c *gin.Context) ([]string, bool) {
-	var channels []*store.Channel
-	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
+	channels, err := r.enabledChannels()
+	if err != nil {
 		r.logInternalError("load model catalog failed", err)
 		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "channels_unavailable", "failed to load enabled channels")
 		return nil, false
@@ -930,21 +938,54 @@ func (r *Relay) recordHit(c *gin.Context, hit *hitRecord, ch *store.Channel, key
 	}
 }
 
-// transport 按连接超时缓存 Transport（渠道可覆盖 connect 超时）。
+const (
+	// transportBucket 把渠道自定义的连接超时归并到 5s 档位，相近配置共用连接池，
+	// 避免每个不同秒数都占一个 Transport（每个都带独立空闲连接池）。
+	transportBucket = 5 * time.Second
+	// transportCacheLimit 限制档位数；超出后回收最久未使用的档位。
+	transportCacheLimit = 16
+)
+
+type transportEntry struct {
+	transport *http.Transport
+	lastUsed  uint64
+}
+
+// transport 按连接超时分桶缓存 Transport（渠道可覆盖 connect 超时）。
 func (r *Relay) transport(connect time.Duration) *http.Transport {
+	key := connect
+	if key <= 0 {
+		key = transportBucket
+	} else {
+		key = (key + transportBucket - 1) / transportBucket * transportBucket
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	t := r.transports[connect]
-	if t == nil {
-		t = &http.Transport{
-			DialContext:         (&net.Dialer{Timeout: connect}).DialContext,
-			ForceAttemptHTTP2:   true,
-			MaxIdleConns:        32,
-			MaxIdleConnsPerHost: 8,
-			IdleConnTimeout:     90 * time.Second,
-		}
-		r.transports[connect] = t
+	r.transportClock++
+	if entry := r.transports[key]; entry != nil {
+		entry.lastUsed = r.transportClock
+		return entry.transport
 	}
+	if len(r.transports) >= transportCacheLimit {
+		var oldestKey time.Duration
+		var oldest uint64
+		for k, entry := range r.transports {
+			if oldest == 0 || entry.lastUsed < oldest {
+				oldestKey, oldest = k, entry.lastUsed
+			}
+		}
+		r.transports[oldestKey].transport.CloseIdleConnections()
+		delete(r.transports, oldestKey)
+	}
+	t := &http.Transport{
+		DialContext:         (&net.Dialer{Timeout: key}).DialContext,
+		ForceAttemptHTTP2:   true,
+		MaxIdleConns:        32,
+		MaxIdleConnsPerHost: 8,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	r.transports[key] = &transportEntry{transport: t, lastUsed: r.transportClock}
 	return t
 }
 

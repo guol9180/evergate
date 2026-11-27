@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"evergate/internal/affinity"
 	"evergate/internal/config"
@@ -42,8 +41,8 @@ func (r *Relay) dispatchWithFallbacks(c *gin.Context, hit *hitRecord, body []byt
 		return nil, http.StatusInternalServerError, "model_sequence_failed", msg
 	}
 
-	var channels []*store.Channel
-	if err := r.opt.DB.Where("enabled = ?", true).Find(&channels).Error; err != nil {
+	channels, err := r.enabledChannels()
+	if err != nil {
 		r.logInternalError("load enabled channels failed", err)
 		const msg = "failed to load enabled channels"
 		writeOpenAIError(c, http.StatusInternalServerError, "server_error", "channels_unavailable", msg)
@@ -129,13 +128,12 @@ func (r *Relay) modelSequence(c *gin.Context, originalModel string) ([]fallbackE
 	if token == nil || token.DisableFallback || r.opt.DB == nil {
 		return []fallbackEntry{{model: originalModel}}, nil
 	}
-	var rule store.ModelFallback
-	err := r.opt.DB.Where("model = ?", originalModel).First(&rule).Error
-	if err == gorm.ErrRecordNotFound {
-		return []fallbackEntry{{model: originalModel}}, nil
-	}
+	rule, found, err := r.fallbackRule(originalModel)
 	if err != nil {
 		return nil, err
+	}
+	if !found {
+		return []fallbackEntry{{model: originalModel}}, nil
 	}
 
 	entries := make([]fallbackEntry, 0, len(rule.Fallbacks)+1)
