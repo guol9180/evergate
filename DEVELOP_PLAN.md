@@ -74,7 +74,8 @@ P0 功能完成定义（1–10 全部通过）：
   - 2026-11-27 执行 ③④ 完成：Switch 改 Radix Switch、侧栏收起态导航项 Tooltip、Dialog / Drawer 可选 description；分页器 lucide 图标、图表激活点语义 token 类；① 登录与令牌表单迁移 RHF + zod（校验文案 i18n、入参强类型、失败聚焦首错字段）；② 新增 useUnsavedGuard 并接入令牌弹窗（Esc / 遮罩 / 取消按钮有脏数据先确认）。验证：lint 0 警告、unit 16 + ui 73 通过（Login 按异步 resolver 调整，新增 guard 两例与令牌脏数据 / 校验两例）、audit:layout 907/1440 浅中 + 深英通过、make build 通过
   - 2026-11-27 执行 ② 渠道弹窗接入脏数据保护（字段快照与初始值比较 → useUnsavedGuard，Esc / 遮罩 / 取消先确认）；⑤ 定案并落地：新建渠道默认选中第一个供应商预设（预设自带模型与价格，自定义接入保留为显式选项，编辑沿用原预设）；设置页三个分区改为 Disclosure（上游超时 / 重试与冷却默认展开，维护任务默认折叠）。验证：lint 0 警告、unit 16 + ui 73 通过、make build 通过、audit:layout 907/1440 浅中 + 深英通过，18787 设置页截图复验
   - 2026-11-27 执行 ① 改密与首启表单迁移 RHF + zod：对象级 refine（两次密码一致落到确认字段）、密码强度三类校验、失败聚焦首错字段；对应测试按异步 resolver 调整，脏数据测试加长等待避免并发下的偶发超时。验证：lint 0 警告、unit 16 + ui 73 通过、make build 通过
-  - 2026-11-27 备注 剩余：渠道 / 设置 / 价格 / 降级链表单迁移到 RHF + zod（登录 / 令牌 / 改密 / 首启已完成），完成后归档
+  - 2026-11-27 验证 18787 headless 端到端：令牌弹窗空提交内联「请输入令牌名称」→ 输入后 Esc 弹「放弃未保存的更改？」→ 放弃后关闭；改密页两次不一致落到确认字段；audit:layout 907/1440 浅中 + 深英通过
+  - 2026-11-27 备注 剩余：渠道 / 设置 / 价格 / 降级链表单迁移到 RHF + zod（登录 / 令牌 / 改密 / 首启已完成），完成后归档。下一轮建议从渠道弹窗开始：先通读 ChannelForm（Channels.tsx 约 290–660 行），用 useFieldArray 承载模型映射 / 模型列表，预设态禁用字段用 schema 的 .optional() + 手动置空处理，超时字段沿用现有 validateEffectiveChannelTimeouts 口径
 
 #### T111: 可维护性重构（P2，代码审查）
 
