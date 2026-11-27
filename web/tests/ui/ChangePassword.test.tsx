@@ -15,7 +15,7 @@ vi.mock('../../src/api/hooks', () => ({
 }))
 
 describe('ChangePassword', () => {
-  it('rejects mismatched confirmation locally', () => {
+  it('rejects mismatched confirmation locally', async () => {
     render(
       <MemoryRouter>
         <ChangePassword />
@@ -27,7 +27,8 @@ describe('ChangePassword', () => {
     fireEvent.change(screen.getByLabelText('确认新密码'), { target: { value: 'different' } })
     fireEvent.click(screen.getByRole('button', { name: '修改密码' }))
 
-    expect(screen.getByText('两次输入的新密码不一致')).toBeTruthy()
+    // zod resolver 异步校验：错误在下一拍渲染
+    expect(await screen.findByText('两次输入的新密码不一致')).toBeTruthy()
     expect(changeMutation.mutate).not.toHaveBeenCalled()
   })
 })

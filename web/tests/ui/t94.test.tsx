@@ -35,7 +35,7 @@ function renderSetup() {
 }
 
 describe('Setup', () => {
-  it('rejects weak passwords before calling the API', () => {
+  it('rejects weak passwords before calling the API', async () => {
     state.required = true
     state.mutate.mockClear()
     renderSetup()
@@ -45,13 +45,13 @@ describe('Setup', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建并前往登录' }))
 
     // 字段级错误：落在密码框下方，并标记 aria-invalid；不再是按钮上方的大色块
-    expect(screen.getByText('密码至少 8 位')).toBeTruthy()
+    expect(await screen.findByText('密码至少 8 位')).toBeTruthy()
     expect(screen.getByLabelText('密码').getAttribute('aria-invalid')).toBe('true')
     expect(screen.queryByRole('alert')).toBeNull()
     expect(state.mutate).not.toHaveBeenCalled()
   })
 
-  it('rejects mismatched confirmation and invalid usernames', () => {
+  it('rejects mismatched confirmation and invalid usernames', async () => {
     state.required = true
     state.mutate.mockClear()
     renderSetup()
@@ -60,12 +60,12 @@ describe('Setup', () => {
     fireEvent.change(screen.getByLabelText('密码'), { target: { value: 'Admin1234!' } })
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'Admin1234!' } })
     fireEvent.click(screen.getByRole('button', { name: '创建并前往登录' }))
-    expect(screen.getByText(/用户名需为/)).toBeTruthy()
+    expect(await screen.findByText(/用户名需为/)).toBeTruthy()
 
     fireEvent.change(screen.getByLabelText('用户名'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'Admin1234?' } })
     fireEvent.click(screen.getByRole('button', { name: '创建并前往登录' }))
-    expect(screen.getByText('两次输入的密码不一致')).toBeTruthy()
+    expect(await screen.findByText('两次输入的密码不一致')).toBeTruthy()
     expect(screen.queryByText(/用户名需为/)).toBeNull()
     expect(state.mutate).not.toHaveBeenCalled()
   })
@@ -79,7 +79,7 @@ describe('Setup', () => {
     fireEvent.change(screen.getByLabelText('确认密码'), { target: { value: 'Admin1234!' } })
     fireEvent.click(screen.getByRole('button', { name: '创建并前往登录' }))
 
-    expect(state.mutate).toHaveBeenCalledWith({ username: 'admin', password: 'Admin1234!' })
+    await waitFor(() => expect(state.mutate).toHaveBeenCalledWith({ username: 'admin', password: 'Admin1234!' }))
     await waitFor(() => expect(screen.getByText('login page')).toBeTruthy())
   })
 
