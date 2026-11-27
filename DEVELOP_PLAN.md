@@ -66,9 +66,12 @@ P0 功能完成定义（1–10 全部通过）：
 - 验收标准：① 调试台支持多轮对话、temperature / max_tokens 等常用参数、查看实际发往上游的请求体（脱敏、有大小上限），离开页面自动中止在途请求；② 用量报表新增首 token 延迟维度（按模型 / 渠道的均值与 P50），趋势图可切换指标；③ 渠道模型列表可定时同步上游目录，上游新增 / 下线模型在渠道页给出提示，不自动改写对外模型列表；④ 中英 / 浅深 / 窄屏通过，单测覆盖请求体脱敏与延迟聚合
 - 边界：调试台仍复用 relay 公共 dispatch；不采集下游请求体入库
 - 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
+- 状态：in-progress
 - 进度：
   - 2026-11-26 计划 建卡；来源：2026-11-26 代码质量审查（产品视角）
+  - 2026-11-27 执行 ① 调试台多轮：请求新增 `history`（≤40 条 user / assistant 轮次，单条 ≤16000 字节）与 `temperature` / `top_p` / `max_tokens`（范围校验），四协议按各自字段下发（Responses 单轮仍为字符串 input、多轮用 easy-input 数组；Gemini 历史用 role=model）；`attemptOne` 在发往上游前记录请求快照（仅调试台），meta 新增 `upstream_request{method,url,body,truncated}`，body 过凭据脱敏并按 16KB 截断
+  - 2026-11-27 执行 ① 前端：Playground 改为对话线程（user / assistant 轮次气泡、流式光标、清空对话），左侧新增「采样参数」折叠区（三个输入，留空不下发），Ctrl/⌘+Enter 发送；命中链路新增「查看发往上游的请求」折叠区（方法 + URL + 缩进 JSON，截断时带 warning 徽标）；`useEffect` 卸载时自动 abort 在途请求
+  - 2026-11-27 验证 ①：Go 新增 TestPlaygroundMultiTurnAndParams（历史顺序 / 参数透传 / 快照为改写后的上游体且不含 key）、TestPlaygroundResponsesInputShapeByTurns、TestPlaygroundUpstreamRequestRedactedAndTruncated（sk- / Bearer 脱敏、多轮超 16KB 截断）、TestPlaygroundRejectsBadParamsAndHistory（5 例 400 且不触达上游）；前端 lint 0 警告、tsc 通过；audit:layout 907/1440 × 浅中 + 深英通过；18787 内置浏览器实测：两轮对话（mock 上游）→ 展开「查看发往上游的请求」显示 POST + URL + 三条 messages 的缩进 JSON → 清空对话回到空态
 
 > 来源：P3 待复验任务（由 T73 拆分）。
 

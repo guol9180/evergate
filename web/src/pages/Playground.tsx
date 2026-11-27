@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FlaskConical, Play, Square } from 'lucide-react'
+import { Code2, FlaskConical, Play, Square, Trash2 } from 'lucide-react'
 import { useChannels } from '../api/hooks'
-import { runPlayground, type PlaygroundMeta } from '../api/playground'
+import { runPlayground, type PlaygroundMeta, type PlaygroundTurn } from '../api/playground'
 import RetryTimeline from '../components/RetryTimeline'
-import { Alert, Badge, Button, Card, Empty, Field, PageHeader, SegmentedControl, Select, SettingRow, Spinner, Textarea } from '../components/ui'
+import { Alert, Badge, Button, Card, Disclosure, Empty, Field, IconButton, Input, PageHeader, SegmentedControl, Select, SettingRow, Spinner, Textarea } from '../components/ui'
 import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, httpStatusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 
 const MAX_PROMPT = 16000
 const MAX_SYSTEM = 8000
+/** 历史轮次上限与服务端 playgroundMaxTurns 一致 */
+const MAX_TURNS = 40
 type Protocol = 'chat' | 'responses' | 'anthropic' | 'gemini'
 const PROTOCOLS: readonly { value: Protocol; label: string }[] = [
   { value: 'chat', label: 'Chat' },
@@ -26,12 +28,17 @@ export default function Playground() {
   const [system, setSystem] = useState('')
   const [prompt, setPrompt] = useState('')
   const [stream, setStream] = useState(true)
+  // 采样参数按字符串编辑，提交时转数字；留空 = 不下发（上游默认）
+  const [temperature, setTemperature] = useState('')
+  const [topP, setTopP] = useState('')
+  const [maxTokens, setMaxTokens] = useState('')
+  const [turns, setTurns] = useState<PlaygroundTurn[]>([])
   const [output, setOutput] = useState('')
   const [meta, setMeta] = useState<PlaygroundMeta | null>(null)
   const [error, setError] = useState('')
   const [running, setRunning] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
-  const outputRef = useRef<HTMLDivElement>(null)
+  const threadRef = useRef<HTMLDivElement>(null)
 
   const models = useMemo(() => {
     const set = new Set<string>()
@@ -48,34 +55,63 @@ export default function Playground() {
   }, [models, model])
 
   useEffect(() => {
-    const box = outputRef.current
+    const box = threadRef.current
     if (box) box.scrollTop = box.scrollHeight
-  }, [output])
+  }, [output, turns])
+
+  // 离开页面自动中止在途请求，避免后台继续消耗上游额度
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  function resetConversation() {
+    setTurns([])
+    setOutput('')
+    setMeta(null)
+    setError('')
+  }
+
+  function params(): { temperature?: number; top_p?: number; max_tokens?: number } {
+    const num = (value: string) => (value.trim() === '' ? undefined : Number(value))
+    return { temperature: num(temperature), top_p: num(topP), max_tokens: num(maxTokens) }
+  }
 
   async function send() {
     if (running || !model || !prompt.trim()) return
+    const userText = prompt.trim()
+    const history = turns.slice(0, MAX_TURNS)
     const controller = new AbortController()
     abortRef.current = controller
     setRunning(true)
     setError('')
     setOutput('')
     setMeta(null)
+    setTurns([...history, { role: 'user', content: userText }])
+    setPrompt('')
+    let acc = ''
     try {
       const result = await runPlayground(
-        { protocol, model, system: system.trim(), prompt: prompt.trim(), stream },
-        { onDelta: (delta) => setOutput((current) => current + delta), signal: controller.signal },
+        { protocol, model, system: system.trim(), history, prompt: userText, stream, ...params() },
+        {
+          onDelta: (delta) => { acc += delta; setOutput(acc) },
+          signal: controller.signal,
+        },
       )
       setMeta(result.meta)
+      const text = result.text || acc
+      setTurns((current) => [...current, { role: 'assistant', content: text }])
+      setOutput('')
       if (result.streamError) {
         setError(result.streamError)
       } else if (result.meta && result.meta.status >= 400) {
         setError(result.meta.error_message || tf('playground.upstreamStatus', { status: result.meta.status }))
-      } else if (!result.text && result.meta?.status === 200) {
+      } else if (!text && result.meta?.status === 200) {
         setError(t('playground.noText'))
       }
     } catch (err) {
+      // 中断 / 失败时保留已生成的部分，作为一轮 assistant 消息留在对话里
+      if (acc) setTurns((current) => [...current, { role: 'assistant', content: acc }])
+      setOutput('')
       const message = err instanceof Error ? err.message : String(err)
-        setError(message === 'The user aborted a request.' ? t('playground.aborted') : message)
+      setError(message === 'The user aborted a request.' ? t('playground.aborted') : message)
     } finally {
       abortRef.current = null
       setRunning(false)
@@ -86,8 +122,7 @@ export default function Playground() {
     abortRef.current?.abort()
   }
 
-  // 非流式失败时服务端把错误放进 response.error，extractPlaygroundText 会把它当正文返回；顶部已有横幅，正文区不再重复
-  const outputIsErrorOnly = !!error && output === tf('playground.upstreamError', { message: describeUpstreamError(error).text })
+  const showEmpty = turns.length === 0 && !output && !error
 
   return (
     <div className="eg-page-stack">
@@ -131,27 +166,19 @@ export default function Playground() {
                 value={system}
                 maxLength={MAX_SYSTEM}
                 onChange={(e) => setSystem(e.target.value)}
-              placeholder={t('playground.systemPlaceholder')}
+                placeholder={t('playground.systemPlaceholder')}
                 disabled={running}
                 aria-label={t('playground.system')}
               />
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-baseline justify-between">
-              <span className="text-sm font-medium text-foreground-soft">{t('playground.user')}</span>
-                <span className="text-[11px] tabular-nums text-subtle">{prompt.length}/{MAX_PROMPT}</span>
+            <Disclosure title={t('playground.params')} defaultOpen={false}>
+              <div className="eg-grid eg-grid-auto-wide">
+                <ParamField label={t('playground.temperature')} hint="0 – 2" value={temperature} onChange={setTemperature} disabled={running} />
+                <ParamField label={t('playground.topP')} hint="0 – 1" value={topP} onChange={setTopP} disabled={running} />
+                <ParamField label={t('playground.maxTokens')} hint="1 – 32768" value={maxTokens} onChange={setMaxTokens} disabled={running} />
               </div>
-              <Textarea
-                rows={7}
-                value={prompt}
-                maxLength={MAX_PROMPT}
-                onChange={(e) => setPrompt(e.target.value)}
-              placeholder={t('playground.userPlaceholder')}
-                disabled={running}
-                aria-label={t('playground.user')}
-              />
-            </div>
+            </Disclosure>
 
             <SettingRow
               title={t('playground.stream')}
@@ -162,8 +189,31 @@ export default function Playground() {
               label={t('playground.stream')}
             />
 
+            <div className="space-y-1.5">
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm font-medium text-foreground-soft">{t('playground.user')}</span>
+                <span className="text-[11px] tabular-nums text-subtle">{prompt.length}/{MAX_PROMPT}</span>
+              </div>
+              <Textarea
+                rows={5}
+                value={prompt}
+                maxLength={MAX_PROMPT}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder={t('playground.userPlaceholder')}
+                disabled={running}
+                aria-label={t('playground.user')}
+                onKeyDown={(e) => {
+                  // Ctrl/⌘ + Enter 发送，Enter 保持换行（多行提示词更常见）
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault()
+                    void send()
+                  }
+                }}
+              />
+            </div>
+
             <div className="flex gap-2 pt-0.5">
-              <Button onClick={send} loading={running} disabled={!model || !prompt.trim()} className="flex-1">
+              <Button onClick={() => void send()} loading={running} disabled={!model || !prompt.trim()} className="flex-1">
                 <Play size={14} />
                 {t('common.send')}
               </Button>
@@ -176,7 +226,7 @@ export default function Playground() {
 
         <Card flush className="flex min-w-0 flex-col overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 border-b border-line-soft" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>
-            <h2 className="text-sm font-semibold text-foreground-soft">{t('playground.response')}</h2>
+            <h2 className="text-sm font-semibold text-foreground-soft">{t('playground.conversation')}</h2>
             <Badge tone="neutral">{protocolLabel(protocol)}</Badge>
             {meta && (
               <div className="ml-auto flex items-center gap-2">
@@ -184,27 +234,34 @@ export default function Playground() {
                 <span className="text-[11px] text-subtle">{tf('playground.attempts', { n: meta.retry_trace.length })}</span>
               </div>
             )}
+            <IconButton
+              label={t('playground.reset')}
+              side="top"
+              variant="outline"
+              disabled={running || turns.length === 0}
+              onClick={resetConversation}
+            >
+              <Trash2 size={13} />
+            </IconButton>
           </div>
 
-          <div ref={outputRef} aria-live="polite" className="max-h-[58vh] min-h-[120px] overflow-auto" style={{ padding: 'var(--eg-card-pad)' }}>
-            {/* 错误放在响应区顶部、正文之前：先看到"为什么失败"再看已生成的部分输出，不再贴卡片底边 */}
+          <div ref={threadRef} aria-live="polite" className="max-h-[52vh] min-h-[160px] overflow-auto" style={{ padding: 'var(--eg-card-pad)' }}>
             {error && (
               <Alert tone="danger" className="mb-3" data-upstream="true">
                 <span className="break-words" title={error}>{describeUpstreamError(error).text}</span>
               </Alert>
             )}
-            {output && !outputIsErrorOnly ? (
-              <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-foreground-soft">
-                {output}
-                {running && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-brand align-middle" />}
-              </pre>
-            ) : running ? (
-              <div className="flex items-center gap-2 py-12 text-sm text-muted"><Spinner /> {t('playground.waiting')}</div>
-            ) : error ? (
-              // 纯错误响应没有正文可看：顶部横幅已经说清楚，不再在正文区重复一遍
-              null
-            ) : (
-              <Empty icon={<FlaskConical size={34} />} title={t('empty.playground.title')} hint={t('empty.playground.hint')} />
+            {turns.map((turn, index) => (
+              <TurnBubble key={index} role={turn.role} content={turn.content} />
+            ))}
+            {output && <TurnBubble role="assistant" content={output} streaming />}
+            {!output && running && (
+              <div className="flex items-center gap-2 py-6 text-sm text-muted"><Spinner /> {t('playground.waiting')}</div>
+            )}
+            {showEmpty && (
+              <div className="py-6">
+                <Empty icon={<FlaskConical size={34} />} title={t('empty.playground.title')} hint={t('empty.playground.hint')} />
+              </div>
             )}
           </div>
 
@@ -215,10 +272,10 @@ export default function Playground() {
                 <span className="text-[11px] text-subtle">{t('playground.loggedFrom')}</span>
               </div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
-              <MetaItem label={t('table.channel')} value={meta.channel_name || '—'} hint={meta.channel_id ? `#${meta.channel_id}` : ''} />
-              <MetaItem label={t('table.upstreamModel')} value={meta.upstream_model || '—'} />
-              <MetaItem label={t('table.firstToken')} value={fmtMs(meta.first_token_ms || undefined)} />
-              <MetaItem label={t('table.totalMs')} value={fmtMs(meta.total_ms || undefined)} />
+                <MetaItem label={t('table.channel')} value={meta.channel_name || '—'} hint={meta.channel_id ? `#${meta.channel_id}` : ''} />
+                <MetaItem label={t('table.upstreamModel')} value={meta.upstream_model || '—'} />
+                <MetaItem label={t('table.firstToken')} value={fmtMs(meta.first_token_ms || undefined)} />
+                <MetaItem label={t('table.totalMs')} value={fmtMs(meta.total_ms || undefined)} />
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5 text-[11px] text-muted">
                 {meta.usage.usage_seen ? (
@@ -234,7 +291,21 @@ export default function Playground() {
                   <span className="text-subtle">{t('playground.noUsage')}</span>
                 )}
               </div>
-              {/* 错误正文只在响应区底部的横幅展示一次；此处仅保留重试轨迹，避免同一段错误出现三遍 */}
+              {meta.upstream_request && (
+                <Disclosure
+                  title={<span className="flex items-center gap-1.5"><Code2 size={13} /> {t('playground.upstreamRequest')}</span>}
+                  badge={meta.upstream_request.truncated ? <Badge tone="warning">{t('playground.upstreamTruncated')}</Badge> : undefined}
+                  defaultOpen={false}
+                  className="mt-4 border-t border-line pt-3"
+                >
+                  <div className="mb-2 break-all font-mono text-[11px] text-subtle">
+                    <span className="font-semibold text-foreground-soft">{meta.upstream_request.method}</span> {meta.upstream_request.url}
+                  </div>
+                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg border border-line bg-surface p-3 font-mono text-[11px] leading-5 text-foreground-soft">
+                    {prettyJSON(meta.upstream_request.body)}
+                  </pre>
+                </Disclosure>
+              )}
               <div className="mt-4 border-t border-line pt-3">
                 <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">{t('logs.trace.title')}</h4>
                 <RetryTimeline attempts={meta.retry_trace} />
@@ -247,7 +318,43 @@ export default function Playground() {
   )
 }
 
-function protocolLabel(protocol: 'chat' | 'responses' | 'anthropic' | 'gemini'): string {
+/** 对话轮次：左侧角色标签 + 正文；assistant 流式输出时末尾带闪烁光标。 */
+function TurnBubble({ role, content, streaming }: { role: PlaygroundTurn['role']; content: string; streaming?: boolean }) {
+  const assistant = role === 'assistant'
+  return (
+    <div className={`mb-4 flex gap-3 ${assistant ? '' : 'flex-row-reverse'}`}>
+      <span className={`mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${assistant ? 'bg-brand/10 text-brand' : 'bg-surface-soft text-muted ring-1 ring-inset ring-line'}`}>
+        {assistant ? 'A' : 'U'}
+      </span>
+      <div className={`min-w-0 max-w-[88%] rounded-xl px-3.5 py-2.5 ${assistant ? 'bg-surface-soft' : 'bg-brand/10'}`}>
+        <div className="mb-1 text-[11px] font-medium text-subtle">{assistant ? t('playground.assistant') : t('playground.user')}</div>
+        <pre className="whitespace-pre-wrap break-words font-mono text-[13px] leading-6 text-foreground-soft">
+          {content}
+          {streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-brand align-middle" />}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+function ParamField({ label, hint, value, onChange, disabled }: { label: string; hint: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
+  return (
+    <Field label={label} hint={hint}>
+      <Input type="number" inputMode="decimal" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={label} />
+    </Field>
+  )
+}
+
+/** 上游请求体尽量按 JSON 缩进展示；截断后的残缺 JSON 原样显示。 */
+function prettyJSON(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  } catch {
+    return text
+  }
+}
+
+function protocolLabel(protocol: Protocol): string {
   switch (protocol) {
     case 'responses': return 'Responses API'
     case 'anthropic': return 'Anthropic Messages'

@@ -17,19 +17,36 @@ import (
 // ctxPlayground 标记管理台 Playground 来源（请求日志 Source=playground）。
 const ctxPlayground = "evergate.playground"
 
+// ctxUpstreamRequest 保存最后一次尝试实际发往上游的请求快照（仅调试台请求记录）。
+const ctxUpstreamRequest = "evergate.playground.upstream_request"
+
 const (
 	playgroundMaxBody   = 64 << 10
 	playgroundMaxPrompt = 16000
 	playgroundMaxSystem = 8000
 	playgroundMaxModel  = 100
+	playgroundMaxTurns  = 40
+	// playgroundMaxUpstreamBody 是回显给管理台的上游请求体上限，超出部分截断并标记。
+	playgroundMaxUpstreamBody = 16 << 10
 )
 
+// playgroundMessage 是已完成的历史轮次（多轮对话）。
+type playgroundMessage struct {
+	Role    string `json:"role"` // user | assistant
+	Content string `json:"content"`
+}
+
 type playgroundRequest struct {
-	Protocol string `json:"protocol"`
-	Model    string `json:"model"`
-	System   string `json:"system"`
-	Prompt   string `json:"prompt"`
-	Stream   bool   `json:"stream"`
+	Protocol string              `json:"protocol"`
+	Model    string              `json:"model"`
+	System   string              `json:"system"`
+	History  []playgroundMessage `json:"history"`
+	Prompt   string              `json:"prompt"`
+	Stream   bool                `json:"stream"`
+	// Temperature / TopP / MaxTokens 为 nil 时不下发，交给上游默认值。
+	Temperature *float64 `json:"temperature"`
+	TopP        *float64 `json:"top_p"`
+	MaxTokens   *int     `json:"max_tokens"`
 }
 
 // playgroundMeta 是管理台调试面板展示的命中链路摘要；不含任何 key 明文。
@@ -49,6 +66,37 @@ type playgroundMeta struct {
 	RetryTrace    []store.RetryAttempt `json:"retry_trace"`
 	ErrorType     string               `json:"error_type"`
 	ErrorMessage  string               `json:"error_message"`
+	// UpstreamRequest 是最后一次尝试实际发往上游的请求（脱敏 + 截断），供调试台对照。
+	UpstreamRequest *playgroundUpstreamRequest `json:"upstream_request,omitempty"`
+}
+
+type playgroundUpstreamRequest struct {
+	Method string `json:"method"`
+	URL    string `json:"url"`
+	Body   string `json:"body"`
+	// Truncated 表示请求体超过回显上限被截断。
+	Truncated bool `json:"truncated"`
+}
+
+// recordUpstreamRequest 在每次尝试发往上游前记录快照；只对调试台请求生效，最后一次尝试覆盖前面的。
+// 请求体本身不含 key（key 走请求头），仍过一遍凭据模式脱敏以防用户把 key 写进提示词。
+func recordUpstreamRequest(c *gin.Context, method, url string, body []byte) {
+	if !c.GetBool(ctxPlayground) {
+		return
+	}
+	text := redactCredentials(string(body), "")
+	truncated := len(text) > playgroundMaxUpstreamBody
+	if truncated {
+		// 按字节截断后修掉残缺的 UTF-8 尾字节，避免 JSON 序列化出现乱码
+		text = strings.ToValidUTF8(text[:playgroundMaxUpstreamBody], "")
+	}
+	c.Set(ctxUpstreamRequest, &playgroundUpstreamRequest{Method: method, URL: url, Body: text, Truncated: truncated})
+}
+
+func upstreamRequestSnapshot(c *gin.Context) *playgroundUpstreamRequest {
+	value, _ := c.Get(ctxUpstreamRequest)
+	snapshot, _ := value.(*playgroundUpstreamRequest)
+	return snapshot
 }
 
 type playgroundUsage struct {
@@ -135,6 +183,7 @@ func (r *Relay) HandlePlayground(c *gin.Context) {
 	if trace == nil {
 		meta.RetryTrace = []store.RetryAttempt{}
 	}
+	meta.UpstreamRequest = upstreamRequestSnapshot(inner)
 
 	if writer.streaming {
 		writePlaygroundMeta(c.Writer, meta)
@@ -185,32 +234,97 @@ func parsePlaygroundRequest(c *gin.Context) (playgroundRequest, error) {
 	if len(req.System) > playgroundMaxSystem {
 		return req, fmt.Errorf("system 超过 %d 字符上限", playgroundMaxSystem)
 	}
+	if len(req.History) > playgroundMaxTurns {
+		return req, fmt.Errorf("history 最多 %d 条消息", playgroundMaxTurns)
+	}
+	for i, msg := range req.History {
+		msg.Role = strings.TrimSpace(msg.Role)
+		msg.Content = strings.TrimSpace(msg.Content)
+		if msg.Role != "user" && msg.Role != "assistant" {
+			return req, fmt.Errorf("history[%d].role 只支持 user 或 assistant", i)
+		}
+		if msg.Content == "" || len(msg.Content) > playgroundMaxPrompt {
+			return req, fmt.Errorf("history[%d].content 不能为空且不超过 %d 字符", i, playgroundMaxPrompt)
+		}
+		req.History[i] = msg
+	}
+	if req.Temperature != nil && (*req.Temperature < 0 || *req.Temperature > 2) {
+		return req, fmt.Errorf("temperature 必须在 0-2 之间")
+	}
+	if req.TopP != nil && (*req.TopP <= 0 || *req.TopP > 1) {
+		return req, fmt.Errorf("top_p 必须在 (0,1] 之间")
+	}
+	if req.MaxTokens != nil && (*req.MaxTokens < 1 || *req.MaxTokens > 32768) {
+		return req, fmt.Errorf("max_tokens 必须在 1-32768 之间")
+	}
 	return req, nil
 }
 
 func buildPlaygroundBody(req playgroundRequest) ([]byte, error) {
 	switch req.Protocol {
 	case "responses":
-		payload := map[string]any{"model": req.Model, "input": req.Prompt, "stream": req.Stream}
+		// 单轮保持 input 为字符串（与现有契约一致）；多轮用 easy-input 消息数组
+		var input any = req.Prompt
+		if len(req.History) > 0 {
+			input = append(playgroundTurns(req.History), map[string]string{"role": "user", "content": req.Prompt})
+		}
+		payload := map[string]any{"model": req.Model, "input": input, "stream": req.Stream}
 		if req.System != "" {
 			payload["instructions"] = req.System
 		}
+		if req.Temperature != nil {
+			payload["temperature"] = *req.Temperature
+		}
+		if req.TopP != nil {
+			payload["top_p"] = *req.TopP
+		}
+		if req.MaxTokens != nil {
+			payload["max_output_tokens"] = *req.MaxTokens
+		}
 		return json.Marshal(payload)
 	case "anthropic":
+		maxTokens := 1024
+		if req.MaxTokens != nil {
+			maxTokens = *req.MaxTokens
+		}
 		payload := map[string]any{
-			"model": req.Model, "max_tokens": 1024, "stream": req.Stream,
-			"messages": []map[string]string{{"role": "user", "content": req.Prompt}},
+			"model": req.Model, "max_tokens": maxTokens, "stream": req.Stream,
+			"messages": append(playgroundTurns(req.History), map[string]string{"role": "user", "content": req.Prompt}),
 		}
 		if req.System != "" {
 			payload["system"] = req.System
 		}
+		if req.Temperature != nil {
+			payload["temperature"] = *req.Temperature
+		}
+		if req.TopP != nil {
+			payload["top_p"] = *req.TopP
+		}
 		return json.Marshal(payload)
 	case "gemini":
+		maxOutputTokens := 1024
+		if req.MaxTokens != nil {
+			maxOutputTokens = *req.MaxTokens
+		}
+		generation := map[string]any{"maxOutputTokens": maxOutputTokens}
+		if req.Temperature != nil {
+			generation["temperature"] = *req.Temperature
+		}
+		if req.TopP != nil {
+			generation["topP"] = *req.TopP
+		}
+		contents := make([]map[string]any, 0, len(req.History)+1)
+		for _, msg := range req.History {
+			role := "user"
+			if msg.Role == "assistant" {
+				role = "model"
+			}
+			contents = append(contents, map[string]any{"role": role, "parts": []map[string]string{{"text": msg.Content}}})
+		}
+		contents = append(contents, map[string]any{"role": "user", "parts": []map[string]string{{"text": req.Prompt}}})
 		payload := map[string]any{
-			"contents": []map[string]any{{
-				"role": "user", "parts": []map[string]string{{"text": req.Prompt}},
-			}},
-			"generationConfig": map[string]any{"maxOutputTokens": 1024},
+			"contents":         contents,
+			"generationConfig": generation,
 		}
 		if req.System != "" {
 			payload["systemInstruction"] = map[string]any{
@@ -223,8 +337,28 @@ func buildPlaygroundBody(req playgroundRequest) ([]byte, error) {
 	if req.System != "" {
 		messages = append(messages, map[string]string{"role": "system", "content": req.System})
 	}
+	messages = append(messages, playgroundTurns(req.History)...)
 	messages = append(messages, map[string]string{"role": "user", "content": req.Prompt})
-	return json.Marshal(map[string]any{"model": req.Model, "messages": messages, "stream": req.Stream})
+	payload := map[string]any{"model": req.Model, "messages": messages, "stream": req.Stream}
+	if req.Temperature != nil {
+		payload["temperature"] = *req.Temperature
+	}
+	if req.TopP != nil {
+		payload["top_p"] = *req.TopP
+	}
+	if req.MaxTokens != nil {
+		payload["max_tokens"] = *req.MaxTokens
+	}
+	return json.Marshal(payload)
+}
+
+// playgroundTurns 把历史轮次转成 OpenAI / Anthropic 通用的 {role, content} 列表。
+func playgroundTurns(history []playgroundMessage) []map[string]string {
+	turns := make([]map[string]string, 0, len(history))
+	for _, msg := range history {
+		turns = append(turns, map[string]string{"role": msg.Role, "content": msg.Content})
+	}
+	return turns
 }
 
 func writePlaygroundMeta(w gin.ResponseWriter, meta playgroundMeta) {

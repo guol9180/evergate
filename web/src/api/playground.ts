@@ -7,8 +7,27 @@ export interface PlaygroundInput {
   protocol: 'chat' | 'responses' | 'anthropic' | 'gemini'
   model: string
   system: string
+  /** 已完成的历史轮次（多轮对话）；服务端按顺序拼在上游 messages 之前 */
+  history: PlaygroundTurn[]
   prompt: string
   stream: boolean
+  /** 留空不下发，交给上游默认值 */
+  temperature?: number
+  top_p?: number
+  max_tokens?: number
+}
+
+export interface PlaygroundTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/** 最后一次尝试实际发往上游的请求（服务端已脱敏并按 16KB 截断）。 */
+export interface PlaygroundUpstreamRequest {
+  method: string
+  url: string
+  body: string
+  truncated: boolean
 }
 
 export interface PlaygroundUsage {
@@ -36,6 +55,7 @@ export interface PlaygroundMeta {
   retry_trace: RetryAttempt[]
   error_type: string
   error_message: string
+  upstream_request?: PlaygroundUpstreamRequest
 }
 
 export interface PlaygroundResult {

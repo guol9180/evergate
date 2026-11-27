@@ -681,6 +681,7 @@ func (r *Relay) attemptOne(c *gin.Context, cand router.Candidate, key *store.Cha
 		appendTrace(0, "internal", err.Error(), start)
 		return outcomeNextKey
 	}
+	recordUpstreamRequest(c, http.MethodPost, url, upBody)
 	req.Header.Set("Content-Type", "application/json")
 	if nativeGemini || isGeminiCountTokens(c) {
 		req.Header.Set("x-goog-api-key", plainKey)
