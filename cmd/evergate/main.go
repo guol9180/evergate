@@ -271,7 +271,7 @@ func run() error {
 		Logger:   logger,
 		Metrics:  metricsReg,
 		Tracer:   tracer,
-		SetupRoutes: func(r gin.IRoutes) {
+		SetupRoutes: func(r gin.IRouter) {
 			r.POST("/v1/chat/completions", relay.TokenAuth(db, logWriter), relayHandler.HandleChatCompletions)
 			r.POST("/v1/responses", relay.TokenAuth(db, logWriter), relayHandler.HandleResponses)
 			r.POST("/v1/messages", relay.TokenAuth(db, logWriter), relayHandler.HandleMessages)

@@ -23,7 +23,8 @@ type Options struct {
 	DB       *gorm.DB // healthz 探活用，可为 nil
 	Logger   *slog.Logger
 	// SetupRoutes 业务路由注册钩子（relay / admin 等），入参为挂载在 BasePath 下的路由组。
-	SetupRoutes func(r gin.IRoutes)
+	// SetupRoutes 收到的 root 已带 BasePath；类型给到 IRouter 以便调用方按组注册中间件（engine 与 group 都满足）。
+	SetupRoutes func(r gin.IRouter)
 	// WebFS 嵌入的前端构建产物（nil 表示不服务管理台）。
 	WebFS fs.FS
 	// Metrics 为 /metrics 指标端点；nil 表示不挂载。
@@ -46,7 +47,7 @@ func New(opts Options) *gin.Engine {
 	r.Use(requestLogger(logger))
 	r.Use(traceMiddleware(opts.Tracer))
 
-	var root gin.IRoutes = r
+	var root gin.IRouter = r
 	if opts.BasePath != "" {
 		root = r.Group(opts.BasePath)
 	}

@@ -1,10 +1,10 @@
 package admin
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -48,18 +48,11 @@ var auditActions = map[string]string{
 var auditSummaryKeys = []string{"name", "id", "channel_id", "token_id", "enabled", "added", "created", "updated", "skipped"}
 
 // stashAuditSummary 由 ok() 调用，从响应数据中按白名单提取可读摘要。
+// 只对审计写路由调用，且直接按 json 标签反射取值：不再为每个响应（含大列表 GET）做一次序列化 / 反序列化。
 func stashAuditSummary(c *gin.Context, data any) {
-	raw, err := json.Marshal(data)
-	if err != nil {
-		return
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return
-	}
 	var parts []string
 	for _, key := range auditSummaryKeys {
-		value, exists := payload[key]
+		value, exists := auditFieldValue(data, key)
 		if !exists || value == nil {
 			continue
 		}
@@ -69,6 +62,33 @@ func stashAuditSummary(c *gin.Context, data any) {
 		return
 	}
 	c.Set(auditSummaryKey, strings.Join(parts, " "))
+}
+
+// auditFieldValue 按 json 标签名取顶层字段（map 直接查键；结构体按 tag / 字段名），与原先 JSON 往返的顶层语义一致。
+func auditFieldValue(data any, key string) (any, bool) {
+	if m, ok := data.(map[string]any); ok {
+		value, exists := m[key]
+		return value, exists
+	}
+	rv := reflect.Indirect(reflect.ValueOf(data))
+	if !rv.IsValid() || rv.Kind() != reflect.Struct {
+		return nil, false
+	}
+	rt := rv.Type()
+	for i := 0; i < rt.NumField(); i++ {
+		field := rt.Field(i)
+		if !field.IsExported() {
+			continue
+		}
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name == "" {
+			name = field.Name
+		}
+		if name == key {
+			return rv.Field(i).Interface(), true
+		}
+	}
+	return nil, false
 }
 
 // auditWrite 在请求处理完成后记录写操作审计；只记录 2xx 响应，失败响应不产生审计噪音。

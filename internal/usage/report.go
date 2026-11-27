@@ -128,6 +128,7 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 		return db
 	}
 
+	// 总量与计价计数一次查询取回：同一份 WHERE 不必扫两遍
 	var totals reportAggregate
 	if err := filter(db.Model(&store.UsageDaily{})).
 		Select(`
@@ -136,23 +137,12 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 			COALESCE(SUM(tokens_in), 0) AS tokens_in,
 			COALESCE(SUM(tokens_out), 0) AS tokens_out,
 			COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
-			COALESCE(SUM(cost_micros), 0) AS cost_micros
-		`).Scan(&totals).Error; err != nil {
-		return report, err
-	}
-	var counts struct {
-		Priced   int64 `gorm:"column:priced_requests"`
-		Unpriced int64 `gorm:"column:unpriced_requests"`
-		NoUsage  int64 `gorm:"column:no_usage_requests"`
-		Unknown  int64 `gorm:"column:unknown_cost_requests"`
-	}
-	if err := filter(db.Model(&store.UsageDaily{})).
-		Select(`
+			COALESCE(SUM(cost_micros), 0) AS cost_micros,
 			COALESCE(SUM(priced_requests), 0) AS priced_requests,
 			COALESCE(SUM(unpriced_requests), 0) AS unpriced_requests,
 			COALESCE(SUM(no_usage_requests), 0) AS no_usage_requests,
 			COALESCE(SUM(unknown_cost_requests), 0) AS unknown_cost_requests
-		`).Scan(&counts).Error; err != nil {
+		`).Scan(&totals).Error; err != nil {
 		return report, err
 	}
 	report.Totals = ReportTotals{
@@ -160,8 +150,8 @@ func BuildReport(db *gorm.DB, q ReportQuery) (Report, error) {
 		TokensIn: totals.TokensIn, TokensOut: totals.TokensOut,
 		CacheReadTokens: totals.CacheReadTokens,
 		CostMicros:      totals.CostMicros, Cost: float64(totals.CostMicros) / 1_000_000,
-		PricedRequests: counts.Priced, UnpricedRequests: counts.Unpriced,
-		NoUsageRequests: counts.NoUsage, UnknownCostRequests: counts.Unknown,
+		PricedRequests: totals.PricedRequests, UnpricedRequests: totals.UnpricedRequests,
+		NoUsageRequests: totals.NoUsageRequests, UnknownCostRequests: totals.UnknownCostRequests,
 	}
 
 	// 按 UTC 小时分组返回，由前端按本地日分桶（每日一条），避免服务端猜测用户时区
