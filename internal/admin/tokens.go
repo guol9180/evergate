@@ -183,53 +183,49 @@ func (a *API) updateToken(c *gin.Context) {
 		fail(c, http.StatusBadRequest, "invalid_param", "参数错误")
 		return
 	}
-	updates := map[string]any{}
+	// 走结构体 + Select 而不是 map：map 更新不经过 serializer，allowed_models / allowed_ips 会被写成裸值，
+	// 该行此后无法读出（令牌列表整页 500）。Select 同时保证 0 / false / nil（清空过期时间）也能落库。
+	selected := make([]string, 0, 10)
 	if req.Name != nil {
 		name, err := validateTokenName(*req.Name)
 		if err != nil {
 			fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 			return
 		}
-		updates["name"] = name
+		t.Name, selected = name, append(selected, "name")
 	}
 	if req.Enabled != nil {
-		updates["enabled"] = *req.Enabled
+		t.Enabled, selected = *req.Enabled, append(selected, "enabled")
 	}
 	if req.Quota != nil {
 		if *req.Quota < 0 {
 			fail(c, http.StatusBadRequest, "negative_quota", "额度不能为负数")
 			return
 		}
-		updates["quota"] = *req.Quota
+		t.Quota, selected = *req.Quota, append(selected, "quota")
 	}
 	if req.ExpiredAt != nil {
-		updates["expired_at"] = *req.ExpiredAt
+		t.ExpiredAt, selected = req.ExpiredAt, append(selected, "expired_at")
 	}
 	if req.ClearExpiredAt {
-		updates["expired_at"] = nil
-	}
-	if req.AllowedModels != nil {
-		updates["allowed_models"] = *req.AllowedModels
-	}
-	if req.AllowedIPs != nil {
-		updates["allowed_ips"] = *req.AllowedIPs
+		t.ExpiredAt, selected = nil, append(selected, "expired_at")
 	}
 	if req.DisableFallback != nil {
-		updates["disable_fallback"] = *req.DisableFallback
+		t.DisableFallback, selected = *req.DisableFallback, append(selected, "disable_fallback")
 	}
 	if req.RPMLimit != nil {
 		if *req.RPMLimit < 0 {
 			fail(c, http.StatusBadRequest, "invalid_param", "限流值不能为负数")
 			return
 		}
-		updates["rpm_limit"] = *req.RPMLimit
+		t.RPMLimit, selected = *req.RPMLimit, append(selected, "rpm_limit")
 	}
 	if req.ConcurrencyLimit != nil {
 		if *req.ConcurrencyLimit < 0 {
 			fail(c, http.StatusBadRequest, "invalid_param", "限流值不能为负数")
 			return
 		}
-		updates["concurrency_limit"] = *req.ConcurrencyLimit
+		t.ConcurrencyLimit, selected = *req.ConcurrencyLimit, append(selected, "concurrency_limit")
 	}
 	if req.AllowedModels != nil || req.AllowedIPs != nil {
 		models := t.AllowedModels
@@ -245,11 +241,11 @@ func (a *API) updateToken(c *gin.Context) {
 			fail(c, http.StatusBadRequest, "invalid_param", err.Error())
 			return
 		}
-		updates["allowed_models"] = normalizedModels
-		updates["allowed_ips"] = normalizedIPs
+		t.AllowedModels, t.AllowedIPs = normalizedModels, normalizedIPs
+		selected = append(selected, "allowed_models", "allowed_ips")
 	}
-	if len(updates) > 0 {
-		if err := a.opt.DB.Model(&t).Updates(updates).Error; err != nil {
+	if len(selected) > 0 {
+		if err := a.opt.DB.Model(&t).Select(selected).Updates(&t).Error; err != nil {
 			fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 			return
 		}
