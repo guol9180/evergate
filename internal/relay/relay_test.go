@@ -1166,7 +1166,7 @@ func TestResponsesRejectsInvalidToken(t *testing.T) {
 	env := newEnv(t)
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.POST("/v1/responses", TokenAuth(env.db, nil), env.HandleResponses)
+	e.POST("/v1/responses", TokenAuth(env.db, nil, nil), env.HandleResponses)
 	gw := httptest.NewServer(e)
 	defer gw.Close()
 

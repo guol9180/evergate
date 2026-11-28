@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ScrollText } from 'lucide-react'
 import { useAuditLogs } from '../api/hooks'
-import { Card, ContentSwap, Empty, LoadError, Pagination, SkeletonRows, Td, Th } from './ui'
+import { Card, ContentSwap, Empty, Field, LoadError, Pagination, Select, SkeletonRows, Td, Th } from './ui'
 import { fmtTime } from '../lib/format'
 import { t, type MessageKey } from '../lib/i18n'
 
@@ -22,18 +22,31 @@ const ACTION_KEYS: Record<string, MessageKey> = {
   'price.default_set': 'audit.action.price.default_set',
   'price.upsert': 'audit.action.price.upsert',
   'price.delete': 'audit.action.price.delete',
+  'price.apply_preset': 'audit.action.price.apply_preset',
   'admin.change_password': 'audit.action.admin.change_password',
   'system.update_apply': 'audit.action.system.update_apply',
   'system.update_cancel': 'audit.action.system.update_cancel',
   'config.export': 'audit.action.config.export',
   'config.import': 'audit.action.config.import',
+  'backup.create': 'audit.action.backup.create',
+  'backup.delete': 'audit.action.backup.delete',
+  'backup.restore': 'audit.action.backup.restore',
+  'alerts.update': 'audit.action.alerts.update',
   setup_admin: 'audit.action.setup_admin',
+}
+
+/** 筛选栏的动作选项：按文案排序，用户看到的是本地化名称而不是内部动作名。 */
+function actionOptions(): { value: string; label: string }[] {
+  return Object.entries(ACTION_KEYS)
+    .map(([value, key]) => ({ value, label: t(key) }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh'))
 }
 
 export default function AuditLogCard() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const logs = useAuditLogs(page, pageSize)
+  const [action, setAction] = useState('')
+  const logs = useAuditLogs(page, pageSize, action || undefined)
   const items = logs.data?.items ?? []
   const total = logs.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -42,6 +55,15 @@ export default function AuditLogCard() {
     <Card>
       <h2 className="mb-1 text-sm font-semibold text-foreground">{t('audit.title')}</h2>
       <p className="mb-3 text-xs text-muted-foreground">{t('audit.desc')}</p>
+      <div className="mb-3 sm:max-w-xs">
+        <Field label={t('audit.filter.action')}>
+          <Select
+            value={action}
+            onValueChange={(next) => { setAction(next); setPage(1) }}
+            options={[{ value: '', label: t('audit.filter.allActions') }, ...actionOptions()]}
+          />
+        </Field>
+      </div>
       <ContentSwap loading={logs.isPending} skeleton={<SkeletonRows rows={3} />}>
         {logs.isError && !logs.data ? (
           <LoadError error={logs.error} onRetry={() => void logs.refetch()} />

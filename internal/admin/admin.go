@@ -75,6 +75,17 @@ func New(opt Options) *API {
 	if opt.Now == nil {
 		opt.Now = func() time.Time { return time.Now().UTC() }
 	}
+	// 会话密钥版本落库：改密轮换后旧 Cookie 跨重启仍失效。读不到时退化为临时版本（会话只在本次进程内有效）。
+	if opt.DB != nil && opt.Session != nil {
+		version, err := store.EnsureSessionKeyVersion(opt.DB)
+		if err != nil {
+			if opt.Logger != nil {
+				opt.Logger.Warn("load session key version failed; sessions will not survive restart", slog.Any("error", err))
+			}
+			version = fmt.Sprintf("ephemeral-%d", time.Now().UnixNano())
+		}
+		opt.Session.Rotate(version)
+	}
 	return &API{opt: opt, now: opt.Now, loginLimiter: newLoginLimiter()}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"evergate/internal/httpx"
 	"evergate/internal/store"
@@ -49,10 +50,24 @@ func (a *API) login(c *gin.Context) {
 		return
 	}
 	a.loginLimiter.recordSuccess(clientIP)
-	now := a.now()
-	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie(CookieName, a.opt.Session.Issue(req.Username, now), int(a.opt.Session.ttl.Seconds()), "/", "", c.Request.TLS != nil, true)
+	a.setSessionCookie(c, req.Username)
 	ok(c, gin.H{"username": admin.Username, "must_change_password": admin.MustChangePassword})
+}
+
+// setSessionCookie 签发会话 Cookie；Secure 取决于直连 TLS 或反代声明的 X-Forwarded-Proto。
+func (a *API) setSessionCookie(c *gin.Context, username string) {
+	c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(CookieName, a.opt.Session.Issue(username, a.now()), int(a.opt.Session.ttl.Seconds()), "/", "", cookieSecure(c), true)
+}
+
+// cookieSecure 反向代理终止 TLS 时 c.Request.TLS 为空，只看它会漏掉 Secure；
+// 管理台默认仅本机可访问，代理声明的 X-Forwarded-Proto 可信。
+func cookieSecure(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	proto, _, _ := strings.Cut(c.GetHeader("X-Forwarded-Proto"), ",")
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
 }
 
 // setupStatus 供登录页判断是否需要先完成首启管理员设置。
@@ -115,7 +130,7 @@ func (a *API) setupAdmin(c *gin.Context) {
 
 func (a *API) logout(c *gin.Context) {
 	c.SetSameSite(http.SameSiteStrictMode)
-	c.SetCookie(CookieName, "", -1, "/", "", false, true)
+	c.SetCookie(CookieName, "", -1, "/", "", cookieSecure(c), true)
 	ok(c, gin.H{"logout": true})
 }
 
@@ -147,11 +162,22 @@ func (a *API) changePassword(c *gin.Context) {
 		fail(c, http.StatusInternalServerError, "hash_failed", "加密失败")
 		return
 	}
-	if err := a.opt.DB.Model(&store.Admin{}).Where("id = ?", admin.ID).
-		Updates(map[string]any{"password_hash": string(hash), "must_change_password": false}).Error; err != nil {
+	// 改密与密钥版本轮换同一事务：提交后所有旧会话失效（D3），当前会话随即用新版本重签。
+	var version string
+	err = a.opt.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&store.Admin{}).Where("id = ?", admin.ID).
+			Updates(map[string]any{"password_hash": string(hash), "must_change_password": false}).Error; err != nil {
+			return err
+		}
+		version, err = store.RotateSessionKeyVersion(tx)
+		return err
+	})
+	if err != nil {
 		fail(c, http.StatusInternalServerError, "update_failed", "更新失败")
 		return
 	}
+	a.opt.Session.Rotate(version)
+	a.setSessionCookie(c, admin.Username)
 	ok(c, gin.H{"changed": true})
 }
 

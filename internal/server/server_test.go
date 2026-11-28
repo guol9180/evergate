@@ -3,6 +3,7 @@ package server
 import (
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -10,7 +11,34 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"evergate/internal/metrics"
+	"evergate/internal/store"
 )
+
+func TestHealthzReports503WithoutLeakingInternalError(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "healthz.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 关掉底层连接：Ping 失败，但错误细节（驱动原话）不应回显给探测方
+	if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	engine := New(Options{DB: db})
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "database unavailable") || strings.Contains(body, "sql:") {
+		t.Fatalf("healthz body should hide the driver error: %s", body)
+	}
+}
 
 func TestMetricsRouteMountedAndLoopbackOnly(t *testing.T) {
 	reg := metrics.New()

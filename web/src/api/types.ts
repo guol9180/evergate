@@ -70,6 +70,7 @@ export interface SystemSettingsValues {
   health_probe_interval_ms: number
   health_probe_concurrency: number
   health_probe_timeout_ms: number
+  log_unknown_tokens: boolean
 }
 
 export interface SystemSettings extends SystemSettingsValues {

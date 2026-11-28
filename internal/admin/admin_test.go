@@ -160,12 +160,19 @@ func TestAuthFlowAndForcedPasswordChange(t *testing.T) {
 		t.Fatal("旧密码错误应 401")
 	}
 	// 改密成功
-	if code, body, _ := env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`); code != 200 {
+	oldCookie := cookie
+	code, body, resp := env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	if code != 200 {
 		t.Fatalf("change password: %d %s", code, body)
 	}
+	// 改密会轮换会话密钥并重签当前会话：后续请求必须用新 Cookie
+	cookie = sessionCookie(t, resp)
 	// 改密后可访问
 	if code, body, _ := env.req(t, "GET", "/admin/api/channels", cookie, ""); code != 200 {
 		t.Fatalf("改密后应放行: %d %s", code, body)
+	}
+	if code, _, _ := env.req(t, "GET", "/admin/api/channels", oldCookie, ""); code != 401 {
+		t.Fatal("改密前的会话应被吊销")
 	}
 	// 旧密码不能登录，新密码可以
 	if code, _, _ := env.req(t, "POST", "/admin/api/auth/login", "", `{"username":"admin","password":"admin123"}`); code != 401 {
@@ -868,7 +875,8 @@ func TestSessionTamper(t *testing.T) {
 func TestBatchKeyImportDedupesAndLimits(t *testing.T) {
 	env := newEnv(t)
 	cookie, _ := login(t, env, "admin", "admin123")
-	env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	_, _, resp := env.req(t, "PUT", "/admin/api/auth/password", cookie, `{"old_password":"admin123","new_password":"newpass123"}`)
+	cookie = sessionCookie(t, resp)
 	if code, body, _ := env.req(t, "POST", "/admin/api/channels", cookie,
 		`{"name":"dedupe-ch","type":"openai-compatible","base_url":"https://api.example.com/v1","models":["m"]}`); code != 200 {
 		t.Fatalf("create channel: %d %s", code, body)

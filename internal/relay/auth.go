@@ -3,9 +3,11 @@ package relay
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +26,8 @@ const (
 // TokenAuth 下游令牌鉴权中间件：Bearer <key> → SHA-256 查库比对（任务书 4.3 tokens）。
 // 校验启用状态、过期时间与 IP 白名单；通过后把令牌快照放进 Context 供 relay 治理使用。
 // logWriter 可为 nil：治理拒绝也会进入请求日志，但永不记录 token 明文。
-func TokenAuth(db *gorm.DB, logWriter *LogWriter) gin.HandlerFunc {
+// logUnknownTokens 返回 true 时，不存在的令牌也落一条 401 日志（进程内限流），排查客户端配置错误时不必对着空日志猜。
+func TokenAuth(db *gorm.DB, logWriter *LogWriter, logUnknownTokens func() bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := downstreamToken(c)
 		if key == "" {
@@ -37,6 +40,13 @@ func TokenAuth(db *gorm.DB, logWriter *LogWriter) gin.HandlerFunc {
 		var token store.Token
 		err := db.Where("key_hash = ?", hash).First(&token).Error
 		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) && logWriter != nil && logUnknownTokens != nil && logUnknownTokens() &&
+				unknownTokenLogs.allow(time.Now()) {
+				logWriter.Submit(&store.RequestLog{
+					StatusCode: http.StatusUnauthorized, ErrorType: "invalid_token", ErrorMessage: "unknown token",
+					IP: c.ClientIP(), UserAgent: c.Request.UserAgent(),
+				})
+			}
 			abortUnauthorized(c, "invalid token")
 			return
 		}
@@ -58,6 +68,29 @@ func TokenAuth(db *gorm.DB, logWriter *LogWriter) gin.HandlerFunc {
 		c.Set(CtxTokenName, token.Name)
 		c.Next()
 	}
+}
+
+// unknownTokenLogBudget 每分钟最多记录的未知令牌条数：被扫描时日志不能被刷爆。
+const unknownTokenLogBudget = 30
+
+var unknownTokenLogs fixedWindowCounter
+
+// fixedWindowCounter 按分钟桶计数的进程内限流器；只为日志量设防，不参与鉴权决策。
+type fixedWindowCounter struct {
+	mu     sync.Mutex
+	minute int64
+	count  int
+}
+
+func (c *fixedWindowCounter) allow(now time.Time) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	minute := now.Unix() / 60
+	if minute != c.minute {
+		c.minute, c.count = minute, 0
+	}
+	c.count++
+	return c.count <= unknownTokenLogBudget
 }
 
 // downstreamToken 同时接受 OpenAI 的 Authorization: Bearer、Anthropic 的 x-api-key

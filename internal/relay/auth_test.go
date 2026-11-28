@@ -28,7 +28,7 @@ func newAuthEnv(t *testing.T) (*gin.Engine, *gorm.DB) {
 	}
 	gin.SetMode(gin.TestMode)
 	e := gin.New()
-	e.GET("/v1/models", TokenAuth(db, nil), func(c *gin.Context) {
+	e.GET("/v1/models", TokenAuth(db, nil, nil), func(c *gin.Context) {
 		id, _ := tokenFromContext(c)
 		c.JSON(200, gin.H{"token_id": id})
 	})
@@ -117,7 +117,7 @@ func TestTokenAuthIPWhitelistExactAndCIDR(t *testing.T) {
 	authed := gin.New()
 	logs := NewLogWriter(db, 8, nil)
 	defer logs.Close()
-	authed.GET("/v1/models", TokenAuth(db, logs), func(c *gin.Context) { c.Status(200) })
+	authed.GET("/v1/models", TokenAuth(db, logs, nil), func(c *gin.Context) { c.Status(200) })
 	server := httptest.NewServer(authed)
 	defer server.Close()
 

@@ -51,7 +51,7 @@ func New(opts Options) *gin.Engine {
 	if opts.BasePath != "" {
 		root = r.Group(opts.BasePath)
 	}
-	root.GET("/healthz", healthz(opts.DB))
+	root.GET("/healthz", healthz(opts.DB, opts.Logger))
 	if opts.Metrics != nil {
 		// 仅 loopback 可抓取（T26 验收 #1）；路由本身仍受全局 recovery 保护。
 		root.GET("/metrics", gin.WrapH(opts.Metrics))
@@ -104,8 +104,8 @@ func requestLogger(logger *slog.Logger) gin.HandlerFunc {
 	}
 }
 
-// healthz 是存活检查：数据库可达时返回 200，否则 503。
-func healthz(db *gorm.DB) gin.HandlerFunc {
+// healthz 是存活检查：数据库可达时返回 200，否则 503；失败原因只进日志，不回显给探测方。
+func healthz(db *gorm.DB, logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if db == nil {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -118,7 +118,10 @@ func healthz(db *gorm.DB) gin.HandlerFunc {
 			err = sqlDB.PingContext(ctx)
 		}
 		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "error": err.Error()})
+			if logger != nil {
+				logger.Warn("healthz database ping failed", slog.Any("error", err))
+			}
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "error", "error": "database unavailable"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})

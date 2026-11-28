@@ -1,10 +1,12 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +47,7 @@ var auditActions = map[string]string{
 	"POST /admin/api/backups":                          "backup.create",
 	"DELETE /admin/api/backups/:name":                  "backup.delete",
 	"POST /admin/api/backups/restore":                  "backup.restore",
+	"PUT /admin/api/alerts":                            "alerts.update",
 }
 
 // auditSummaryKeys 白名单：只有这些字段允许进入审计摘要，防止 key/token 等明文被写入。
@@ -124,13 +127,10 @@ func (a *API) recordAudit(c *gin.Context, action, target, summary string) {
 }
 
 func (a *API) listAuditLogs(c *gin.Context) {
-	page := queryInt(c, "page", 1)
-	pageSize := queryInt(c, "page_size", 20)
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
+	page, pageSize, err := strictPageParams(c)
+	if err != nil {
+		fail(c, http.StatusBadRequest, "invalid_param", err.Error())
+		return
 	}
 	q := a.opt.DB.Model(&store.AuditLog{})
 	if action := strings.TrimSpace(c.Query("action")); action != "" {
@@ -147,4 +147,21 @@ func (a *API) listAuditLogs(c *gin.Context) {
 		return
 	}
 	ok(c, gin.H{"items": items, "total": total, "page": page, "page_size": pageSize})
+}
+
+// strictPageParams 分页参数缺省取默认值；一旦出现必须是合法整数与范围，不静默夹逼，
+// 否则调用方拿到的页码与请求的不一致却毫无提示。
+func strictPageParams(c *gin.Context) (page, pageSize int, err error) {
+	page, pageSize = 1, 20
+	if raw := c.Query("page"); raw != "" {
+		if page, err = strconv.Atoi(raw); err != nil || page < 1 {
+			return 0, 0, errors.New("page 必须是大于 0 的整数")
+		}
+	}
+	if raw := c.Query("page_size"); raw != "" {
+		if pageSize, err = strconv.Atoi(raw); err != nil || pageSize < 1 || pageSize > 100 {
+			return 0, 0, errors.New("page_size 必须是 1-100 的整数")
+		}
+	}
+	return page, pageSize, nil
 }

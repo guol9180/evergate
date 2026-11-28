@@ -184,7 +184,7 @@ func assemble(b *bootstrapped) (*runtime, error) {
 		SetupRoutes: func(r gin.IRouter) {
 			// 下游令牌限流：RPM 与并发上限只在单进程内存计数（0 = 不限）。
 			tokenLimiter := ratelimit.New(nowFn)
-			auth := relay.TokenAuth(db, logWriter)
+			auth := relay.TokenAuth(db, logWriter, func() bool { return settingsMgr.Snapshot().LogUnknownTokens })
 			limits := relay.TokenLimits(tokenLimiter, logWriter)
 			r.POST("/v1/chat/completions", auth, limits, relayHandler.HandleChatCompletions)
 			r.POST("/v1/responses", auth, limits, relayHandler.HandleResponses)

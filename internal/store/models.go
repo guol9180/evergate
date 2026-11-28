@@ -209,24 +209,26 @@ type ModelFallback struct {
 // RuntimeSetting 是安全运行时配置的 SQLite 单例（ID 固定为 1）。
 // YAML 只在首次初始化该行时提供种子；此后 SQLite 是唯一事实源。
 type RuntimeSetting struct {
-	ID                     int64     `gorm:"primaryKey;autoIncrement" json:"id"`
-	ConnectTimeoutMS       int64     `gorm:"not null" json:"connect_timeout_ms"`
-	FirstTokenTimeoutMS    int64     `gorm:"not null" json:"first_token_timeout_ms"`
-	OverallTimeoutMS       int64     `gorm:"not null" json:"overall_timeout_ms"`
-	RetryChannels          int       `gorm:"not null" json:"retry_channels"`
-	RetryKeysPerChannel    int       `gorm:"not null" json:"retry_keys_per_channel"`
-	RetryTotalMS           int64     `gorm:"not null" json:"retry_total_ms"`
-	CooldownFailThreshold  int       `gorm:"not null" json:"cooldown_fail_threshold"`
-	CooldownBaseMS         int64     `gorm:"not null" json:"cooldown_base_ms"`
-	CooldownMaxMS          int64     `gorm:"not null" json:"cooldown_max_ms"`
-	LogRetentionDays       int       `gorm:"not null" json:"log_retention_days"`
-	HealthProbeIntervalMS  int64     `gorm:"not null" json:"health_probe_interval_ms"`
-	HealthProbeConcurrency int       `gorm:"not null" json:"health_probe_concurrency"`
-	HealthProbeTimeoutMS   int64     `gorm:"not null" json:"health_probe_timeout_ms"`
-	Source                 string    `gorm:"size:32;not null" json:"source"`
-	InitializedAt          time.Time `json:"initialized_at"`
-	CreatedAt              time.Time `json:"created_at"`
-	UpdatedAt              time.Time `json:"updated_at"`
+	ID                     int64 `gorm:"primaryKey;autoIncrement" json:"id"`
+	ConnectTimeoutMS       int64 `gorm:"not null" json:"connect_timeout_ms"`
+	FirstTokenTimeoutMS    int64 `gorm:"not null" json:"first_token_timeout_ms"`
+	OverallTimeoutMS       int64 `gorm:"not null" json:"overall_timeout_ms"`
+	RetryChannels          int   `gorm:"not null" json:"retry_channels"`
+	RetryKeysPerChannel    int   `gorm:"not null" json:"retry_keys_per_channel"`
+	RetryTotalMS           int64 `gorm:"not null" json:"retry_total_ms"`
+	CooldownFailThreshold  int   `gorm:"not null" json:"cooldown_fail_threshold"`
+	CooldownBaseMS         int64 `gorm:"not null" json:"cooldown_base_ms"`
+	CooldownMaxMS          int64 `gorm:"not null" json:"cooldown_max_ms"`
+	LogRetentionDays       int   `gorm:"not null" json:"log_retention_days"`
+	HealthProbeIntervalMS  int64 `gorm:"not null" json:"health_probe_interval_ms"`
+	HealthProbeConcurrency int   `gorm:"not null" json:"health_probe_concurrency"`
+	HealthProbeTimeoutMS   int64 `gorm:"not null" json:"health_probe_timeout_ms"`
+	// LogUnknownTokens 默认开启：AutoMigrate 为既有行回填 true；map 更新显式写 false 不受默认值影响。
+	LogUnknownTokens bool      `gorm:"not null;default:true" json:"log_unknown_tokens"`
+	Source           string    `gorm:"size:32;not null" json:"source"`
+	InitializedAt    time.Time `json:"initialized_at"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // Admin 是管理台账号（首次启动空表时创建 admin，密码为随机生成或 EVERGATE_INITIAL_ADMIN_PASSWORD，首登强制改密）。

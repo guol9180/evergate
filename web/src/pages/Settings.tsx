@@ -1,12 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm, type UseFormRegisterReturn } from 'react-hook-form'
+import { Controller, useForm, type UseFormRegisterReturn } from 'react-hook-form'
 import { z } from 'zod'
 import { Save } from 'lucide-react'
 import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import type { SystemSettings, SystemSettingsValues } from '../api/types'
-import { Alert, Badge, Button, Card, Disclosure, Field, Input, PageHeader, Spinner } from '../components/ui'
+import { Alert, Badge, Button, Card, Disclosure, Field, Input, PageHeader, SettingRow, Spinner } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelFallbackCard from '../components/ModelFallbackCard'
 import ConfigTransferCard from '../components/ConfigTransferCard'
@@ -32,6 +32,7 @@ const schema = z.object({
   healthProbeIntervalSec: positive(t('settings.positiveNumber')),
   healthProbeConcurrency: positive(t('settings.positiveNumber')),
   healthProbeTimeoutSec: positive(t('settings.positiveNumber')),
+  logUnknownTokens: z.boolean(),
 })
 type FormState = z.infer<typeof schema>
 
@@ -44,7 +45,7 @@ export default function Settings() {
     // values 随服务端数据重置：保存后重新拉取即同步，不需要手动 useEffect 回填
     values: settings.data?.settings ? toForm(settings.data.settings) : undefined,
   })
-  const { register, handleSubmit, formState, setFocus } = form
+  const { register, handleSubmit, formState, setFocus, control } = form
 
   if (settings.isPending) {
     return <div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>
@@ -121,6 +122,21 @@ export default function Settings() {
         <NumberField label={t('settings.healthProbeConcurrency')} hint={t('settings.probeConcurrencyHint')} error={formState.errors.healthProbeConcurrency?.message} registration={register('healthProbeConcurrency')} />
         <NumberField label={t('settings.healthProbeTimeout')} hint={t('settings.probeTimeoutHint')} error={formState.errors.healthProbeTimeoutSec?.message} registration={register('healthProbeTimeoutSec')} />
           </div>
+          <div className="mt-3">
+            <Controller
+              name="logUnknownTokens"
+              control={control}
+              render={({ field }) => (
+                <SettingRow
+                  title={t('settings.logUnknownTokens')}
+                  description={t('settings.logUnknownTokensHint')}
+                  label={t('settings.logUnknownTokens')}
+                  checked={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+          </div>
         </Disclosure>
 
         <div className="flex justify-end">
@@ -162,6 +178,7 @@ function toForm(s: SystemSettings): FormState {
     healthProbeIntervalSec: msToSec(s.health_probe_interval_ms),
     healthProbeConcurrency: String(s.health_probe_concurrency),
     healthProbeTimeoutSec: msToSec(s.health_probe_timeout_ms),
+    logUnknownTokens: s.log_unknown_tokens,
   }
 }
 
@@ -180,6 +197,7 @@ function toSettings(f: FormState): SystemSettingsValues {
     health_probe_interval_ms: secToMS(f.healthProbeIntervalSec),
     health_probe_concurrency: number(f.healthProbeConcurrency),
     health_probe_timeout_ms: secToMS(f.healthProbeTimeoutSec),
+    log_unknown_tokens: f.logUnknownTokens,
   }
 }
 

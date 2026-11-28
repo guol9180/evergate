@@ -36,6 +36,8 @@ type Values struct {
 	HealthProbeIntervalMS  int64 `json:"health_probe_interval_ms"`
 	HealthProbeConcurrency int   `json:"health_probe_concurrency"`
 	HealthProbeTimeoutMS   int64 `json:"health_probe_timeout_ms"`
+	// LogUnknownTokens 不存在的令牌访问网关时是否落 401 请求日志（带限流），便于排查客户端配置错误。
+	LogUnknownTokens bool `json:"log_unknown_tokens"`
 }
 
 // Settings 是请求路径读取的无共享快照：可编辑数值 + 来源与时间元数据。
@@ -80,6 +82,7 @@ func FromConfig(cfg config.Config, initializedAt time.Time) Settings {
 			HealthProbeIntervalMS:  5 * time.Minute.Milliseconds(),
 			HealthProbeConcurrency: 2,
 			HealthProbeTimeoutMS:   10 * time.Second.Milliseconds(),
+			LogUnknownTokens:       true,
 		},
 		Source:        SourceYAML,
 		InitializedAt: initializedAt,
@@ -325,7 +328,8 @@ func toRow(s Settings) store.RuntimeSetting {
 		CooldownMaxMS: s.CooldownMaxMS, LogRetentionDays: s.LogRetentionDays,
 		HealthProbeIntervalMS: s.HealthProbeIntervalMS, HealthProbeConcurrency: s.HealthProbeConcurrency,
 		HealthProbeTimeoutMS: s.HealthProbeTimeoutMS, Source: s.Source,
-		InitializedAt: s.InitializedAt, UpdatedAt: s.UpdatedAt,
+		LogUnknownTokens: s.LogUnknownTokens,
+		InitializedAt:    s.InitializedAt, UpdatedAt: s.UpdatedAt,
 	}
 }
 
@@ -339,6 +343,7 @@ func fromRow(r store.RuntimeSetting) Settings {
 			CooldownMaxMS: r.CooldownMaxMS, LogRetentionDays: r.LogRetentionDays,
 			HealthProbeIntervalMS: r.HealthProbeIntervalMS, HealthProbeConcurrency: r.HealthProbeConcurrency,
 			HealthProbeTimeoutMS: r.HealthProbeTimeoutMS,
+			LogUnknownTokens:     r.LogUnknownTokens,
 		},
 		Source:        r.Source,
 		InitializedAt: r.InitializedAt, UpdatedAt: r.UpdatedAt,
@@ -354,6 +359,7 @@ func toUpdates(r store.RuntimeSetting) map[string]any {
 		"cooldown_max_ms": r.CooldownMaxMS, "log_retention_days": r.LogRetentionDays,
 		"health_probe_interval_ms": r.HealthProbeIntervalMS, "health_probe_concurrency": r.HealthProbeConcurrency,
 		"health_probe_timeout_ms": r.HealthProbeTimeoutMS, "source": r.Source,
-		"initialized_at": r.InitializedAt, "updated_at": r.UpdatedAt,
+		"log_unknown_tokens": r.LogUnknownTokens,
+		"initialized_at":     r.InitializedAt, "updated_at": r.UpdatedAt,
 	}
 }
