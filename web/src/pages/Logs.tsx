@@ -1,36 +1,34 @@
 import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { endOfDay, startOfDay } from 'date-fns'
+import type { DateRange } from 'react-day-picker'
 import { ArrowRight, ChevronDown, ChevronUp, Download, Filter, RefreshCw, RotateCcw, ScrollText } from 'lucide-react'
 import { buildLogQuery, downloadAdminFile, useChannels, useLogModels, useLogs, useTokens } from '../api/hooks'
-import { Alert, Badge, Button, Card, ContentSwap, CopyButton, DataTable, DataTableColumnToggle, type DataTableColumn, Disclosure, Drawer, Empty, Field, Input, LoadError, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch } from '../components/ui'
+import { Alert, Badge, Button, Card, ContentSwap, CopyButton, DataTable, DataTableColumnToggle, type DataTableColumn, DateRangePicker, Disclosure, Drawer, Empty, Field, LoadError, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch } from '../components/ui'
 import type { ColumnVisibilityState } from '@tanstack/react-table'
 import { notify } from '../components/Toaster'
 import RetryTimeline, { lastAttempt } from '../components/RetryTimeline'
 import { PriceSourceBadge } from '../components/PriceTable'
 import type { RequestLog } from '../api/types'
-import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, fmtTime, httpStatusTone, kindText, statusTone } from '../lib/format'
+import { describeUpstreamError, fmtDateTimeFull, fmtInt, fmtMs, fmtRequestCost, fmtTime, httpStatusTone, kindText, statusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { colon, t, tf } from '../lib/i18n'
 
 const AUTO_REFRESH_MS = 5000
 
 // 日志时间以 UTC 存储；筛选输入用本地日期，提交时转 RFC3339 区间。
-function startOfDayRFC3339(date: string): string | undefined {
-  if (!date) return undefined
-  const d = new Date(`${date}T00:00:00`)
-  return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
+function startOfDayRFC3339(date: Date | undefined): string | undefined {
+  return date ? startOfDay(date).toISOString() : undefined
 }
 
-function endOfDayRFC3339(date: string): string | undefined {
-  if (!date) return undefined
-  const d = new Date(`${date}T23:59:59.999`)
-  return Number.isNaN(d.getTime()) ? undefined : d.toISOString()
+function endOfDayRFC3339(date: Date | undefined): string | undefined {
+  return date ? endOfDay(date).toISOString() : undefined
 }
 
-/** 时间范围快捷项：今天 / 近 7 天 / 近 30 天，自定义时才用日期输入。 */
+/** 时间范围快捷项：今天 / 近 7 天 / 近 30 天，自定义时才展开日期范围选择器。 */
 type Range = '' | 'today' | '7d' | '30d' | 'custom'
 
-function rangeStartRFC3339(range: Range, startDate: string): string | undefined {
+function rangeStartRFC3339(range: Range, startDate: Date | undefined): string | undefined {
   switch (range) {
     case 'today': {
       const d = new Date()
@@ -58,8 +56,7 @@ export default function Logs() {
   const [channelId, setChannelId] = useState('')
   const [tokenId, setTokenId] = useState('')
   const [range, setRange] = useState<Range>('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [custom, setCustom] = useState<DateRange | undefined>(undefined)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [exporting, setExporting] = useState(false)
@@ -75,8 +72,8 @@ export default function Logs() {
     status: status || undefined,
     channel_id: channelId || undefined,
     token_id: tokenId || undefined,
-    start: rangeStartRFC3339(range, startDate),
-    end: range === 'custom' ? endOfDayRFC3339(endDate) : undefined,
+    start: rangeStartRFC3339(range, custom?.from),
+    end: range === 'custom' ? endOfDayRFC3339(custom?.to) : undefined,
   }
   const logs = useLogs({ ...filters, page, page_size: pageSize }, autoRefresh ? AUTO_REFRESH_MS : false)
   // 模型候选跟随其他筛选：只列当前范围内真实出现过的模型，用户不必记得精确模型名
@@ -89,16 +86,12 @@ export default function Logs() {
   const resetPage = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setPage(1) }
   const hasFilters = Boolean(model || status || channelId || tokenId || range)
   const reset = () => {
-    setModel(''); setStatus(''); setChannelId(''); setTokenId(''); setRange(''); setStartDate(''); setEndDate(''); setPage(1)
+    setModel(''); setStatus(''); setChannelId(''); setTokenId(''); setRange(''); setCustom(undefined); setPage(1)
   }
-  // 自定义区间两端互相约束：选择器用 min/max 禁掉倒置日期；手输越界时把另一端拉齐，不让 start > end 发到服务端
-  const pickStart = (value: string) => {
-    resetPage(setStartDate)(value)
-    if (value && endDate && value > endDate) setEndDate(value)
-  }
-  const pickEnd = (value: string) => {
-    resetPage(setEndDate)(value)
-    if (value && startDate && value < startDate) setStartDate(value)
+  // 自定义区间由范围日历选择：点在起点之前的日子会重新起算，倒置区间在选择器结构上不可能出现
+  const pickCustom = (next: DateRange | undefined) => {
+    setCustom(next)
+    setPage(1)
   }
   // 轮询期间的 isFetching 不算「手动刷新」：只有用户点了按钮才转圈
   const refresh = async () => {
@@ -124,7 +117,7 @@ export default function Logs() {
   }
 
   const columns: DataTableColumn<RequestLog>[] = [
-      { id: 'time', header: t('table.time'), className: 'whitespace-nowrap text-xs text-muted-foreground', sortKey: (l) => l.created_at, cell: (l) => fmtTime(l.created_at) },
+      { id: 'time', header: t('table.time'), className: 'whitespace-nowrap text-xs text-muted-foreground', sortKey: (l) => l.created_at, cell: (l) => <span title={fmtDateTimeFull(l.created_at)}>{fmtTime(l.created_at)}</span> },
       {
         id: 'model',
         header: t('table.model'),
@@ -243,7 +236,7 @@ export default function Logs() {
           <Field label={t('logs.filter.range')}>
             <Select
               value={range}
-              onValueChange={(value) => { resetPage(setRange)(value as Range); if (value !== 'custom') { setStartDate(''); setEndDate('') } }}
+              onValueChange={(value) => { resetPage(setRange)(value as Range); if (value !== 'custom') setCustom(undefined) }}
               aria-label={t('logs.filter.range')}
               options={[
                 { value: '', label: t('logs.filter.rangeAll') },
@@ -255,10 +248,9 @@ export default function Logs() {
             />
           </Field>
           {range === 'custom' && (
-            <>
-              <Field label={t('logs.filter.start')}><Input type="date" value={startDate} max={endDate || undefined} onChange={(e) => pickStart(e.target.value)} /></Field>
-              <Field label={t('logs.filter.end')}><Input type="date" value={endDate} min={startDate || undefined} onChange={(e) => pickEnd(e.target.value)} /></Field>
-            </>
+            <Field label={t('logs.filter.dateRange')} className="sm:col-span-2">
+              <DateRangePicker value={custom} onChange={pickCustom} clearable />
+            </Field>
           )}
           {/* 重置与页头按钮同规格（h-9 outline），靠右对齐到输入框底边；筛选即时生效不必再提示 */}
           <div className="flex justify-end">

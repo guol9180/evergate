@@ -3,7 +3,7 @@ import { Code2, FlaskConical, Play, Square, Trash2 } from 'lucide-react'
 import { useChannels } from '../api/hooks'
 import { runPlayground, type PlaygroundMeta, type PlaygroundTurn } from '../api/playground'
 import RetryTimeline from '../components/RetryTimeline'
-import { Alert, Badge, Button, Card, Disclosure, Empty, Field, IconButton, Input, PageHeader, SegmentedControl, Select, SettingRow, Spinner, Textarea } from '../components/ui'
+import { Alert, Badge, Button, Card, Disclosure, Empty, Field, IconButton, NumberField, PageHeader, SegmentedControl, Select, SettingRow, Spinner, Textarea } from '../components/ui'
 import { describeUpstreamError, fmtInt, fmtMs, fmtRequestCost, httpStatusTone } from '../lib/format'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
@@ -29,9 +29,9 @@ export default function Playground() {
   const [prompt, setPrompt] = useState('')
   const [stream, setStream] = useState(true)
   // 采样参数按字符串编辑，提交时转数字；留空 = 不下发（上游默认）
-  const [temperature, setTemperature] = useState('')
-  const [topP, setTopP] = useState('')
-  const [maxTokens, setMaxTokens] = useState('')
+  const [temperature, setTemperature] = useState<number | null>(null)
+  const [topP, setTopP] = useState<number | null>(null)
+  const [maxTokens, setMaxTokens] = useState<number | null>(null)
   const [turns, setTurns] = useState<PlaygroundTurn[]>([])
   const [output, setOutput] = useState('')
   const [meta, setMeta] = useState<PlaygroundMeta | null>(null)
@@ -69,9 +69,9 @@ export default function Playground() {
     setError('')
   }
 
+  // 采样参数留空即不传；NumberField 已经保证是数字，不再做字符串换算
   function params(): { temperature?: number; top_p?: number; max_tokens?: number } {
-    const num = (value: string) => (value.trim() === '' ? undefined : Number(value))
-    return { temperature: num(temperature), top_p: num(topP), max_tokens: num(maxTokens) }
+    return { temperature: temperature ?? undefined, top_p: topP ?? undefined, max_tokens: maxTokens ?? undefined }
   }
 
   async function send() {
@@ -174,9 +174,9 @@ export default function Playground() {
 
             <Disclosure title={t('playground.params')} defaultOpen={false}>
               <div className="eg-grid eg-grid-auto-wide">
-                <ParamField label={t('playground.temperature')} hint="0 – 2" value={temperature} onChange={setTemperature} disabled={running} />
-                <ParamField label={t('playground.topP')} hint="0 – 1" value={topP} onChange={setTopP} disabled={running} />
-                <ParamField label={t('playground.maxTokens')} hint="1 – 32768" value={maxTokens} onChange={setMaxTokens} disabled={running} />
+                <ParamField label={t('playground.temperature')} hint="0 – 2" value={temperature} onChange={setTemperature} disabled={running} minValue={0} maxValue={2} step={0.1} />
+                <ParamField label={t('playground.topP')} hint="0 – 1" value={topP} onChange={setTopP} disabled={running} minValue={0} maxValue={1} step={0.05} />
+                <ParamField label={t('playground.maxTokens')} hint="1 – 32768" value={maxTokens} onChange={setMaxTokens} disabled={running} minValue={1} maxValue={32768} step={1} />
               </div>
             </Disclosure>
 
@@ -337,10 +337,19 @@ function TurnBubble({ role, content, streaming }: { role: PlaygroundTurn['role']
   )
 }
 
-function ParamField({ label, hint, value, onChange, disabled }: { label: string; hint: string; value: string; onChange: (value: string) => void; disabled: boolean }) {
+function ParamField({ label, hint, value, onChange, disabled, ...limits }: {
+  label: string
+  hint: string
+  value: number | null
+  onChange: (value: number | null) => void
+  disabled: boolean
+  minValue: number
+  maxValue: number
+  step: number
+}) {
   return (
     <Field label={label} hint={hint}>
-      <Input type="number" inputMode="decimal" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} aria-label={label} />
+      <NumberField value={value} onChange={onChange} disabled={disabled} aria-label={label} {...limits} />
     </Field>
   )
 }

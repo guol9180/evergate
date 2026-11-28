@@ -1,12 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Controller, useForm, type UseFormRegisterReturn } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Save } from 'lucide-react'
 import { useSystemSettings, useUpdateSystemSettings } from '../api/hooks'
 import { usePageTitle } from '../lib/usePageTitle'
 import { t, tf } from '../lib/i18n'
 import type { SystemSettings, SystemSettingsValues } from '../api/types'
-import { Alert, Badge, Button, Card, Disclosure, Field, Input, PageHeader, SettingRow, Spinner } from '../components/ui'
+import { Alert, Badge, Button, Card, Disclosure, NumberFormField, PageHeader, SettingRow, Spinner } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelFallbackCard from '../components/ModelFallbackCard'
 import ConfigTransferCard from '../components/ConfigTransferCard'
@@ -16,22 +16,25 @@ import BackupCard from '../components/BackupCard'
 import { fmtTime } from '../lib/format'
 import { errorMessage } from '../lib/errors'
 
-// 全部字段按字符串编辑、提交时转数字；前端只拦非正数，整数与上限由后端校验并带 code 返回
-const positive = (message: string) => z.string().trim().refine((value) => value !== '' && Number.isFinite(Number(value)) && Number(value) > 0, message)
+// 数值字段直接以 number 编辑；范围与后端 settings.Validate 对齐，输入框本身也会夹取到范围。
+// 秒字段来自毫秒换算，步长取 0.001：React Aria 失焦会按步长精度吸附，0.25s 不能被吸成 0.2。
+// 本页数字字段统一不带步进按钮：秒字段的步进无法既精确又有意义，混排会显得不一致（↑/↓ 仍可步进）
+const seconds = (min: number, max: number) => z.number({ message: t('settings.positiveNumber') }).min(min, t('settings.rangeInvalid')).max(max, t('settings.rangeInvalid'))
+const count = (min: number, max: number) => z.number({ message: t('settings.positiveNumber') }).int(t('settings.intRequired')).min(min, t('settings.rangeInvalid')).max(max, t('settings.rangeInvalid'))
 const schema = z.object({
-  connectTimeoutSec: positive(t('settings.positiveNumber')),
-  firstTokenTimeoutSec: positive(t('settings.positiveNumber')),
-  overallTimeoutSec: positive(t('settings.positiveNumber')),
-  retryChannels: positive(t('settings.positiveNumber')),
-  retryKeysPerChannel: positive(t('settings.positiveNumber')),
-  retryTotalSec: positive(t('settings.positiveNumber')),
-  cooldownFailThreshold: positive(t('settings.positiveNumber')),
-  cooldownBaseSec: positive(t('settings.positiveNumber')),
-  cooldownMaxSec: positive(t('settings.positiveNumber')),
-  logRetentionDays: positive(t('settings.positiveNumber')),
-  healthProbeIntervalSec: positive(t('settings.positiveNumber')),
-  healthProbeConcurrency: positive(t('settings.positiveNumber')),
-  healthProbeTimeoutSec: positive(t('settings.positiveNumber')),
+  connectTimeoutSec: seconds(0.1, 300),
+  firstTokenTimeoutSec: seconds(0.1, 600),
+  overallTimeoutSec: seconds(1, 86_400),
+  retryChannels: count(1, 10),
+  retryKeysPerChannel: count(1, 10),
+  retryTotalSec: seconds(1, 900),
+  cooldownFailThreshold: count(1, 100),
+  cooldownBaseSec: seconds(1, 3600),
+  cooldownMaxSec: seconds(1, 86_400),
+  logRetentionDays: count(1, 3650),
+  healthProbeIntervalSec: seconds(10, 86_400),
+  healthProbeConcurrency: count(1, 32),
+  healthProbeTimeoutSec: seconds(1, 120),
   logUnknownTokens: z.boolean(),
 })
 type FormState = z.infer<typeof schema>
@@ -45,7 +48,7 @@ export default function Settings() {
     // values 随服务端数据重置：保存后重新拉取即同步，不需要手动 useEffect 回填
     values: settings.data?.settings ? toForm(settings.data.settings) : undefined,
   })
-  const { register, handleSubmit, formState, setFocus, control } = form
+  const { handleSubmit, setFocus, control } = form
 
   if (settings.isPending) {
     return <div className="flex justify-center py-20"><Spinner className="h-6 w-6" /></div>
@@ -100,27 +103,30 @@ export default function Settings() {
 
       <form onSubmit={onSubmit} className="space-y-[var(--eg-section-gap)]">
         <Disclosure title={t('settings.upstreamTimeout')} defaultOpen={true}>
-          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('channels.form.connectTimeout')} hint={t('settings.connectTimeoutHint')} error={formState.errors.connectTimeoutSec?.message} registration={register('connectTimeoutSec')} />
-        <NumberField label={t('channels.form.firstTokenTimeout')} hint={t('settings.firstTokenTimeoutHint')} error={formState.errors.firstTokenTimeoutSec?.message} registration={register('firstTokenTimeoutSec')} />
-        <NumberField label={t('channels.form.overallTimeout')} hint={t('settings.overallTimeoutHint')} error={formState.errors.overallTimeoutSec?.message} registration={register('overallTimeoutSec')} />
+          <div className="eg-grid eg-grid-auto-wide">
+            <NumberFormField control={control} name="connectTimeoutSec" label={t('channels.form.connectTimeout')} hint={t('settings.connectTimeoutHint')} minValue={0.1} maxValue={300} step={0.001} hideStepper />
+            <NumberFormField control={control} name="firstTokenTimeoutSec" label={t('channels.form.firstTokenTimeout')} hint={t('settings.firstTokenTimeoutHint')} minValue={0.1} maxValue={600} step={0.001} hideStepper />
+            <NumberFormField control={control} name="overallTimeoutSec" label={t('channels.form.overallTimeout')} hint={t('settings.overallTimeoutHint')} minValue={1} maxValue={86_400} step={0.001} hideStepper />
           </div>
         </Disclosure>
 
         <Disclosure title={t('settings.retryCooldown')} defaultOpen={true}>
-          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.retryChannels')} hint={t('settings.range1to10')} error={formState.errors.retryChannels?.message} registration={register('retryChannels')} />
-        <NumberField label={t('settings.retryKeysPerChannel')} hint={t('settings.range1to10')} error={formState.errors.retryKeysPerChannel?.message} registration={register('retryKeysPerChannel')} />
-        <NumberField label={t('settings.retryTotalSec')} hint={t('settings.retryTotalHint')} error={formState.errors.retryTotalSec?.message} registration={register('retryTotalSec')} />
-        <NumberField label={t('settings.cooldownFailThreshold')} hint={t('settings.range1to100')} error={formState.errors.cooldownFailThreshold?.message} registration={register('cooldownFailThreshold')} />
-        <NumberField label={t('settings.cooldownBaseSec')} hint={t('settings.cooldownBaseHint')} error={formState.errors.cooldownBaseSec?.message} registration={register('cooldownBaseSec')} />
-        <NumberField label={t('settings.cooldownMaxSec')} hint={t('settings.cooldownMaxHint')} error={formState.errors.cooldownMaxSec?.message} registration={register('cooldownMaxSec')} />
+          <div className="eg-grid eg-grid-auto-wide">
+            <NumberFormField control={control} name="retryChannels" label={t('settings.retryChannels')} hint={t('settings.range1to10')} minValue={1} maxValue={10} step={1} hideStepper />
+            <NumberFormField control={control} name="retryKeysPerChannel" label={t('settings.retryKeysPerChannel')} hint={t('settings.range1to10')} minValue={1} maxValue={10} step={1} hideStepper />
+            <NumberFormField control={control} name="retryTotalSec" label={t('settings.retryTotalSec')} hint={t('settings.retryTotalHint')} minValue={1} maxValue={900} step={0.001} hideStepper />
+            <NumberFormField control={control} name="cooldownFailThreshold" label={t('settings.cooldownFailThreshold')} hint={t('settings.range1to100')} minValue={1} maxValue={100} step={1} hideStepper />
+            <NumberFormField control={control} name="cooldownBaseSec" label={t('settings.cooldownBaseSec')} hint={t('settings.cooldownBaseHint')} minValue={1} maxValue={3600} step={0.001} hideStepper />
+            <NumberFormField control={control} name="cooldownMaxSec" label={t('settings.cooldownMaxSec')} hint={t('settings.cooldownMaxHint')} minValue={1} maxValue={86_400} step={0.001} hideStepper />
           </div>
         </Disclosure>
 
         <Disclosure title={t('settings.maintenance')} defaultOpen={false}>
-          <div className="eg-grid eg-grid-auto-wide">        <NumberField label={t('settings.logRetentionDays')} hint={t('settings.retentionHint')} error={formState.errors.logRetentionDays?.message} registration={register('logRetentionDays')} />
-        <NumberField label={t('settings.healthProbeInterval')} hint={t('settings.probeIntervalHint')} error={formState.errors.healthProbeIntervalSec?.message} registration={register('healthProbeIntervalSec')} />
-        <NumberField label={t('settings.healthProbeConcurrency')} hint={t('settings.probeConcurrencyHint')} error={formState.errors.healthProbeConcurrency?.message} registration={register('healthProbeConcurrency')} />
-        <NumberField label={t('settings.healthProbeTimeout')} hint={t('settings.probeTimeoutHint')} error={formState.errors.healthProbeTimeoutSec?.message} registration={register('healthProbeTimeoutSec')} />
+          <div className="eg-grid eg-grid-auto-wide">
+            <NumberFormField control={control} name="logRetentionDays" label={t('settings.logRetentionDays')} hint={t('settings.retentionHint')} minValue={1} maxValue={3650} step={1} hideStepper />
+            <NumberFormField control={control} name="healthProbeIntervalSec" label={t('settings.healthProbeInterval')} hint={t('settings.probeIntervalHint')} minValue={10} maxValue={86_400} step={0.001} hideStepper />
+            <NumberFormField control={control} name="healthProbeConcurrency" label={t('settings.healthProbeConcurrency')} hint={t('settings.probeConcurrencyHint')} minValue={1} maxValue={32} step={1} hideStepper />
+            <NumberFormField control={control} name="healthProbeTimeoutSec" label={t('settings.healthProbeTimeout')} hint={t('settings.probeTimeoutHint')} minValue={1} maxValue={120} step={0.001} hideStepper />
           </div>
           <div className="mt-3">
             <Controller
@@ -155,28 +161,20 @@ export default function Settings() {
   )
 }
 
-function NumberField({ label, hint, error, registration }: { label: string; hint?: string; error?: string; registration: UseFormRegisterReturn }) {
-  return (
-    <Field label={label} hint={hint} error={error}>
-      <Input type="number" min="0" step="0.1" {...registration} />
-    </Field>
-  )
-}
-
 function toForm(s: SystemSettings): FormState {
   return {
     connectTimeoutSec: msToSec(s.connect_timeout_ms),
     firstTokenTimeoutSec: msToSec(s.first_token_timeout_ms),
     overallTimeoutSec: msToSec(s.overall_timeout_ms),
-    retryChannels: String(s.retry_channels),
-    retryKeysPerChannel: String(s.retry_keys_per_channel),
+    retryChannels: s.retry_channels,
+    retryKeysPerChannel: s.retry_keys_per_channel,
     retryTotalSec: msToSec(s.retry_total_ms),
-    cooldownFailThreshold: String(s.cooldown_fail_threshold),
+    cooldownFailThreshold: s.cooldown_fail_threshold,
     cooldownBaseSec: msToSec(s.cooldown_base_ms),
     cooldownMaxSec: msToSec(s.cooldown_max_ms),
-    logRetentionDays: String(s.log_retention_days),
+    logRetentionDays: s.log_retention_days,
     healthProbeIntervalSec: msToSec(s.health_probe_interval_ms),
-    healthProbeConcurrency: String(s.health_probe_concurrency),
+    healthProbeConcurrency: s.health_probe_concurrency,
     healthProbeTimeoutSec: msToSec(s.health_probe_timeout_ms),
     logUnknownTokens: s.log_unknown_tokens,
   }
@@ -187,28 +185,24 @@ function toSettings(f: FormState): SystemSettingsValues {
     connect_timeout_ms: secToMS(f.connectTimeoutSec),
     first_token_timeout_ms: secToMS(f.firstTokenTimeoutSec),
     overall_timeout_ms: secToMS(f.overallTimeoutSec),
-    retry_channels: number(f.retryChannels),
-    retry_keys_per_channel: number(f.retryKeysPerChannel),
+    retry_channels: f.retryChannels,
+    retry_keys_per_channel: f.retryKeysPerChannel,
     retry_total_ms: secToMS(f.retryTotalSec),
-    cooldown_fail_threshold: number(f.cooldownFailThreshold),
+    cooldown_fail_threshold: f.cooldownFailThreshold,
     cooldown_base_ms: secToMS(f.cooldownBaseSec),
     cooldown_max_ms: secToMS(f.cooldownMaxSec),
-    log_retention_days: number(f.logRetentionDays),
+    log_retention_days: f.logRetentionDays,
     health_probe_interval_ms: secToMS(f.healthProbeIntervalSec),
-    health_probe_concurrency: number(f.healthProbeConcurrency),
+    health_probe_concurrency: f.healthProbeConcurrency,
     health_probe_timeout_ms: secToMS(f.healthProbeTimeoutSec),
     log_unknown_tokens: f.logUnknownTokens,
   }
 }
 
-function msToSec(ms: number): string {
-  return String(ms / 1000)
+function msToSec(ms: number): number {
+  return ms / 1000
 }
 
-function secToMS(value: string): number {
-  return Math.round(Number(value) * 1000)
-}
-
-function number(value: string): number {
-  return Math.round(Number(value))
+function secToMS(value: number): number {
+  return Math.round(value * 1000)
 }

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { subDays } from 'date-fns'
+import type { DateRange } from 'react-day-picker'
 import { BarChart3, CircleDollarSign, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import {
   useApplyPresetPrice,
@@ -16,7 +18,7 @@ import {
 } from '../api/hooks'
 import type { ModelPrice, UsageDailyPoint, UsageDimensionRow } from '../api/types'
 import { bucketByLocalDay, localDateKey } from '../lib/usage'
-import { Alert, Badge, Button, Card, DataTable, Empty, Field, IconButton, Input, PageHeader, SegmentedControl, Select, Spinner } from '../components/ui'
+import { Alert, Badge, Button, Card, DataTable, DateRangePicker, Empty, Field, IconButton, Input, NumberFormField, PageHeader, SegmentedControl, Select, Spinner } from '../components/ui'
 import { notify } from '../components/Toaster'
 import { TREND_METRICS, TrendChart, type TrendMetric } from '../components/TrendChart'
 import PriceTable, { fmtPriceMicros } from '../components/PriceTable'
@@ -26,17 +28,11 @@ import { t, tf } from '../lib/i18n'
 import { errorMessage } from '../lib/errors'
 
 // 日期默认值与上限一律按本地日：toISOString 取的是 UTC 日期，东八区 0–8 点会落到昨天
-const today = () => localDateKey(new Date())
-const daysAgo = (days: number) => {
-  const d = new Date()
-  d.setDate(d.getDate() - days)
-  return localDateKey(d)
-}
-
 export default function Usage() {
   usePageTitle(t('page.usage.title'))
-  const [start, setStart] = useState(daysAgo(6))
-  const [end, setEnd] = useState(today())
+  const [range, setRange] = useState<DateRange | undefined>({ from: subDays(new Date(), 6), to: new Date() })
+  const start = range?.from ? localDateKey(range.from) : ''
+  const end = range?.to ? localDateKey(range.to) : ''
   const [channelID, setChannelID] = useState('')
   const [model, setModel] = useState('')
   const [tokenID, setTokenID] = useState('')
@@ -73,8 +69,9 @@ export default function Usage() {
 
       <Card>
         <div className="eg-grid eg-grid-auto">
-          <Field label={t('logs.filter.start')}><Input type="date" value={start} max={end} onChange={(e) => setStart(e.target.value)} /></Field>
-          <Field label={t('logs.filter.end')}><Input type="date" value={end} min={start} max={today()} onChange={(e) => setEnd(e.target.value)} /></Field>
+          <Field label={t('logs.filter.dateRange')} className="sm:col-span-2">
+            <DateRangePicker value={range} onChange={setRange} max={new Date()} />
+          </Field>
           <Field label={t('logs.filter.channel')}>
             <Select
               value={channelID}
@@ -251,15 +248,15 @@ function PriceCard() {
   const upsert = useUpsertPriceOverride()
   const remove = useDeletePriceOverride()
   const applyPreset = useApplyPresetPrice()
-  // 价格按美元 / 百万 token 的字符串编辑，提交时转微美元；非负校验文案走 i18n
-  const price = (optional: boolean) => z.string().trim().refine((value) => (optional && value === '') || (value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0), t('usage.price.invalid'))
+  // 价格按美元 / 百万 token 编辑，提交时转微美元；可留空的缓存价用 null 表示「按输入价」
+  const price = z.number({ message: t('usage.price.invalid') }).min(0, t('usage.price.invalid'))
   const defaultSchema = z.object({
-    defaultIn: price(false), defaultOut: price(false), defaultCacheRead: price(true), defaultCacheWrite: price(true),
+    defaultIn: price, defaultOut: price, defaultCacheRead: price.nullable(), defaultCacheWrite: price.nullable(),
   })
   const overrideSchema = z.object({
     channelID: z.string().min(1, t('usage.price.channelRequired')),
     model: z.string().trim().min(1, t('usage.price.modelRequired')),
-    overrideIn: price(false), overrideOut: price(false), overrideCacheRead: price(true), overrideCacheWrite: price(true),
+    overrideIn: price, overrideOut: price, overrideCacheRead: price.nullable(), overrideCacheWrite: price.nullable(),
   })
   const defaultForm = useForm<z.infer<typeof defaultSchema>>({
     resolver: zodResolver(defaultSchema),
@@ -272,7 +269,7 @@ function PriceCard() {
   })
   const overrideForm = useForm<z.infer<typeof overrideSchema>>({
     resolver: zodResolver(overrideSchema),
-    defaultValues: { channelID: '', model: '', overrideIn: '0', overrideOut: '0', overrideCacheRead: '', overrideCacheWrite: '' },
+    defaultValues: { channelID: '', model: '', overrideIn: 0, overrideOut: 0, overrideCacheRead: null, overrideCacheWrite: null },
   })
   const channelID = overrideForm.watch('channelID')
   const model = overrideForm.watch('model')
@@ -328,10 +325,10 @@ function PriceCard() {
       <form onSubmit={submitDefault} className="mt-4 rounded-lg border border-line bg-surface-soft p-3">
         <div className="mb-2 text-xs font-medium text-muted-foreground">{t('usage.price.globalDefault')}</div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label={t('usage.input')} error={defaultForm.formState.errors.defaultIn?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultIn')} /></Field>
-          <Field label={t('usage.output')} error={defaultForm.formState.errors.defaultOut?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultOut')} /></Field>
-          <Field label={t('usage.price.cacheRead')} error={defaultForm.formState.errors.defaultCacheRead?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultCacheRead')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
-          <Field label={t('usage.price.cacheWrite')} error={defaultForm.formState.errors.defaultCacheWrite?.message}><Input type="number" min={0} step="0.000001" {...defaultForm.register('defaultCacheWrite')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <NumberFormField control={defaultForm.control} name="defaultIn" label={t('usage.input')} minValue={0} step={0.000001} hideStepper />
+          <NumberFormField control={defaultForm.control} name="defaultOut" label={t('usage.output')} minValue={0} step={0.000001} hideStepper />
+          <NumberFormField control={defaultForm.control} name="defaultCacheRead" label={t('usage.price.cacheRead')} minValue={0} step={0.000001} hideStepper placeholder={t('usage.price.cacheFollowInput')} />
+          <NumberFormField control={defaultForm.control} name="defaultCacheWrite" label={t('usage.price.cacheWrite')} minValue={0} step={0.000001} hideStepper placeholder={t('usage.price.cacheFollowInput')} />
         </div>
         <p className="mb-2 text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
         <Button type="submit" size="sm" className="mt-2" loading={setDefault.isPending}>{t('usage.price.saveDefault')}</Button>
@@ -354,10 +351,10 @@ function PriceCard() {
             />
           </Field>
           <Field label={t('usage.price.upstreamModel')} error={overrideForm.formState.errors.model?.message}><Input {...overrideForm.register('model')} placeholder={t('usage.price.upstreamPlaceholder')} /></Field>
-          <Field label={t('usage.price.inputPrice')} error={overrideForm.formState.errors.overrideIn?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideIn')} placeholder={t('usage.price.useDefault')} /></Field>
-          <Field label={t('usage.price.outputPrice')} error={overrideForm.formState.errors.overrideOut?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideOut')} placeholder={t('usage.price.useDefault')} /></Field>
-          <Field label={t('usage.price.cacheRead')} error={overrideForm.formState.errors.overrideCacheRead?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideCacheRead')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
-          <Field label={t('usage.price.cacheWrite')} error={overrideForm.formState.errors.overrideCacheWrite?.message}><Input type="number" min={0} step="0.000001" {...overrideForm.register('overrideCacheWrite')} placeholder={t('usage.price.cacheFollowInput')} /></Field>
+          <NumberFormField control={overrideForm.control} name="overrideIn" label={t('usage.price.inputPrice')} minValue={0} step={0.000001} hideStepper placeholder={t('usage.price.useDefault')} />
+          <NumberFormField control={overrideForm.control} name="overrideOut" label={t('usage.price.outputPrice')} minValue={0} step={0.000001} hideStepper placeholder={t('usage.price.useDefault')} />
+          <NumberFormField control={overrideForm.control} name="overrideCacheRead" label={t('usage.price.cacheRead')} minValue={0} step={0.000001} hideStepper placeholder={t('usage.price.cacheFollowInput')} />
+          <NumberFormField control={overrideForm.control} name="overrideCacheWrite" label={t('usage.price.cacheWrite')} minValue={0} step={0.000001} hideStepper placeholder={t('usage.price.cacheFollowInput')} />
         </div>
         <p className="text-[11px] leading-4 text-subtle">{t('usage.price.cacheHint')}</p>
         <Button type="submit" size="sm" variant="outline" loading={upsert.isPending} disabled={!model.trim()}><Plus size={13} /> {t('usage.price.saveOverride')}</Button>
@@ -431,17 +428,18 @@ function PriceCard() {
   )
 }
 
-function toMicros(value: string): number {
-  return Math.max(0, Math.round((Number(value) || 0) * 1_000_000))
+function toMicros(value: number | null): number {
+  return Math.max(0, Math.round((value ?? 0) * 1_000_000))
 }
 
-function toPriceInput(micros: number | undefined): string {
-  return ((micros || 0) / 1_000_000).toFixed(6).replace(/\.?0+$/, '')
+/** 微美元 → 美元 / 百万 token；保留微美元精度（最多 6 位小数）。 */
+function toPriceInput(micros: number | undefined): number {
+  return Math.round(micros ?? 0) / 1_000_000
 }
 
-/** 缓存价输入框初值：未设置（0）留空，对应「按输入价计」。 */
-function toOptionalPriceInput(micros: number | undefined): string {
-  return micros && micros > 0 ? toPriceInput(micros) : ''
+/** 缓存价初值：未设置（0）为 null，对应「按输入价计」。 */
+function toOptionalPriceInput(micros: number | undefined): number | null {
+  return micros && micros > 0 ? toPriceInput(micros) : null
 }
 
 /** 覆盖列表里的缓存价摘要：只列出已设置的一侧，未设置的不占位。 */

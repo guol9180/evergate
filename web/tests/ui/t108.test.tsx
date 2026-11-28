@@ -152,7 +152,7 @@ describe('Logs list and detail (T108)', () => {
     expect(state.lastFilters).toMatchObject({ status: 'error' })
 
     const range = screen.getByRole('combobox', { name: '时间范围' })
-    expect(screen.queryByLabelText('开始日期')).toBeNull()
+    expect(screen.queryByLabelText('日期范围')).toBeNull()
     fireEvent.keyDown(range, { key: 'ArrowDown' })
     fireEvent.keyDown(screen.getByRole('option', { name: '今天' }), { key: 'Enter' })
     expect(state.lastFilters).toMatchObject({ status: 'error', end: undefined })
@@ -160,10 +160,10 @@ describe('Logs list and detail (T108)', () => {
     localMidnight.setHours(0, 0, 0, 0)
     expect(state.lastFilters?.start).toBe(localMidnight.toISOString())
 
-    // 自定义才显示日期输入
+    // 自定义才显示日期范围选择器
     fireEvent.keyDown(range, { key: 'ArrowDown' })
     fireEvent.keyDown(screen.getByRole('option', { name: '自定义…' }), { key: 'Enter' })
-    expect(screen.getByLabelText('开始日期')).toBeTruthy()
+    expect(screen.getByLabelText('日期范围')).toBeTruthy()
 
     fireEvent.click(screen.getByRole('button', { name: '重置' }))
     expect(state.lastFilters).toMatchObject({ status: undefined, start: undefined, end: undefined, page: 1 })

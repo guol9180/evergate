@@ -21,19 +21,26 @@ import { Button, type ButtonProps } from './ui/button'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog'
 import { Badge as BadgePrimitive } from './ui/badge'
+import { Calendar } from './ui/calendar'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut } from './ui/command'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { DatePicker, DateRangePicker } from './ui/date-picker'
 import { Field as FieldPrimitive, FieldDescription, FieldError as FieldErrorPrimitive, FieldLabel } from './ui/field'
+import { Input } from './ui/input'
 import { Kbd, KbdGroup } from './ui/kbd'
+import { NumberField, type NumberFieldProps } from './ui/number-field'
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from './ui/popover'
 import { Progress as ProgressPrimitive } from './ui/progress'
 import { Separator } from './ui/separator'
 import { Skeleton as SkeletonPrimitive } from './ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { Textarea } from './ui/textarea'
 import { TooltipProvider as TooltipRootProvider, TooltipWrap } from './ui/tooltip'
 import { Th, Td } from './ui/table-cells'
 import { DataTable, DataTableColumnToggle, type DataTableColumn, type DataTableProps } from './ui/data-table'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
+import { Controller, type Control, type FieldValues, type Path } from 'react-hook-form'
 
 export type { Tone }
 
@@ -51,36 +58,23 @@ export { Button, buttonVariants } from './ui/button'
 export type { ButtonProps } from './ui/button'
 export { Accordion, AccordionContent, AccordionItem, AccordionTrigger }
 export { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle }
+export { Calendar }
+export { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator, CommandShortcut }
 export { Collapsible, CollapsibleContent, CollapsibleTrigger }
+export { DatePicker, DateRangePicker }
 export { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger }
+export { Input }
 export { Kbd, KbdGroup }
+export { NumberField }
+export type { NumberFieldProps }
+export type { DatePickerProps, DateRangePickerProps } from './ui/date-picker'
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger }
 export { Separator }
 export { Tabs, TabsContent, TabsList, TabsTrigger }
 export { Th, Td }
 export { DataTable, DataTableColumnToggle }
 export type { DataTableColumn, DataTableProps }
-
-// 控件带 aria-invalid 时由 Field 置为出错态：红边 + 红色聚焦环，错误文字紧贴其下。
-const invalidRing = 'aria-invalid:border-danger-solid aria-invalid:focus:border-danger-solid aria-invalid:focus:ring-danger-subtle'
-
-export function Input({ className = '', ...props }: React.ComponentProps<'input'>) {
-  return (
-    <input
-      className={`h-9 w-full rounded-md border border-line-strong bg-surface px-3 text-sm text-foreground outline-none transition-colors placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle ${invalidRing} ${className}`}
-      {...props}
-    />
-  )
-}
-
-export function Textarea({ className = '', ...props }: React.ComponentProps<'textarea'>) {
-  return (
-    <textarea
-      className={`w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand-subtle disabled:bg-surface-strong disabled:text-subtle ${invalidRing} ${className}`}
-      {...props}
-    />
-  )
-}
+export { Textarea }
 
 export interface SelectOption { value: string; label: ReactNode; disabled?: boolean }
 
@@ -270,6 +264,37 @@ export function FieldError({ id, children, className }: { id?: string; children:
       <CircleAlert size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
       <span>{children}</span>
     </FieldErrorPrimitive>
+  )
+}
+
+/**
+ * react-hook-form 的数字字段：Controller 接表单（值类型 number | null），Field 负责标签 / 说明 / 错误关联，
+ * NumberField 负责输入。ref 交给表单，setFocus(name) 才能落到输入框。
+ */
+export function NumberFormField<T extends FieldValues>({
+  control,
+  name,
+  label,
+  hint,
+  className,
+  ...numberProps
+}: Omit<NumberFieldProps, 'value' | 'onChange' | 'ref' | 'aria-invalid' | 'aria-describedby' | 'id'> & {
+  control: Control<T>
+  name: Path<T>
+  label: ReactNode
+  hint?: ReactNode
+  className?: string
+}) {
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field, fieldState }) => (
+        <Field label={label} hint={hint} error={fieldState.error?.message} className={className}>
+          <NumberField {...numberProps} ref={field.ref} value={(field.value as number | null | undefined) ?? null} onChange={field.onChange} onBlur={field.onBlur} />
+        </Field>
+      )}
+    />
   )
 }
 

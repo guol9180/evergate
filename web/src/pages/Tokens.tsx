@@ -1,11 +1,11 @@
 import { useId, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken, type TokenGovernanceInput } from '../api/hooks'
 import type { Token } from '../api/types'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, DataTable, type DataTableColumn, Dialog, Empty, Field, IconButton, Input, LoadError, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Textarea } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, DataTable, type DataTableColumn, DatePicker, Dialog, Empty, Field, IconButton, Input, LoadError, NumberFormField, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Textarea } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime, tokenStatusLabel, tokenStatusTone } from '../lib/format'
@@ -195,13 +195,13 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   const catalog = useModelCatalog()
   const formID = 'token-form'
   const modelsId = useId()
-  // schema 即校验规则与入参类型；文本域字段保留原始字符串，提交时再拆行
+  // schema 即校验规则与入参类型：额度 / 限流直接是 number，过期时间是 Date | null；文本域字段保留原始字符串，提交时再拆行
   const schema = z.object({
     name: z.string().trim().min(1, t('tokens.form.nameRequired')),
-    quota: z.string().refine((value) => value === '' || (!Number.isNaN(Number(value)) && Number(value) >= 0), t('tokens.form.quotaInvalid')),
-    rpm_limit: z.string().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= 0), t('tokens.form.rpmInvalid')),
-    concurrency_limit: z.string().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= 0), t('tokens.form.concurrencyInvalid')),
-    expired_at: z.string(),
+    quota: z.number({ message: t('tokens.form.quotaInvalid') }).min(0, t('tokens.form.quotaInvalid')),
+    rpm_limit: z.number({ message: t('tokens.form.rpmInvalid') }).int(t('tokens.form.rpmInvalid')).min(0, t('tokens.form.rpmInvalid')),
+    concurrency_limit: z.number({ message: t('tokens.form.concurrencyInvalid') }).int(t('tokens.form.concurrencyInvalid')).min(0, t('tokens.form.concurrencyInvalid')),
+    expired_at: z.date().nullable(),
     modelsText: z.string(),
     ipsText: z.string(),
     disable_fallback: z.boolean(),
@@ -210,16 +210,16 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
     resolver: zodResolver(schema),
     defaultValues: {
       name: token?.name ?? '',
-      quota: String(token?.quota ?? 0),
-      rpm_limit: String(token?.rpm_limit ?? 0),
-      concurrency_limit: String(token?.concurrency_limit ?? 0),
-      expired_at: toLocalInput(token?.expired_at),
+      quota: token?.quota ?? 0,
+      rpm_limit: token?.rpm_limit ?? 0,
+      concurrency_limit: token?.concurrency_limit ?? 0,
+      expired_at: parseExpiry(token?.expired_at),
       modelsText: (token?.allowed_models || []).join('\n'),
       ipsText: (token?.allowed_ips || []).join('\n'),
       disable_fallback: token?.disable_fallback ?? false,
     },
   })
-  const { register, handleSubmit, formState, setValue, watch } = form
+  const { register, handleSubmit, formState, setValue, watch, control } = form
   const [showModelPicker, setShowModelPicker] = useState(false)
   // 有未保存更改时关闭需确认（Esc / 遮罩 / 取消按钮都走这里）
   const guard = useUnsavedGuard(formState.isDirty)
@@ -232,10 +232,10 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
   const onSubmit = handleSubmit((values) => {
     const payload: TokenGovernanceInput = {
       name: values.name.trim(),
-      quota: Number(values.quota) || 0,
-      rpm_limit: Number(values.rpm_limit) || 0,
-      concurrency_limit: Number(values.concurrency_limit) || 0,
-      expired_at: values.expired_at ? new Date(values.expired_at).toISOString() : null,
+      quota: values.quota,
+      rpm_limit: values.rpm_limit,
+      concurrency_limit: values.concurrency_limit,
+      expired_at: values.expired_at ? values.expired_at.toISOString() : null,
       allowed_models: splitLines(values.modelsText),
       allowed_ips: splitLines(values.ipsText),
       disable_fallback: values.disable_fallback,
@@ -275,21 +275,22 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
           <Field label={t('tokens.form.name')} hint={t('tokens.form.nameHint')} error={formState.errors.name?.message}>
             <Input {...register('name')} placeholder="my-token" />
           </Field>
-          <Field label={t('tokens.form.quota')} hint={t('tokens.form.quotaHint')} error={formState.errors.quota?.message}>
-            <Input type="number" min={0} {...register('quota')} />
-          </Field>
+          <NumberFormField control={control} name="quota" label={t('tokens.form.quota')} hint={t('tokens.form.quotaHint')} minValue={0} step={0.01} hideStepper />
         </div>
         <div className="eg-grid eg-grid-auto-wide">
-          <Field label={t('tokens.form.rpm')} hint={t('tokens.form.rpmHint')} error={formState.errors.rpm_limit?.message}>
-            <Input type="number" min={0} {...register('rpm_limit')} />
-          </Field>
-          <Field label={t('tokens.form.concurrency')} hint={t('tokens.form.concurrencyHint')} error={formState.errors.concurrency_limit?.message}>
-            <Input type="number" min={0} {...register('concurrency_limit')} />
-          </Field>
+          {/* 弹窗内三个数字字段统一不带步进按钮：额度是金额、步进无意义，混排会显得不一致 */}
+          <NumberFormField control={control} name="rpm_limit" label={t('tokens.form.rpm')} hint={t('tokens.form.rpmHint')} minValue={0} step={1} hideStepper />
+          <NumberFormField control={control} name="concurrency_limit" label={t('tokens.form.concurrency')} hint={t('tokens.form.concurrencyHint')} minValue={0} step={1} hideStepper />
         </div>
-        <Field label={t('tokens.form.expiresAt')} hint={t('tokens.form.expiresHint')}>
-          <Input type="datetime-local" {...register('expired_at')} />
-        </Field>
+        <Controller
+          control={control}
+          name="expired_at"
+          render={({ field }) => (
+            <Field label={t('tokens.form.expiresAt')} hint={t('tokens.form.expiresHint')}>
+              <DatePicker value={field.value ?? undefined} onChange={(next) => field.onChange(next ?? null)} withTime />
+            </Field>
+          )}
+        />
         <SettingRow
           title={t('tokens.form.fallback')}
           description={t('tokens.form.fallbackDesc')}
@@ -301,9 +302,31 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
           <div className="space-y-2">
             <div className="flex items-end justify-between gap-2">
               <label htmlFor={modelsId} className="text-sm font-medium text-foreground-soft">{t('tokens.form.models')}</label>
-              <Button type="button" size="sm" variant="outline" onClick={() => setShowModelPicker((current) => !current)}>
-                <RefreshCw size={13} /> {showModelPicker ? t('tokens.form.catalogClose') : t('tokens.form.catalogOpen')}
-              </Button>
+              <ModelPicker
+                open={showModelPicker}
+                onOpenChange={setShowModelPicker}
+                trigger={
+                  <Button type="button" size="sm" variant="outline" aria-expanded={showModelPicker} onClick={() => setShowModelPicker((current) => !current)}>
+                    <RefreshCw size={13} /> {t('tokens.form.catalogOpen')}
+                  </Button>
+                }
+                title={t('tokens.form.catalogTitle')}
+                options={(catalog.data?.items ?? []).map((item) => ({
+                  publicModel: item.model,
+                  upstreamModel: item.channels[0]?.upstream_model ?? item.model,
+                  context: item.channels.length > 0
+                    ? item.channels.map((channel) => `${channel.channel_name}: ${channel.upstream_model}`).join('; ')
+                    : undefined,
+                }))}
+                initialModels={splitLines(watch('modelsText'))}
+                loading={catalog.isPending}
+                error={catalog.isError ? errorMessage(catalog.error) : undefined}
+                onApply={(selected, mode) => {
+                  const next = applyModelSelection(splitLines(watch('modelsText')), selected, mode, (catalog.data?.items ?? []).map((item) => item.model))
+                  setValue('modelsText', next.join('\n'), { shouldDirty: true })
+                  setShowModelPicker(false)
+                }}
+              />
             </div>
             <Textarea id={modelsId} rows={4} {...register('modelsText')} placeholder={'gpt-4o\nglm-4.7'} />
             <div className="text-xs text-subtle">{t('tokens.form.modelsHint')}</div>
@@ -312,28 +335,6 @@ function TokenDialog({ token, onClose }: { token: Token | null; onClose: () => v
             <Textarea rows={4} {...register('ipsText')} placeholder={'127.0.0.1\n192.168.0.0/16'} />
           </Field>
         </div>
-        {/* 目录选择器横跨弹窗全宽：挤在左半栏时每行长说明折成三行、还要在弹窗里再套一层内滚动 */}
-        {showModelPicker && (
-          <ModelPicker
-            title={t('tokens.form.catalogTitle')}
-            options={(catalog.data?.items ?? []).map((item) => ({
-              publicModel: item.model,
-              upstreamModel: item.channels[0]?.upstream_model ?? item.model,
-              context: item.channels.length > 0
-                ? item.channels.map((channel) => `${channel.channel_name}: ${channel.upstream_model}`).join('; ')
-                : undefined,
-            }))}
-            initialModels={splitLines(watch('modelsText'))}
-            loading={catalog.isPending}
-            error={catalog.isError ? errorMessage(catalog.error) : undefined}
-            onCancel={() => setShowModelPicker(false)}
-            onApply={(selected, mode) => {
-              const next = applyModelSelection(splitLines(watch('modelsText')), selected, mode)
-              setValue('modelsText', next.join('\n'), { shouldDirty: true })
-              setShowModelPicker(false)
-            }}
-          />
-        )}
       </form>
       {guard.dialog}
     </Dialog>
@@ -343,10 +344,9 @@ function splitLines(text: string): string[] {
   return text.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
 }
 
-function toLocalInput(iso: string | null | undefined): string {
-  if (!iso) return ''
+/** 已有过期时间回填为 Date；非法或缺失即「不限」。 */
+function parseExpiry(iso: string | null | undefined): Date | null {
+  if (!iso) return null
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  const offset = date.getTimezoneOffset() * 60000
-  return new Date(date.getTime() - offset).toISOString().slice(0, 19)
+  return Number.isNaN(date.getTime()) ? null : date
 }

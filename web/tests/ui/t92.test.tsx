@@ -40,6 +40,9 @@ describe('ModelPicker prices', () => {
     const onApply = vi.fn()
     render(<ModelPicker
       title="上游模型"
+      trigger={<button type="button">open</button>}
+      open
+      onOpenChange={() => {}}
       options={[{
         publicModel: 'mock-alpha',
         upstreamModel: 'mock-alpha',
@@ -47,7 +50,6 @@ describe('ModelPicker prices', () => {
       }]}
       initialModels={[]}
       onApply={onApply}
-      onCancel={() => {}}
     />)
     expect(screen.getByText(/\$1\.50 \/ \$6\.00/)).toBeTruthy()
     fireEvent.click(screen.getByText('mock-alpha'))

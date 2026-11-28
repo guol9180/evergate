@@ -74,27 +74,32 @@ describe('T122 接口行为收口', () => {
     expect(within(dialog).getByRole('alert').textContent).not.toContain('名称重复')
   })
 
-  it('日志自定义区间：两端互相 min/max 约束，越界时另一端自动拉齐', () => {
+  it('日志自定义区间：范围日历一次选定起止，先点晚的日子再点早的日子也只会得到正序区间', () => {
     renderPage(<Logs />)
     const range = screen.getByRole('combobox', { name: t('logs.filter.range') })
     fireEvent.keyDown(range, { key: 'ArrowDown' })
     fireEvent.keyDown(screen.getByRole('option', { name: t('logs.filter.rangeCustom') }), { key: 'Enter' })
-    const start = screen.getByLabelText(t('logs.filter.start')) as HTMLInputElement
-    const end = screen.getByLabelText(t('logs.filter.end')) as HTMLInputElement
-    expect(start.type).toBe('date')
-    expect(start.max).toBe('')
-    expect(end.min).toBe('')
+    const trigger = screen.getByLabelText(t('logs.filter.dateRange'))
+    expect(state.logsFilters).toMatchObject({ start: undefined, end: undefined })
+    const localISO = (day: number, endOfDay = false) => new Date(new Date().getFullYear(), new Date().getMonth(), day, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0).toISOString()
 
-    fireEvent.change(end, { target: { value: '2026-11-10' } })
-    expect(start.max).toBe('2026-11-10')
-    // 开始晚于结束：结束日期被拉到同一天，而不是发出一个倒置区间
-    fireEvent.change(start, { target: { value: '2026-11-12' } })
-    expect(end.value).toBe('2026-11-12')
-    expect(end.min).toBe('2026-11-12')
-    expect(state.logsFilters?.start).toBe(new Date('2026-11-12T00:00:00').toISOString())
-    // 反向越界同理
-    fireEvent.change(end, { target: { value: '2026-11-08' } })
-    expect(start.value).toBe('2026-11-08')
-    expect(start.max).toBe('2026-11-08')
+    fireEvent.click(trigger)
+    const popover = screen.getByRole('dialog')
+    // 本月 10 日 / 20 日：日历用 data-day（zh-CN 本地日期）标记每一天
+    const day = (n: number) => popover.querySelector(`[data-day="${new Date(new Date().getFullYear(), new Date().getMonth(), n).toLocaleDateString('zh-CN')}"]`) as HTMLButtonElement
+    // 首次点选就是单日区间，立刻回写；弹层保持展开，方便再点一天扩展
+    fireEvent.click(day(20))
+    expect(state.logsFilters?.start).toBe(localISO(20))
+    expect(state.logsFilters?.end).toBe(localISO(20, true))
+    // 点在起点之前：得到 10–20 的正序区间而不是倒置区间，弹层随即收起
+    fireEvent.click(day(10))
+    expect(state.logsFilters?.start).toBe(localISO(10))
+    expect(state.logsFilters?.end).toBe(localISO(20, true))
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    // 清除回到无区间
+    fireEvent.click(trigger)
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /清除/ }))
+    expect(state.logsFilters).toMatchObject({ start: undefined, end: undefined })
   })
 })

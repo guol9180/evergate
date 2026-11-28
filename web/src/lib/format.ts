@@ -1,15 +1,29 @@
 // 展示层格式化（存储 UTC，展示转本地时区——AGENTS 红线）
 // 错误类别人话映射参照 gpt-load credential-failure-presenter 模式
+import { format, isSameYear, isToday, isValid } from 'date-fns'
+import { enUS, zhCN, type Locale as DateFnsLocale } from 'date-fns/locale'
 import type { Tone } from './tone'
 // 带 .ts 后缀：node --experimental-strip-types 跑单测时不做扩展名解析
 import { colon, getLocale, t, tf, type MessageKey } from './i18n.ts'
 
+/** date-fns 区域对象跟随界面语言：日历标题、星期与月份名据此本地化。 */
+export function dateFnsLocale(): DateFnsLocale {
+  return getLocale() === 'zh-CN' ? zhCN : enUS
+}
+
+/** 列表里的时间：今天只显时刻，同年显月日，跨年才带年份；完整时间放 title（fmtDateTimeFull）。 */
 export function fmtTime(iso: string | null | undefined): string {
   if (!iso) return '—'
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return '—'
-  // hourCycle h23 而不是 hour12:false：后者在部分引擎的 en-US 下会把午夜显示成 24:00
-  return d.toLocaleString(getLocale(), { hourCycle: 'h23' })
+  if (!isValid(d)) return '—'
+  return format(d, isToday(d) ? 'HH:mm' : isSameYear(d, new Date()) ? 'MM-dd' : 'yyyy-MM-dd')
+}
+
+/** 完整本地时间（yyyy-MM-dd HH:mm:ss），给列表时间列的 title 与详情面板用。 */
+export function fmtDateTimeFull(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return isValid(d) ? format(d, 'yyyy-MM-dd HH:mm:ss') : '—'
 }
 
 export function fmtMs(ms: number | null | undefined): string {

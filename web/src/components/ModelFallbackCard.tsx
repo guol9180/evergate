@@ -4,16 +4,16 @@ import { z } from 'zod'
 import { GitBranch, Plus, Save, Trash2 } from 'lucide-react'
 import { useModelFallbacks, useSaveModelFallbacks } from '../api/hooks'
 import type { ModelFallback } from '../api/types'
-import { Button, Card, ErrorText, Field, IconButton, Input, Spinner, Textarea } from './ui'
+import { Button, Card, ErrorText, Field, IconButton, Input, NumberFormField, Spinner, Textarea } from './ui'
 import { notify } from './Toaster'
 import { errorMessage } from '../lib/errors'
 import { t, tf } from '../lib/i18n'
 
-// 降级链是行数组编辑：useFieldArray 负责增删与 key，schema 校验每行预算阈值为非负整数
+// 降级链是行数组编辑：useFieldArray 负责增删与 key，schema 校验每行预算阈值为非负整数（输入框按整数步长夹取）
 const schema = z.object({
   rows: z.array(z.object({
     model: z.string(),
-    budgetThreshold: z.string().refine((value) => value === '' || (/^\d+$/.test(value) && Number.isSafeInteger(Number(value))), t('fallback.budgetInvalid')),
+    budgetThreshold: z.number({ message: t('fallback.budgetInvalid') }).int(t('fallback.budgetInvalid')).min(0, t('fallback.budgetInvalid')),
     fallbacks: z.string(),
   })),
 })
@@ -26,7 +26,7 @@ export default function ModelFallbackCard() {
     resolver: zodResolver(schema),
     values: fallbacks.data?.items ? { rows: fallbacks.data.items.map(toForm) } : undefined,
   })
-  const { register, handleSubmit, formState, setFocus } = form
+  const { register, handleSubmit, setFocus } = form
   const { fields, append, remove } = useFieldArray({ control: form.control, name: 'rows' })
 
   if (fallbacks.isPending) {
@@ -60,7 +60,7 @@ export default function ModelFallbackCard() {
           <h2 className="flex items-center gap-2 text-sm font-semibold"><GitBranch size={15} className="text-brand-text" /> {t('fallback.title')}</h2>
           <p className="mt-1 text-xs text-muted-foreground">{t('fallback.desc')}</p>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={() => append({ model: '', budgetThreshold: '0', fallbacks: '' })}>
+        <Button type="button" size="sm" variant="outline" onClick={() => append({ model: '', budgetThreshold: 0, fallbacks: '' })}>
           <Plus size={14} /> {t('fallback.add')}
         </Button>
       </div>
@@ -76,9 +76,7 @@ export default function ModelFallbackCard() {
               <Field label={t('fallback.sourceModel')}>
                 <Input {...register(`rows.${index}.model`)} placeholder="gpt-4o" />
               </Field>
-              <Field label={t('fallback.budget')} hint={t('fallback.budgetHint')} error={formState.errors.rows?.[index]?.budgetThreshold?.message}>
-                <Input type="number" min={0} {...register(`rows.${index}.budgetThreshold`)} />
-              </Field>
+              <NumberFormField control={form.control} name={`rows.${index}.budgetThreshold`} label={t('fallback.budget')} hint={t('fallback.budgetHint')} minValue={0} maxValue={Number.MAX_SAFE_INTEGER} step={1} />
               <Field label={t('fallback.candidates')}>
                 <Textarea rows={2} {...register(`rows.${index}.fallbacks`)} placeholder={'gpt-4o-mini\ngpt-4o-nano'} />
               </Field>
@@ -106,7 +104,7 @@ export default function ModelFallbackCard() {
 function toForm(item: ModelFallback): FormValues['rows'][number] {
   return {
     model: item.model,
-    budgetThreshold: String(item.budget_threshold),
+    budgetThreshold: item.budget_threshold,
     fallbacks: (item.fallbacks || []).join('\n'),
   }
 }
@@ -114,7 +112,7 @@ function toForm(item: ModelFallback): FormValues['rows'][number] {
 function toPayload(item: FormValues['rows'][number]): ModelFallback {
   return {
     model: item.model.trim(),
-    budget_threshold: Math.max(0, Math.round(Number(item.budgetThreshold) || 0)),
+    budget_threshold: item.budgetThreshold,
     fallbacks: item.fallbacks.split(/\r?\n/).map(value => value.trim()).filter(Boolean),
   }
 }

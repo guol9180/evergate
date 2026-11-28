@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AlertTriangle, ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useSyncChannelCatalog, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, DataTable, DataTableColumnToggle, type DataTableColumn, Dialog, Empty, ErrorText, Field, IconButton, Input, LoadError, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Textarea, Tooltip } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, DataTable, DataTableColumnToggle, type DataTableColumn, Dialog, Empty, ErrorText, Field, IconButton, Input, LoadError, NumberField, NumberFormField, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Textarea, Tooltip } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import type { Channel, ChannelCatalogDiff, ChannelDetail, ChannelTimeouts, EffectivePrice, TestResult } from '../api/types'
@@ -389,14 +389,20 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
 // 名称、上游协议、优先级 / 权重 / 超时、模型映射只在「切换为自定义」后出现（T91）。
 /** key 的每分钟请求上限：失焦或回车提交，0 表示不限。 */
 function KeyRpmInput({ value, disabled, label, onCommit }: { value: number; disabled: boolean; label: string; onCommit: (value: number) => void }) {
-  const [draft, setDraft] = useState(String(value))
+  // React Aria 在失焦 / 回车时先夹取并回调 onChange，再轮到这里的 onBlur / onKeyDown，所以用 ref 读最新草稿
+  const draftRef = useRef<number | null>(value)
+  const [draft, setDraft] = useState<number | null>(value)
   // 回车提交后失焦会立刻再触发一次 commit：同一值在极短时间内只提交一次，失败后仍可重试
   const lastSentAt = useRef(0)
-  useEffect(() => setDraft(String(value)), [value])
+  useEffect(() => {
+    draftRef.current = value
+    setDraft(value)
+  }, [value])
   const commit = () => {
-    const next = Number(draft)
-    if (!Number.isInteger(next) || next < 0 || next === value) {
-      setDraft(String(value))
+    const next = draftRef.current
+    if (next == null || next === value) {
+      draftRef.current = value
+      setDraft(value)
       return
     }
     if (Date.now() - lastSentAt.current < 400) return
@@ -404,14 +410,20 @@ function KeyRpmInput({ value, disabled, label, onCommit }: { value: number; disa
     onCommit(next)
   }
   return (
-    <Input
-      type="number"
-      min={0}
-      className="h-8 w-20 text-xs"
+    <NumberField
+      size="sm"
+      hideStepper
+      className="w-20"
       value={draft}
       disabled={disabled}
       aria-label={label}
-      onChange={(event) => setDraft(event.target.value)}
+      minValue={0}
+      step={1}
+      placeholder="0"
+      onChange={(next) => {
+        draftRef.current = next
+        setDraft(next)
+      }}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
@@ -437,9 +449,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   // 渠道已创建但内联导入 key 失败时记下 id：保持弹窗可重试，避免再次保存变成重名创建。
   const [createdChannelID, setCreatedChannelID] = useState<number | null>(null)
 
-  // schema 即校验规则与表单值类型；文本字段保留字符串，提交时再转数字 / 拆行
-  const optionalInt = (min: number, max: number) =>
-    z.string().trim().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= min && Number(value) <= max), t('channels.form.timeoutInt'))
+  // schema 即校验规则与表单值类型；数值字段直接是 number（输入框已夹取到范围），可留空的超时为 null，文本域提交时再拆行
+  const boundedInt = (min: number, max: number, message: string) => z.number({ message }).int(message).min(min, message).max(max, message)
   const schema = z
     .object({
       presetId: z.string(),
@@ -452,11 +463,11 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       supportsResponses: z.boolean(),
       supportsAnthropic: z.boolean(),
       supportsGemini: z.boolean(),
-      priority: z.string().refine((value) => value === '' || (/^-?\d+$/.test(value) && Number(value) >= -1000 && Number(value) <= 1000), t('channels.form.intInvalid')),
-      weight: z.string().refine((value) => value === '' || (/^\d+$/.test(value) && Number(value) >= 1 && Number(value) <= 10000), t('channels.form.intInvalid')),
-      connectSec: optionalInt(1, 300),
-      firstTokenSec: optionalInt(1, 3600),
-      overallSec: optionalInt(1, 86400),
+      priority: boundedInt(-1000, 1000, t('channels.form.intInvalid')),
+      weight: boundedInt(1, 10000, t('channels.form.intInvalid')),
+      connectSec: boundedInt(1, 300, t('channels.form.timeoutInt')).nullable(),
+      firstTokenSec: boundedInt(1, 3600, t('channels.form.timeoutInt')).nullable(),
+      overallSec: boundedInt(1, 86400, t('channels.form.timeoutInt')).nullable(),
       models: z.string(),
       mapping: z.record(z.string(), z.string()),
     })
@@ -478,16 +489,16 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
       supportsResponses: channel?.supports_responses ?? false,
       supportsAnthropic: channel?.supports_anthropic ?? false,
       supportsGemini: channel?.supports_gemini ?? false,
-      priority: String(channel?.priority ?? 0),
-      weight: String(channel?.weight ?? 1),
-      connectSec: channel?.timeout_config?.connect_sec?.toString() ?? '',
-      firstTokenSec: channel?.timeout_config?.first_token_sec?.toString() ?? '',
-      overallSec: channel?.timeout_config?.overall_sec?.toString() ?? '',
+      priority: channel?.priority ?? 0,
+      weight: channel?.weight ?? 1,
+      connectSec: channel?.timeout_config?.connect_sec ?? null,
+      firstTokenSec: channel?.timeout_config?.first_token_sec ?? null,
+      overallSec: channel?.timeout_config?.overall_sec ?? null,
       models: (channel?.models || []).join('\n'),
       mapping: channel?.model_mapping ?? {},
     },
   })
-  const { register, handleSubmit, formState, watch, setValue, setFocus } = form
+  const { register, handleSubmit, formState, watch, setValue, setFocus, control } = form
   const presetId = watch('presetId')
   const supportsResponses = watch('supportsResponses')
   const supportsAnthropic = watch('supportsAnthropic')
@@ -559,9 +570,9 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
   const onSubmit = handleSubmit(
     (values) => {
       const timeouts: ChannelTimeouts = {}
-      if (values.connectSec.trim()) timeouts.connect_sec = Number(values.connectSec)
-      if (values.firstTokenSec.trim()) timeouts.first_token_sec = Number(values.firstTokenSec)
-      if (values.overallSec.trim()) timeouts.overall_sec = Number(values.overallSec)
+      if (values.connectSec != null) timeouts.connect_sec = values.connectSec
+      if (values.firstTokenSec != null) timeouts.first_token_sec = values.firstTokenSec
+      if (values.overallSec != null) timeouts.overall_sec = values.overallSec
       const currentPreset = findChannelPreset(values.presetId)
       const finalName = currentPreset && !channel
         ? uniquePresetName(currentPreset.defaultName, (channels.data?.items ?? []).map((item) => item.name))
@@ -573,8 +584,8 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
           type,
           preset_id: currentPreset ? values.presetId : '',
           base_url: values.baseUrl.trim(),
-          priority: Number(values.priority || '0') || 0,
-          weight: Number(values.weight || '1') || 1,
+          priority: values.priority,
+          weight: values.weight,
           models: splitLines(values.models),
           model_mapping: Object.keys(values.mapping).length ? values.mapping : null,
           supports_responses: values.supportsResponses,
@@ -720,70 +731,59 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
         )}
         {!presetMode && (
           <div className="eg-grid eg-grid-auto-wide">
-            <Field label={t('channels.form.priority')} hint={t('channels.form.priorityHint')} error={formState.errors.priority?.message}><Input type="number" {...register('priority')} /></Field>
-            <Field label={t('channels.form.weight')} hint={t('channels.form.weightHint')} error={formState.errors.weight?.message}><Input type="number" {...register('weight')} /></Field>
+            <NumberFormField control={control} name="priority" label={t('channels.form.priority')} hint={t('channels.form.priorityHint')} minValue={-1000} maxValue={1000} step={1} />
+            <NumberFormField control={control} name="weight" label={t('channels.form.weight')} hint={t('channels.form.weightHint')} minValue={1} maxValue={10000} step={1} />
           </div>
         )}
         {!presetMode && (
           <div className="eg-grid eg-grid-auto-wide">
-            <Field label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')} error={formState.errors.connectSec?.message}>
-              <Input type="number" min={1} max={300} {...register('connectSec')} placeholder={t('common.blankPlaceholder')} />
-            </Field>
-            <Field label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')} error={formState.errors.firstTokenSec?.message}>
-              <Input type="number" min={1} max={3600} {...register('firstTokenSec')} placeholder={t('common.blankPlaceholder')} />
-            </Field>
-            <Field label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')} error={formState.errors.overallSec?.message}>
-              <Input type="number" min={1} max={86400} {...register('overallSec')} placeholder={t('common.blankPlaceholder')} />
-            </Field>
+            <NumberFormField control={control} name="connectSec" label={t('channels.form.connectTimeout')} hint={t('channels.form.connectTimeoutHint')} minValue={1} maxValue={300} step={1} placeholder={t('common.blankPlaceholder')} />
+            <NumberFormField control={control} name="firstTokenSec" label={t('channels.form.firstTokenTimeout')} hint={t('channels.form.firstTokenTimeoutHint')} minValue={1} maxValue={3600} step={1} placeholder={t('common.blankPlaceholder')} />
+            <NumberFormField control={control} name="overallSec" label={t('channels.form.overallTimeout')} hint={t('channels.form.overallTimeoutHint')} minValue={1} maxValue={86400} step={1} placeholder={t('common.blankPlaceholder')} />
           </div>
         )}
         <div className="space-y-2">
           <div className="flex flex-wrap items-end justify-between gap-2">
             <label htmlFor={modelsId} className="text-sm font-medium text-foreground-soft">{t('channels.form.models')}</label>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              loading={preview.isPending}
-              disabled={!channel || channel.key_count === 0}
-              title={!channel ? t('channels.form.fetchUnavailable') : channel.key_count === 0 ? t('channels.form.fetchNeedKey') : undefined}
-              onClick={() => {
-                if (!channel) return
+            <ModelPicker
+              open={showModelPicker}
+              onOpenChange={(next) => {
+                if (next) return
                 setShowModelPicker(false)
                 preview.reset()
-                preview.mutate(channel.id, { onSuccess: () => setShowModelPicker(true) })
               }}
-            >
-              <RefreshCw size={13} />
-              {t('channels.form.fetch')}
-            </Button>
-          </div>
-          <Textarea id={modelsId} rows={4} {...register('models')} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} />
-          <div className="text-xs text-subtle">
-            {!channel
-              ? t('channels.form.modelsHintNew')
-              : channel.key_count === 0
-                ? t('channels.form.modelsHintNoKey')
-                : t('channels.form.modelsHintPicker')}
-          </div>
-          {showModelPicker && preview.data && (
-            <ModelPicker
+              trigger={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  loading={preview.isPending}
+                  disabled={!channel || channel.key_count === 0}
+                  title={!channel ? t('channels.form.fetchUnavailable') : channel.key_count === 0 ? t('channels.form.fetchNeedKey') : undefined}
+                  onClick={() => {
+                    if (!channel) return
+                    setShowModelPicker(false)
+                    preview.reset()
+                    preview.mutate(channel.id, { onSuccess: () => setShowModelPicker(true) })
+                  }}
+                >
+                  <RefreshCw size={13} />
+                  {t('channels.form.fetch')}
+                </Button>
+              }
               title={tf('channels.form.pickerTitle', { name: channel?.name ?? '' })}
-              options={preview.data.items.map((item) => ({
+              options={(preview.data?.items ?? []).map((item) => ({
                 publicModel: item.public_model,
                 upstreamModel: item.upstream_model,
                 price: item.price_micros,
               }))}
               initialModels={splitLines(models)}
-              protocol={preview.data.protocol}
-              truncated={preview.data.truncated}
+              protocol={preview.data?.protocol}
+              truncated={preview.data?.truncated}
               loading={preview.isPending}
-              onCancel={() => {
-                setShowModelPicker(false)
-                preview.reset()
-              }}
+              error={preview.isError ? errorMessage(preview.error) : undefined}
               onApply={(selected, mode, withPrices) => {
-                const next = applyModelSelection(splitLines(models), selected, mode)
+                const next = applyModelSelection(splitLines(models), selected, mode, (preview.data?.items ?? []).map((item) => item.public_model))
                 setValue('models', next.join('\n'), { shouldDirty: true })
                 // 上游目录声明了价格时勾选"同时写入价格覆盖"，就把价格固化成渠道覆盖，之后目录变动不影响计费
                 if (withPrices && channel) {
@@ -806,7 +806,15 @@ function ChannelForm({ channel, onClose }: { channel: Channel | null; onClose: (
                 preview.reset()
               }}
             />
-          )}
+          </div>
+          <Textarea id={modelsId} rows={4} {...register('models')} placeholder={preset?.modelsPlaceholder ?? 'gpt-4o\ngpt-4o-mini'} />
+          <div className="text-xs text-subtle">
+            {!channel
+              ? t('channels.form.modelsHintNew')
+              : channel.key_count === 0
+                ? t('channels.form.modelsHintNoKey')
+                : t('channels.form.modelsHintPicker')}
+          </div>
           {preview.isError && !preview.data && (
             <ErrorText>{tf('channels.form.fetchFailed', { message: errorMessage(preview.error) })}</ErrorText>
           )}
