@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ScrollText } from 'lucide-react'
 import { useAuditLogs } from '../api/hooks'
-import { Card, ContentSwap, Empty, Field, LoadError, Pagination, Select, SkeletonRows, Td, Th } from './ui'
+import type { AuditLog } from '../api/types'
+import { Card, ContentSwap, DataTable, type DataTableColumn, Empty, Field, LoadError, Pagination, Select, SkeletonRows } from './ui'
 import { fmtTime } from '../lib/format'
 import { t, type MessageKey } from '../lib/i18n'
 
@@ -47,6 +48,14 @@ export default function AuditLogCard() {
   const [pageSize, setPageSize] = useState(10)
   const [action, setAction] = useState('')
   const logs = useAuditLogs(page, pageSize, action || undefined)
+  const columns: DataTableColumn<AuditLog>[] = [
+      { id: 'time', header: t('table.time'), className: 'whitespace-nowrap text-xs text-muted-foreground', sortKey: (log) => log.created_at, cell: (log) => fmtTime(log.created_at) },
+      { id: 'user', header: t('table.user'), className: 'text-xs', sortKey: (log) => log.username, cell: (log) => log.username || '—' },
+      { id: 'action', header: t('table.action'), className: 'whitespace-nowrap text-xs font-medium', sortKey: (log) => log.action, cell: (log) => (ACTION_KEYS[log.action] ? t(ACTION_KEYS[log.action]) : log.action) },
+      { id: 'target', header: t('table.target'), className: 'text-xs text-muted-foreground', cell: (log) => log.target || '—' },
+      { id: 'summary', header: t('table.summary'), className: 'max-w-sm text-xs text-muted-foreground', cell: (log) => <span className="block truncate" title={log.summary}>{log.summary || '—'}</span> },
+      { id: 'ip', header: 'IP', className: 'hidden text-xs text-muted-foreground min-[1100px]:table-cell', hideable: true, cell: (log) => log.ip },
+  ]
   const items = logs.data?.items ?? []
   const total = logs.data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
@@ -70,27 +79,7 @@ export default function AuditLogCard() {
         ) : items.length === 0 ? (
           <Empty icon={<ScrollText size={32} />} title={t('empty.audit.title')} hint={t('empty.audit.hint')} />
         ) : (
-          <div className="overflow-x-auto">
-          <table className="w-full min-w-[680px]">
-            <thead className="border-b border-line-soft bg-surface-soft">
-              <tr>
-                <Th>{t('table.time')}</Th><Th>{t('table.user')}</Th><Th>{t('table.action')}</Th><Th>{t('table.target')}</Th><Th>{t('table.summary')}</Th><Th className="hidden min-[1100px]:table-cell">IP</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-soft">
-              {items.map((log) => (
-                <tr key={log.id}>
-                  <Td className="whitespace-nowrap text-xs text-muted-foreground">{fmtTime(log.created_at)}</Td>
-                  <Td className="text-xs">{log.username || '—'}</Td>
-                  <Td className="whitespace-nowrap text-xs font-medium">{ACTION_KEYS[log.action] ? t(ACTION_KEYS[log.action]) : log.action}</Td>
-                  <Td className="text-xs text-muted-foreground">{log.target || '—'}</Td>
-                  <Td className="max-w-sm truncate text-xs text-muted-foreground" title={log.summary}>{log.summary || '—'}</Td>
-                  <Td className="hidden text-xs text-muted-foreground min-[1100px]:table-cell">{log.ip}</Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
+          <DataTable columns={columns} rows={items} rowKey={(log) => log.id} minWidth={680} scrollToTopOn={page} />
         )}
       </ContentSwap>
       {items.length > 0 && (

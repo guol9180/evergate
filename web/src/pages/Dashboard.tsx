@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Activity, AlertTriangle, ArrowRight, Download, KeyRound, Plug, Timer, TowerControl, Waypoints, Zap } from 'lucide-react'
 import { useChannels, useLogsStats, useTokens, useUpdateStatus } from '../api/hooks'
-import { Alert, Button, Card, ContentSwap, Empty, LoadError, PageHeader, PageSkeleton, StatusBadge, Td, Th } from '../components/ui'
+import { Alert, Button, Card, ContentSwap, DataTable, Empty, LoadError, PageHeader, PageSkeleton, StatusBadge } from '../components/ui'
 import { UpdateDialog } from '../components/UpdateDialog'
 import { channelStateTone, fmtInt, fmtMs, fmtTime, stateLabel, statusRank } from '../lib/format'
 import { currentBasePath } from '../lib/runtime'
@@ -201,46 +201,57 @@ export default function Dashboard() {
             <h3 className="text-sm font-semibold text-foreground">{t('dashboard.health.title')}</h3>
             <Link to="/channels" className="text-xs text-brand-text hover:underline">{t('dashboard.health.manage')}</Link>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[620px] lg:min-w-0">
-              <thead className="border-b border-line-soft bg-surface-soft">
-                <tr>
-          <Th>{t('table.channel')}</Th><Th>{t('table.status')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.type')}</Th>
-          <Th className="hidden min-[1200px]:table-cell">{t('table.priority')}</Th><Th>{t('table.keys')}</Th><Th>{t('table.models')}</Th>
-          <Th className="hidden min-[1280px]:table-cell">{t('table.lastProbe')}</Th><Th className="hidden min-[1180px]:table-cell">{t('table.errorSummary')}</Th>
-          <Th className="hidden min-[1280px]:table-cell">{t('table.updatedAt')}</Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-soft">
-                {abnormal.map((c) => (
-                  <tr key={c.id}>
-                    <Td className="font-medium">{c.name}</Td>
-                    <Td>
-                      <StatusBadge tone={channelStateTone(c.status)}>
-          <span title={c.last_probe_error || undefined}>{stateLabel(c.status)}</span>
-                      </StatusBadge>
-                    </Td>
-                    <Td className="hidden text-muted-foreground min-[1120px]:table-cell">{c.type}</Td>
-                    <Td className="hidden min-[1200px]:table-cell">{c.priority}</Td>
-                    <Td>
-                      <span className="font-medium">{c.available_key_count}</span>
-                      <span className="text-subtle"> / {c.key_count}</span>
-                    </Td>
-                    <Td>{(c.models || []).length}</Td>
-                    <Td className="hidden text-xs text-muted-foreground min-[1280px]:table-cell">
-          {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
-                    </Td>
-                    <Td className="hidden max-w-56 min-[1180px]:table-cell">
-                      <div className="truncate text-xs text-subtle" title={c.last_probe_error || undefined} data-upstream={c.last_probe_error ? 'true' : undefined}>
-                        {c.last_probe_error || '—'}
-                      </div>
-                    </Td>
-                    <Td className="hidden text-xs text-subtle min-[1280px]:table-cell">{fmtTime(c.updated_at)}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            columns={[
+              { id: 'name', header: t('table.channel'), className: 'font-medium', sortKey: (c) => c.name, cell: (c) => c.name },
+              {
+                id: 'status',
+                header: t('table.status'),
+                sortKey: (c) => statusRank(c.status),
+                cell: (c) => (
+                  <StatusBadge tone={channelStateTone(c.status)}>
+                    <span title={c.last_probe_error || undefined}>{stateLabel(c.status)}</span>
+                  </StatusBadge>
+                ),
+              },
+              { id: 'type', header: t('table.type'), className: 'hidden text-muted-foreground min-[1120px]:table-cell', sortKey: (c) => c.type, cell: (c) => c.type },
+              { id: 'priority', header: t('table.priority'), className: 'hidden min-[1200px]:table-cell', sortKey: (c) => c.priority, cell: (c) => c.priority },
+              {
+                id: 'keys',
+                header: t('table.keys'),
+                sortKey: (c) => c.available_key_count,
+                cell: (c) => (
+                  <>
+                    <span className="font-medium">{c.available_key_count}</span>
+                    <span className="text-subtle"> / {c.key_count}</span>
+                  </>
+                ),
+              },
+              { id: 'models', header: t('table.models'), sortKey: (c) => (c.models || []).length, cell: (c) => (c.models || []).length },
+              {
+                id: 'lastProbe',
+                header: t('table.lastProbe'),
+                className: 'hidden text-xs text-muted-foreground min-[1280px]:table-cell',
+                sortKey: (c) => c.last_probe_at ?? '',
+                cell: (c) => (c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')),
+              },
+              {
+                id: 'error',
+                header: t('table.errorSummary'),
+                className: 'hidden max-w-56 min-[1180px]:table-cell',
+                cell: (c) => (
+                  <div className="truncate text-xs text-subtle" title={c.last_probe_error || undefined} data-upstream={c.last_probe_error ? 'true' : undefined}>
+                    {c.last_probe_error || '—'}
+                  </div>
+                ),
+              },
+              { id: 'updated', header: t('table.updatedAt'), className: 'hidden text-xs text-subtle min-[1280px]:table-cell', sortKey: (c) => c.updated_at, cell: (c) => fmtTime(c.updated_at) },
+            ]}
+            rows={abnormal}
+            rowKey={(c) => c.id}
+            minWidth={620}
+            className="lg:min-w-0"
+          />
         </Card>
       )}
         </div>

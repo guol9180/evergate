@@ -2,7 +2,8 @@ import { type ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ChevronDown, ChevronUp, Download, Filter, RefreshCw, RotateCcw, ScrollText } from 'lucide-react'
 import { buildLogQuery, downloadAdminFile, useChannels, useLogModels, useLogs, useTokens } from '../api/hooks'
-import { Alert, Badge, Button, Card, ContentSwap, CopyButton, Disclosure, Drawer, Empty, Field, Input, LoadError, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch, Td, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ContentSwap, CopyButton, DataTable, DataTableColumnToggle, type DataTableColumn, Disclosure, Drawer, Empty, Field, Input, LoadError, PageHeader, Pagination, Select, SkeletonRows, StatusBadge, Switch } from '../components/ui'
+import type { ColumnVisibilityState } from '@tanstack/react-table'
 import { notify } from '../components/Toaster'
 import RetryTimeline, { lastAttempt } from '../components/RetryTimeline'
 import { PriceSourceBadge } from '../components/PriceTable'
@@ -64,6 +65,7 @@ export default function Logs() {
   const [exporting, setExporting] = useState(false)
   const [selected, setSelected] = useState<RequestLog | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({})
   const [refreshing, setRefreshing] = useState(false)
   const channels = useChannels()
   const tokens = useTokens()
@@ -121,6 +123,52 @@ export default function Logs() {
     }
   }
 
+  const columns: DataTableColumn<RequestLog>[] = [
+      { id: 'time', header: t('table.time'), className: 'whitespace-nowrap text-xs text-muted-foreground', sortKey: (l) => l.created_at, cell: (l) => fmtTime(l.created_at) },
+      {
+        id: 'model',
+        header: t('table.model'),
+        className: 'font-medium',
+        sortKey: (l) => l.model,
+        cell: (l) => (
+          <>
+            {l.model}
+            {l.original_model && l.original_model !== l.model && <Badge tone="warning" className="ml-2">{tf('logs.originalModel', { model: l.original_model })}</Badge>}
+            {l.source === 'playground' && <Badge tone="brand" className="ml-2">{t('log.source.playground')}</Badge>}
+          </>
+        ),
+      },
+      {
+        id: 'channel',
+        header: t('table.channel'),
+        className: 'hidden min-[1120px]:table-cell',
+        hideable: true,
+        // 失败请求没有「命中渠道」：列表直接给最后尝试的渠道，不必点开详情
+        cell: (l) => {
+          const last = l.status_code >= 400 ? lastAttempt(l.retry_trace) : null
+          return l.channel_name
+            ? <span className="text-muted-foreground">{l.channel_name}</span>
+            : last?.channel_name
+              ? <span className="inline-flex items-center gap-1 text-warning-text" title={t('logs.list.lastAttempt')}><RotateCcw size={12} aria-hidden="true" />{last.channel_name}</span>
+              : '—'
+        },
+      },
+      { id: 'status', header: t('table.status'), sortKey: (l) => l.status_code, cell: (l) => <span className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</span> },
+      { id: 'firstToken', header: t('table.firstToken'), className: 'hidden min-[1080px]:table-cell', hideable: true, sortKey: (l) => l.first_token_ms, cell: (l) => fmtMs(l.first_token_ms || undefined) },
+      { id: 'totalMs', header: t('table.totalMs'), sortKey: (l) => l.total_ms, cell: (l) => fmtMs(l.total_ms || undefined) },
+      { id: 'tokens', header: t('table.tokens'), headerTitle: t('table.tokensTitle'), className: 'text-xs text-muted-foreground', sortKey: (l) => l.total_tokens, cell: (l) => `${l.prompt_tokens}/${l.completion_tokens}` },
+      { id: 'cost', header: t('table.cost'), className: 'whitespace-nowrap text-xs', sortKey: (l) => l.cost_micros, cell: (l) => fmtRequestCost(l.cost_micros, l.cost_status) },
+      { id: 'token', header: t('table.token'), className: 'hidden text-xs text-muted-foreground min-[1180px]:table-cell', hideable: true, cell: (l) => l.token_name || '—' },
+      {
+        id: 'retry',
+        header: t('table.retry'),
+        className: 'hidden min-[1240px]:table-cell',
+        hideable: true,
+        sortKey: (l) => l.retry_trace?.length ?? 0,
+        cell: (l) => ((l.retry_trace?.length ?? 0) > 1 ? <Badge tone="warning">{tf('logs.retryCount', { n: l.retry_trace!.length })}</Badge> : '—'),
+      },
+  ]
+
   return (
     <div className="eg-page-stack">
       <PageHeader
@@ -128,6 +176,7 @@ export default function Logs() {
         description={t('page.logs.desc')}
         actions={(
           <>
+            <DataTableColumnToggle columns={columns} visibility={columnVisibility} onChange={setColumnVisibility} label={t('table.columns')} />
             <label htmlFor="logs-auto-refresh" className="flex h-9 cursor-pointer items-center gap-2 rounded-md border border-line-strong bg-surface px-2.5 text-xs text-foreground-soft transition-colors hover:bg-surface-soft" title={t('logs.autoRefreshHint')}>
               <Switch id="logs-auto-refresh" checked={autoRefresh} onChange={setAutoRefresh} label={t('logs.autoRefresh')} />
               {t('logs.autoRefresh')}
@@ -235,58 +284,18 @@ export default function Logs() {
               action={hasFilters ? <Button size="sm" variant="outline" onClick={reset}>{t('common.clearFilters')}</Button> : undefined}
             />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px]">
-                <thead className="border-b border-line-soft bg-surface-soft">
-                  <tr>
-                    <Th>{t('table.time')}</Th><Th>{t('table.model')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.channel')}</Th><Th>{t('table.status')}</Th>
-                    <Th className="hidden min-[1080px]:table-cell">{t('table.firstToken')}</Th><Th>{t('table.totalMs')}</Th><Th title={t('table.tokensTitle')}>{t('table.tokens')}</Th><Th>{t('table.cost')}</Th>
-                    <Th className="hidden min-[1180px]:table-cell">{t('table.token')}</Th><Th className="hidden min-[1240px]:table-cell">{t('table.retry')}</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line-soft">
-                  {logs.data?.items.map((l) => {
-                    // 失败请求没有「命中渠道」：列表直接给最后尝试的渠道，不必点开详情
-                    const last = l.status_code >= 400 ? lastAttempt(l.retry_trace) : null
-                    return (
-                      <tr
-                        key={l.id}
-                        tabIndex={0}
-                        aria-haspopup="dialog"
-                        className={`cursor-pointer outline-none hover:bg-surface-soft focus-visible:bg-brand-subtle ${selected?.id === l.id ? 'bg-brand-subtle' : ''}`}
-                        onClick={() => setSelected(l)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(l) } }}
-                      >
-                        <Td className="whitespace-nowrap text-xs text-muted-foreground">{fmtTime(l.created_at)}</Td>
-                        <Td className="font-medium">
-                          {l.model}
-                          {l.original_model && l.original_model !== l.model && (
-                            <Badge tone="warning" className="ml-2">{tf('logs.originalModel', { model: l.original_model })}</Badge>
-                          )}
-                          {l.source === 'playground' && <Badge tone="brand" className="ml-2">{t('log.source.playground')}</Badge>}
-                        </Td>
-                        <Td className="hidden min-[1120px]:table-cell">
-                          {l.channel_name ? (
-                            <span className="text-muted-foreground">{l.channel_name}</span>
-                          ) : last?.channel_name ? (
-                            <span className="inline-flex items-center gap-1 text-warning-text" title={t('logs.list.lastAttempt')}>
-                              <RotateCcw size={12} aria-hidden="true" />{last.channel_name}
-                            </span>
-                          ) : '—'}
-                        </Td>
-                        <Td><span className={`font-semibold ${statusTone(l.status_code)}`}>{l.status_code}</span></Td>
-                        <Td className="hidden min-[1080px]:table-cell">{fmtMs(l.first_token_ms || undefined)}</Td>
-                        <Td>{fmtMs(l.total_ms || undefined)}</Td>
-                        <Td className="text-xs text-muted-foreground">{l.prompt_tokens}/{l.completion_tokens}</Td>
-                        <Td className="whitespace-nowrap text-xs">{fmtRequestCost(l.cost_micros, l.cost_status)}</Td>
-                        <Td className="hidden text-xs text-muted-foreground min-[1180px]:table-cell">{l.token_name || '—'}</Td>
-                        <Td className="hidden min-[1240px]:table-cell">{(l.retry_trace?.length ?? 0) > 1 ? <Badge tone="warning">{tf('logs.retryCount', { n: l.retry_trace!.length })}</Badge> : '—'}</Td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable
+              columns={columns}
+              rows={logs.data?.items ?? []}
+              rowKey={(l) => l.id}
+              minWidth={720}
+              onRowClick={setSelected}
+              rowProps={() => ({ 'aria-haspopup': 'dialog' })}
+              rowClassName={(l) => (selected?.id === l.id ? 'bg-brand-subtle' : '')}
+              columnVisibility={columnVisibility}
+              onColumnVisibilityChange={setColumnVisibility}
+              scrollToTopOn={page}
+            />
           )}
         </ContentSwap>
         <Pagination

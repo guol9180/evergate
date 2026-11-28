@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { DatabaseBackup, Download, Trash2, Upload } from 'lucide-react'
 import { downloadAdminFile, useBackups, useCreateBackup, useDeleteBackup, useRestoreBackup } from '../api/hooks'
-import { Alert, Button, Card, ConfirmDialog, Empty, ErrorText, IconButton, SkeletonRows, Td, Th } from './ui'
+import { Alert, Button, Card, ConfirmDialog, DataTable, type DataTableColumn, Empty, ErrorText, IconButton, SkeletonRows } from './ui'
+import type { BackupInfo } from '../api/types'
 import { notify } from './Toaster'
 import { fmtBytes, fmtTime } from '../lib/format'
 import { t, tf } from '../lib/i18n'
@@ -23,13 +24,13 @@ export default function BackupCard() {
     onSuccess: (resp) => notify.success(tf('backups.created', { name: resp.name })),
     onError: (err) => setError(errorMessage(err)),
   })
-  const onDownload = async (name: string) => {
+  const onDownload = useCallback(async (name: string) => {
     try {
       await downloadAdminFile(`/admin/api/backups/${encodeURIComponent(name)}`, name)
     } catch (err) {
       notify.error(err, t('backups.downloadFailed'))
     }
-  }
+  }, [])
   const onPickFile = (file: File | undefined) => {
     if (fileRef.current) fileRef.current.value = ''
     if (!file) return
@@ -48,6 +49,36 @@ export default function BackupCard() {
   }
 
   const items = backups.data?.items ?? []
+  const columns: DataTableColumn<BackupInfo>[] = [
+      {
+        id: 'time',
+        header: t('backups.col.time'),
+        sortKey: (item) => item.time,
+        cell: (item) => (
+          <>
+            <div className="text-xs">{fmtTime(item.time)}</div>
+            <div className="font-mono text-[11px] text-subtle">{item.name}</div>
+          </>
+        ),
+      },
+      { id: 'size', header: t('backups.col.size'), className: 'text-xs text-muted-foreground', sortKey: (item) => item.size, cell: (item) => fmtBytes(item.size) },
+      { id: 'version', header: t('backups.col.version'), className: 'text-xs text-muted-foreground', sortKey: (item) => item.version, cell: (item) => item.version || '—' },
+      {
+        id: 'actions',
+        header: <span className="block pr-2.5 text-right">{t('table.actions')}</span>,
+        headerClassName: 'w-24',
+        cell: (item) => (
+          <div className="flex justify-end gap-1">
+            <IconButton label={t('backups.download')} side="top" onClick={() => void onDownload(item.name)}>
+              <Download size={13} />
+            </IconButton>
+            <IconButton label={t('backups.delete')} side="top" danger onClick={() => setDeleteTarget(item.name)}>
+              <Trash2 size={13} />
+            </IconButton>
+          </div>
+        ),
+      },
+  ]
   const pending = backups.data?.restart_pending ?? false
 
   return (
@@ -94,40 +125,7 @@ export default function BackupCard() {
           hint={backups.data?.dir}
         />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[560px]">
-            <thead className="border-b border-line-soft bg-surface-soft">
-              <tr>
-                <Th>{t('backups.col.time')}</Th>
-                <Th>{t('backups.col.size')}</Th>
-                <Th>{t('backups.col.version')}</Th>
-                <Th className="w-24"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-soft">
-              {items.map((item) => (
-                <tr key={item.name} className="hover:bg-surface-soft">
-                  <Td>
-                    <div className="text-xs">{fmtTime(item.time)}</div>
-                    <div className="font-mono text-[11px] text-subtle">{item.name}</div>
-                  </Td>
-                  <Td className="text-xs text-muted-foreground">{fmtBytes(item.size)}</Td>
-                  <Td className="text-xs text-muted-foreground">{item.version || '—'}</Td>
-                  <Td>
-                    <div className="flex justify-end gap-1">
-                      <IconButton label={t('backups.download')} side="top" onClick={() => void onDownload(item.name)}>
-                        <Download size={13} />
-                      </IconButton>
-                      <IconButton label={t('backups.delete')} side="top" danger onClick={() => setDeleteTarget(item.name)}>
-                        <Trash2 size={13} />
-                      </IconButton>
-                    </div>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={columns} rows={items} rowKey={(item) => item.name} minWidth={560} />
       )}
       {backups.data?.dir && items.length > 0 && (
         <div className="mt-3 break-all text-[11px] text-subtle">{tf('backups.dir', { dir: backups.data.dir })}</div>

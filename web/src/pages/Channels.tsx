@@ -4,10 +4,11 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { AlertTriangle, ChevronDown, ChevronRight, Pencil, Plug, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useBatchAddKeys, useChannel, useChannels, useDeleteChannel, useDeleteKey, usePreviewChannelModels, useSaveChannel, useSyncChannelCatalog, useTestChannel, useToggleChannel, useUpdateKey, useUpsertPriceOverride, useUsagePrices } from '../api/hooks'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, Dialog, Empty, ErrorText, Field, IconButton, Input, LoadError, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Td, Textarea, Th, Tooltip } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, DataTable, DataTableColumnToggle, type DataTableColumn, Dialog, Empty, ErrorText, Field, IconButton, Input, LoadError, PageHeader, Select, SettingRow, SkeletonRows, Spinner, StatusBadge, Switch, Textarea, Tooltip } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
-import type { Channel, ChannelCatalogDiff, ChannelTimeouts, EffectivePrice } from '../api/types'
+import type { Channel, ChannelCatalogDiff, ChannelDetail, ChannelTimeouts, EffectivePrice, TestResult } from '../api/types'
+import type { ColumnVisibilityState } from '@tanstack/react-table'
 import { CHANNEL_PRESETS, CUSTOM_CHANNEL_PRESET, findChannelPreset, uniquePresetName } from '../lib/channelPresets'
 import { channelStateTone, fmtInt, fmtMs, fmtTime, formatRemainingSeconds, keyImportMessage, stateLabel, statusRank } from '../lib/format'
 import { applyModelSelection } from '../lib/modelSelection'
@@ -29,6 +30,147 @@ export default function Channels() {
   const [deleteTarget, setDeleteTarget] = useState<Channel | null>(null)
   const [deleteKeyTarget, setDeleteKeyTarget] = useState<{ id: number; channelId: number; label: string } | null>(null)
   const [showTestAll, setShowTestAll] = useState(false)
+  const toggle = useToggleChannel()
+  const test = useTestChannel()
+  const syncCatalog = useSyncChannelCatalog()
+  // 每个渠道记住最近一次手动测试结果（单个 mutation 实例按 id 归档），不同行互不覆盖
+  const [testResults, setTestResults] = useState<Record<number, TestResult>>({})
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibilityState>({})
+  const columns: DataTableColumn<Channel>[] = [
+      {
+        id: 'expand',
+        header: '',
+        headerClassName: 'w-8',
+        cell: (c) => (
+          <IconButton label={expanded === c.id ? t('channels.collapseKeys') : t('channels.expandKeys')} onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
+            {expanded === c.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </IconButton>
+        ),
+      },
+      { id: 'name', header: t('table.name'), className: 'max-w-[156px] font-medium', sortKey: (c) => c.name, cell: (c) => <span className="block truncate" title={c.name}>{c.name}</span> },
+      {
+        id: 'status',
+        header: t('table.status'),
+        sortKey: (c) => statusRank(c.status),
+        cell: (c) => {
+          // 从未探测过的新渠道不能显示"正常"：状态列只反映健康度，探测前如实标注"未探测"
+          const untested = !c.last_probe_at && c.status === 'active'
+          const result = testResults[c.id]
+          return (
+            <div className="flex flex-col items-start gap-1">
+              <StatusBadge tone={untested ? 'neutral' : channelStateTone(c.status)}>
+                <span title={c.last_probe_error || undefined}>{untested ? t('common.notProbed') : stateLabel(c.status)}</span>
+              </StatusBadge>
+              {result && (
+                <Badge compact tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'} className="cursor-help" title={result.error || result.error_type || undefined}>
+                  {result.result === 'success' ? tf('channels.test.success', { ms: result.latency_ms }) : result.result === 'inconclusive' ? t('channels.test.inconclusive') : t('channels.test.failed')}
+                </Badge>
+              )}
+            </div>
+          )
+        },
+      },
+      {
+        id: 'type',
+        header: t('table.type'),
+        className: 'hidden min-[1120px]:table-cell',
+        hideable: true,
+        sortKey: (c) => c.type,
+        cell: (c) => (
+          <div className="flex flex-col gap-1">
+            <span className="inline-block max-w-[96px] truncate text-muted-foreground" title={c.type}>{c.type}</span>
+            {(c.supports_responses || c.supports_anthropic || c.supports_gemini) && (
+              <div className="flex items-center gap-1 whitespace-nowrap">
+                {c.supports_responses && <Badge compact tone="info">Responses</Badge>}
+                {c.supports_anthropic && <Badge compact tone="brand">Messages</Badge>}
+                {c.supports_gemini && <Badge compact tone="success">Gemini</Badge>}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      { id: 'priority', header: t('table.priority'), className: 'hidden min-[1180px]:table-cell', hideable: true, sortKey: (c) => c.priority, cell: (c) => c.priority },
+      { id: 'weight', header: t('table.weight'), className: 'hidden min-[1220px]:table-cell', hideable: true, sortKey: (c) => c.weight, cell: (c) => c.weight },
+      {
+        id: 'models',
+        header: t('table.model'),
+        sortKey: (c) => (c.models || []).length,
+        cell: (c) => {
+          const drift = catalogDrift(c.catalog_diff)
+          return (
+            <div>
+              {(c.models || []).length}
+              {drift && (
+                <Tooltip side="top" content={<CatalogDriftDetail diff={c.catalog_diff} />}>
+                  <Badge compact tone="warning" className="mt-1 cursor-help" data-catalog-drift="true">
+                    <AlertTriangle size={11} /> {driftLabel(drift)}
+                  </Badge>
+                </Tooltip>
+              )}
+            </div>
+          )
+        },
+      },
+      {
+        id: 'keys',
+        header: t('table.keys'),
+        sortKey: (c) => c.available_key_count,
+        cell: (c) => (
+          <>
+            <span className="font-medium">{c.available_key_count}</span>
+            <span className="text-subtle"> / {c.key_count}</span>
+          </>
+        ),
+      },
+      {
+        id: 'lastProbe',
+        header: t('table.lastProbe'),
+        className: 'hidden max-w-44 min-[1360px]:table-cell',
+        hideable: true,
+        sortKey: (c) => c.last_probe_at ?? '',
+        cell: (c) => (
+          <div className="text-xs text-muted-foreground">
+            {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
+            {c.last_probe_error && <div className="truncate text-xs text-subtle" title={c.last_probe_error} data-upstream="true">{c.last_probe_error}</div>}
+          </div>
+        ),
+      },
+      {
+        id: 'enabled',
+        header: t('table.enabled'),
+        cell: (c) => (
+          <Switch checked={c.enabled} disabled={toggle.isPending && toggle.variables?.id === c.id} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={tf('channels.enableAria', { name: c.name })} />
+        ),
+      },
+      {
+        id: 'actions',
+        header: <span className="block pr-2.5 text-right">{t('table.actions')}</span>,
+        headerClassName: 'w-40',
+        cell: (c) => (
+          <div className="flex justify-end gap-1 whitespace-nowrap">
+            <IconButton variant="outline" label={tf('channels.testAria', { name: c.name })} loading={test.isPending && test.variables === c.id} onClick={() => test.mutate(c.id, { onSuccess: (result) => setTestResults((prev) => ({ ...prev, [c.id]: result })) })}>
+              <Plug size={13} />
+            </IconButton>
+            <IconButton
+              variant="outline"
+              label={tf('channels.catalog.syncAria', { name: c.name })}
+              loading={syncCatalog.isPending && syncCatalog.variables === c.id}
+              onClick={() => syncCatalog.mutate(c.id, {
+                onSuccess: ({ catalog_diff }) => {
+                  const d = catalogDrift(catalog_diff)
+                  if (!d) notify.success(t('channels.catalog.upToDate'))
+                  else notify.info(tf('channels.catalog.synced', { added: d.added, removed: d.removed }))
+                },
+              })}
+            >
+              <RefreshCw size={13} />
+            </IconButton>
+            <IconButton label={tf('channels.editAria', { name: c.name })} onClick={() => setEditing(c)}><Pencil size={13} /></IconButton>
+            <IconButton label={tf('channels.deleteAria', { name: c.name })} danger onClick={() => setDeleteTarget(c)}><Trash2 size={13} /></IconButton>
+          </div>
+        ),
+      },
+  ]
 
   const items = [...(channels.data?.items ?? [])].sort((a, b) => statusRank(a.status) - statusRank(b.status) || a.priority - b.priority || a.id - b.id)
 
@@ -39,6 +181,7 @@ export default function Channels() {
         description={t('page.channels.desc')}
         actions={(
           <>
+            <DataTableColumnToggle columns={columns} visibility={columnVisibility} onChange={setColumnVisibility} label={t('table.columns')} />
             {/* 与「新建渠道」同尺寸：同一操作行里的按钮高度必须一致 */}
             <Button variant={showTestAll ? 'default' : 'outline'} onClick={() => setShowTestAll((v) => !v)} aria-pressed={showTestAll}>
               <Plug size={14} /> {t('common.testAll')}
@@ -61,30 +204,7 @@ export default function Channels() {
               action={<Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> {t('page.channels.create')}</Button>}
             />
           ) : (
-            <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] lg:min-w-0">
-              <thead className="border-b border-line-soft bg-surface-soft">
-                <tr>
-          <Th className="w-8" /><Th>{t('table.name')}</Th><Th>{t('table.status')}</Th><Th className="hidden min-[1120px]:table-cell">{t('table.type')}</Th>
-          <Th className="hidden min-[1180px]:table-cell">{t('table.priority')}</Th><Th className="hidden min-[1220px]:table-cell">{t('table.weight')}</Th>
-          <Th>{t('table.model')}</Th><Th>{t('table.keys')}</Th><Th className="hidden min-[1360px]:table-cell">{t('table.lastProbe')}</Th>
-          <Th>{t('table.enabled')}</Th><Th className="w-40"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-soft">
-                {items.map((c) => (
-                  <ChannelRow
-                    key={c.id}
-                    channel={c}
-                    expanded={expanded === c.id}
-                    onToggleExpand={() => setExpanded(expanded === c.id ? null : c.id)}
-                    onEdit={() => setEditing(c)}
-                    onDelete={() => setDeleteTarget(c)}
-                  />
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <DataTable columns={columns} rows={items} rowKey={(c) => c.id} minWidth={720} className="lg:min-w-0" columnVisibility={columnVisibility} onColumnVisibilityChange={setColumnVisibility} />
           )}
         </ContentSwap>
       </Card>
@@ -129,113 +249,6 @@ export default function Channels() {
         onCancel={() => setDeleteKeyTarget(null)}
       />
     </div>
-  )
-}
-
-function ChannelRow({ channel: c, expanded, onToggleExpand, onEdit, onDelete }: { channel: Channel; expanded: boolean; onToggleExpand: () => void; onEdit: () => void; onDelete: () => void }) {
-  const toggle = useToggleChannel()
-  const test = useTestChannel()
-  const syncCatalog = useSyncChannelCatalog()
-  const result = test.data && test.variables === c.id ? test.data : null
-  const drift = catalogDrift(c.catalog_diff)
-  // 从未探测过的新渠道不能显示"正常"：状态列只反映健康度，探测前如实标注"未探测"
-  const untested = !c.last_probe_at && c.status === 'active'
-
-  return (
-    <>
-      <tr className="hover:bg-surface-soft">
-        <Td>
-          <IconButton label={expanded ? t('channels.collapseKeys') : t('channels.expandKeys')} onClick={onToggleExpand}>
-            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </IconButton>
-        </Td>
-        <Td className="max-w-[156px] font-medium"><span className="block truncate" title={c.name}>{c.name}</span></Td>
-        <Td>
-          <div className="flex flex-col items-start gap-1">
-            <StatusBadge tone={untested ? 'neutral' : channelStateTone(c.status)}>
-              <span title={c.last_probe_error || undefined}>{untested ? t('common.notProbed') : stateLabel(c.status)}</span>
-            </StatusBadge>
-            {result && (
-              <Badge
-                compact
-                tone={result.result === 'success' ? 'success' : result.result === 'inconclusive' ? 'neutral' : 'danger'}
-                className="cursor-help"
-                title={result.error || result.error_type || undefined}
-              >
-                {result.result === 'success' ? tf('channels.test.success', { ms: result.latency_ms }) : result.result === 'inconclusive' ? t('channels.test.inconclusive') : t('channels.test.failed')}
-              </Badge>
-            )}
-          </div>
-        </Td>
-        <Td className="hidden min-[1120px]:table-cell">
-          <div className="flex flex-col gap-1">
-            <span className="inline-block max-w-[96px] truncate text-muted-foreground" title={c.type}>{c.type}</span>
-            {(c.supports_responses || c.supports_anthropic || c.supports_gemini) && (
-              <div className="flex items-center gap-1 whitespace-nowrap">
-                {c.supports_responses && <Badge compact tone="info">Responses</Badge>}
-                {c.supports_anthropic && <Badge compact tone="brand">Messages</Badge>}
-                {c.supports_gemini && <Badge compact tone="success">Gemini</Badge>}
-              </div>
-            )}
-          </div>
-        </Td>
-        <Td className="hidden min-[1180px]:table-cell">{c.priority}</Td>
-        <Td className="hidden min-[1220px]:table-cell">{c.weight}</Td>
-        <Td>
-          <div>{(c.models || []).length}</div>
-          {drift && (
-            <Tooltip side="top" content={<CatalogDriftDetail diff={c.catalog_diff} />}>
-              <Badge compact tone="warning" className="mt-1 cursor-help" data-catalog-drift="true">
-                <AlertTriangle size={11} /> {driftLabel(drift)}
-              </Badge>
-            </Tooltip>
-          )}
-        </Td>
-        <Td>
-          <span className="font-medium">{c.available_key_count}</span>
-          <span className="text-subtle"> / {c.key_count}</span>
-        </Td>
-        <Td className="hidden max-w-44 min-[1360px]:table-cell">
-          <div className="text-xs text-muted-foreground">
-          {c.last_probe_at ? `${fmtTime(c.last_probe_at)} · ${fmtMs(c.last_probe_latency_ms)}` : t('common.notProbed')}
-          </div>
-          {c.last_probe_error && (
-            <div className="truncate text-xs text-subtle" title={c.last_probe_error} data-upstream="true">{c.last_probe_error}</div>
-          )}
-        </Td>
-        <Td>
-          <Switch checked={c.enabled} disabled={toggle.isPending && toggle.variables?.id === c.id} onChange={(enabled) => toggle.mutate({ id: c.id, enabled })} label={tf('channels.enableAria', { name: c.name })} />
-        </Td>
-        <Td>
-          <div className="flex justify-end gap-1 whitespace-nowrap">
-            <IconButton
-              variant="outline"
-              label={tf('channels.testAria', { name: c.name })}
-              loading={test.isPending && test.variables === c.id}
-              onClick={() => test.mutate(c.id)}
-            >
-              <Plug size={13} />
-            </IconButton>
-            <IconButton
-              variant="outline"
-              label={tf('channels.catalog.syncAria', { name: c.name })}
-              loading={syncCatalog.isPending && syncCatalog.variables === c.id}
-              onClick={() => syncCatalog.mutate(c.id, {
-                onSuccess: ({ catalog_diff }) => {
-                  const d = catalogDrift(catalog_diff)
-                  if (!d) notify.success(t('channels.catalog.upToDate'))
-                  else notify.info(tf('channels.catalog.synced', { added: d.added, removed: d.removed }))
-                },
-              })}
-            >
-              <RefreshCw size={13} />
-            </IconButton>
-            <IconButton label={tf('channels.editAria', { name: c.name })} onClick={onEdit}><Pencil size={13} /></IconButton>
-            <IconButton label={tf('channels.deleteAria', { name: c.name })} danger onClick={onDelete}><Trash2 size={13} /></IconButton>
-          </div>
-        </Td>
-      </tr>
-    </>
   )
 }
 
@@ -286,6 +299,62 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
   const addKeys = useBatchAddKeys()
   const updateKey = useUpdateKey()
   const [keysText, setKeysText] = useState('')
+  type ChannelKey = ChannelDetail['keys'][number]
+  const columns: DataTableColumn<ChannelKey>[] = [
+      { id: 'index', header: '#', cell: (_k, i) => <span className="text-subtle">{i + 1}</span> },
+      {
+        id: 'state',
+        header: t('table.status'),
+        // 冷却到期后状态要等下次调度才切回，这里按实时剩余时间判断：已到期就按"正常"展示
+        cell: (k) => {
+          const shownState = k.state === 'cooldown' && k.cooldown_remaining_sec <= 0 ? 'active' : k.state
+          return <StatusBadge tone={channelStateTone(shownState)}>{stateLabel(shownState)}</StatusBadge>
+        },
+      },
+      { id: 'weight', header: t('table.weight'), sortKey: (k) => k.weight, cell: (k) => k.weight },
+      { id: 'fails', header: t('table.consecutiveFails'), sortKey: (k) => k.consecutive_fails, cell: (k) => <span className={k.consecutive_fails > 0 ? 'text-warning-text font-medium' : ''}>{k.consecutive_fails}</span> },
+      { id: 'level', header: t('table.backoffLevel'), className: 'hidden min-[1180px]:table-cell', sortKey: (k) => k.level, cell: (k) => `L${k.level}` },
+      {
+        id: 'cooldown',
+        header: t('table.cooldownRemaining'),
+        sortKey: (k) => k.cooldown_remaining_sec,
+        cell: (k) => (k.state === 'cooldown' && k.cooldown_remaining_sec > 0 ? <span className="text-warning-text">{formatRemainingSeconds(k.cooldown_remaining_sec)}</span> : '—'),
+      },
+      { id: 'counts', header: t('table.successFail'), className: 'hidden text-xs text-muted-foreground min-[1220px]:table-cell', cell: (k) => `${k.success_count}/${k.fail_count}` },
+      {
+        id: 'rpm',
+        header: t('channels.keys.rpm'),
+        className: 'hidden min-[1260px]:table-cell',
+        cell: (k, i) => (
+          <KeyRpmInput
+            value={k.rpm_limit}
+            disabled={updateKey.isPending && updateKey.variables?.id === k.id}
+            label={tf('channels.keys.rpmAria', { n: i + 1 })}
+            onCommit={(rpm_limit) => updateKey.mutate({ id: k.id, rpm_limit })}
+          />
+        ),
+      },
+      { id: 'lastError', header: t('table.lastError'), className: 'hidden max-w-48 text-xs text-subtle min-[1360px]:table-cell', cell: (k) => <span className="block truncate" title={k.last_error}>{k.last_error || '—'}</span> },
+      {
+        id: 'enabled',
+        header: t('table.enabled'),
+        cell: (k, i) => (
+          <Switch checked={k.enabled} disabled={updateKey.isPending && updateKey.variables?.id === k.id} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
+        ),
+      },
+      {
+        id: 'actions',
+        header: <span className="block pr-2.5 text-right">{t('table.actions')}</span>,
+        headerClassName: 'w-16',
+        cell: (k, i) => (
+          <div className="flex justify-end">
+            <IconButton label={tf('channels.deleteKeyAria', { n: i + 1 })} danger onClick={() => onDeleteKey(k.id, tf('channels.deleteKeyLabel', { n: i + 1 }))}>
+              <Trash2 size={13} />
+            </IconButton>
+          </div>
+        ),
+      },
+  ]
 
   if (detail.isPending) return <Card className="eg-card-fluid"><SkeletonRows rows={3} /></Card>
   if (detail.isError) return <Card className="p-4"><ErrorText>{errorMessage(detail.error)}</ErrorText></Card>
@@ -293,57 +362,7 @@ function KeysPanel({ channelId, onDeleteKey }: { channelId: number; onDeleteKey:
   return (
     <Card className="eg-expand-in">
       <h3 className="mb-3 text-sm font-semibold">{tf('channels.keys.title', { name: detail.data.channel.name })}</h3>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[700px] lg:min-w-0">
-          <thead className="border-b border-line-soft bg-surface-soft">
-            <tr>
-              <Th>#</Th><Th>{t('table.status')}</Th><Th>{t('table.weight')}</Th><Th>{t('table.consecutiveFails')}</Th>
-              <Th className="hidden min-[1180px]:table-cell">{t('table.backoffLevel')}</Th><Th>{t('table.cooldownRemaining')}</Th>
-                  <Th className="hidden min-[1220px]:table-cell">{t('table.successFail')}</Th><Th className="hidden min-[1260px]:table-cell">{t('channels.keys.rpm')}</Th><Th className="hidden min-[1360px]:table-cell">{t('table.lastError')}</Th>
-              <Th>{t('table.enabled')}</Th><Th className="w-16"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line-soft">
-            {detail.data.keys.map((k, i) => {
-              // 冷却到期后状态要等下次调度才切回，这里按实时剩余时间判断：已到期就按"正常"展示
-              const cooling = k.state === 'cooldown' && k.cooldown_remaining_sec > 0
-              const shownState = k.state === 'cooldown' && !cooling ? 'active' : k.state
-              return (
-                <tr key={k.id}>
-                  <Td className="text-subtle">{i + 1}</Td>
-                  <Td>
-                    <StatusBadge tone={channelStateTone(shownState)}>{stateLabel(shownState)}</StatusBadge>
-                  </Td>
-                  <Td>{k.weight}</Td>
-                  <Td className={k.consecutive_fails > 0 ? 'text-warning-text font-medium' : ''}>{k.consecutive_fails}</Td>
-                  <Td className="hidden min-[1180px]:table-cell">L{k.level}</Td>
-                  <Td>{cooling ? <span className="text-warning-text">{formatRemainingSeconds(k.cooldown_remaining_sec)}</span> : '—'}</Td>
-                  <Td className="hidden text-xs text-muted-foreground min-[1220px]:table-cell">{k.success_count}/{k.fail_count}</Td>
-                  <Td className="hidden min-[1260px]:table-cell">
-                    <KeyRpmInput
-                      value={k.rpm_limit}
-                      disabled={updateKey.isPending && updateKey.variables?.id === k.id}
-                      label={tf('channels.keys.rpmAria', { n: i + 1 })}
-                      onCommit={(rpm_limit) => updateKey.mutate({ id: k.id, rpm_limit })}
-                    />
-                  </Td>
-                  <Td className="hidden max-w-48 truncate text-xs text-subtle min-[1360px]:table-cell" title={k.last_error}>{k.last_error || '—'}</Td>
-                  <Td>
-                  <Switch checked={k.enabled} disabled={updateKey.isPending && updateKey.variables?.id === k.id} onChange={(enabled) => updateKey.mutate({ id: k.id, enabled })} label={tf('channels.enableKeyAria', { n: i + 1 })} />
-                  </Td>
-                  <Td>
-                    <div className="flex justify-end">
-                      <IconButton label={tf('channels.deleteKeyAria', { n: i + 1 })} danger onClick={() => onDeleteKey(k.id, tf('channels.deleteKeyLabel', { n: i + 1 }))}>
-                        <Trash2 size={13} />
-                      </IconButton>
-                    </div>
-                  </Td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <DataTable columns={columns} rows={detail.data.keys} rowKey={(k) => k.id} minWidth={700} className="lg:min-w-0" />
       <div className="mt-4 rounded-lg border border-dashed border-line-strong p-3">
         <div className="mb-2 text-xs font-medium text-muted-foreground">{t('channels.import.title')}</div>
         <Textarea rows={3} value={keysText} onChange={(e) => setKeysText(e.target.value)} placeholder={'sk-xxxxxxx\nsk-yyyyyyy'} />

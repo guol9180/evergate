@@ -1,12 +1,10 @@
 // 全站 UI 原语唯一入口（barrel）：shadcn/ui（Radix 变体）的实现放在 components/ui/，这里保留项目特有的组合组件。
 // 颜色一律走 index.css 语义 token（T76），禁止在此出现调色板类名。
 import {
-  createContext,
   forwardRef,
   type ReactNode,
   cloneElement,
   isValidElement,
-  useContext,
   useEffect,
   useId,
   useRef,
@@ -32,7 +30,9 @@ import { Progress as ProgressPrimitive } from './ui/progress'
 import { Separator } from './ui/separator'
 import { Skeleton as SkeletonPrimitive } from './ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
-import { Tooltip as TooltipPrimitive, TooltipContent, TooltipProvider as TooltipProviderPrimitive, TooltipTrigger } from './ui/tooltip'
+import { TooltipProvider as TooltipRootProvider, TooltipWrap } from './ui/tooltip'
+import { Th, Td } from './ui/table-cells'
+import { DataTable, DataTableColumnToggle, type DataTableColumn, type DataTableProps } from './ui/data-table'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 
 export type { Tone }
@@ -57,6 +57,9 @@ export { Kbd, KbdGroup }
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger }
 export { Separator }
 export { Tabs, TabsContent, TabsList, TabsTrigger }
+export { Th, Td }
+export { DataTable, DataTableColumnToggle }
+export type { DataTableColumn, DataTableProps }
 
 // 控件带 aria-invalid 时由 Field 置为出错态：红边 + 红色聚焦环，错误文字紧贴其下。
 const invalidRing = 'aria-invalid:border-danger-solid aria-invalid:focus:border-danger-solid aria-invalid:focus:ring-danger-subtle'
@@ -166,35 +169,10 @@ export function Checkbox({ className = '', ...props }: React.ComponentProps<type
   )
 }
 
-/** 根部是否已挂 TooltipProvider：有则共用一份延迟配置，没有（测试 / 独立渲染）就地补一个。 */
-const TooltipRootContext = createContext(false)
-
 /** 应用根部的 Tooltip Provider（main.tsx 挂一次），统一延迟与跳过重叠交互的设置。 */
-export function TooltipProvider({ children, delayDuration = 200 }: { children: ReactNode; delayDuration?: number }) {
-  return (
-    <TooltipRootContext.Provider value>
-      <TooltipProviderPrimitive delayDuration={delayDuration}>{children}</TooltipProviderPrimitive>
-    </TooltipRootContext.Provider>
-  )
-}
-
-/**
- * 控件说明 tooltip（shadcn/Radix）：图标按钮 / 侧栏按钮统一走这里；数据截断预览仍用原生 title。
- * 无 content 时直接透传 children；根部没挂 Provider 时就地补一个，页面与测试都不必关心装配。
- */
-export function Tooltip({ content, side = 'top', children, className }: { content?: ReactNode; side?: 'top' | 'right' | 'bottom' | 'left'; children: ReactNode; className?: string }) {
-  const hasRootProvider = useContext(TooltipRootContext)
-  if (!content) return <>{children}</>
-  const tree = (
-    <TooltipPrimitive>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side} sideOffset={6} className={cn('eg-tooltip', className)}>
-        {content}
-      </TooltipContent>
-    </TooltipPrimitive>
-  )
-  return hasRootProvider ? tree : <TooltipProvider>{tree}</TooltipProvider>
-}
+const Tooltip = TooltipWrap
+const TooltipProvider = TooltipRootProvider
+export { Tooltip, TooltipProvider }
 
 /** 图标按钮：Button + Tooltip + aria-label 只在这里组合；表格行操作 / 分页箭头 / 侧栏共用。 */
 export function IconButton({ label, danger = false, side, variant = 'ghost', loading = false, size = 'icon-sm', className = '', children, ...props }: React.ComponentProps<'button'> & { label: string; danger?: boolean; side?: 'top' | 'right' | 'bottom' | 'left'; variant?: ButtonProps['variant']; loading?: boolean; size?: 'icon' | 'icon-sm' | 'icon-xs' }) {
@@ -743,14 +721,6 @@ export function ContentSwap({ loading, skeleton, children, className = '' }: { l
 export function ErrorText({ children }: { children?: ReactNode }) {
   if (!children) return null
   return <Alert tone="danger">{children}</Alert>
-}
-
-export function Th({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
-  return <th scope="col" title={title} className={`eg-cell-x eg-cell-y whitespace-nowrap text-left align-middle text-xs font-semibold uppercase tracking-wide text-muted-foreground ${className}`}>{children}</th>
-}
-
-export function Td({ children, className = '', title }: { children?: ReactNode; className?: string; title?: string }) {
-  return <td className={`eg-cell-x eg-cell-y align-middle text-sm text-foreground-soft ${className}`} title={title}>{children}</td>
 }
 
 /** 表格容器：窄屏卡片内横向滚动，禁止页面级横向溢出（AGENTS 管理台约束）。 */

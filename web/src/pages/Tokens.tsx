@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { KeyRound, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { useCreateToken, useDeleteToken, useModelCatalog, useTokens, useUpdateToken, type TokenGovernanceInput } from '../api/hooks'
 import type { Token } from '../api/types'
-import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, Dialog, Empty, Field, IconButton, Input, LoadError, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Td, Textarea, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, ConfirmDialog, ContentSwap, CopyButton, DataTable, type DataTableColumn, Dialog, Empty, Field, IconButton, Input, LoadError, PageHeader, SettingRow, SkeletonRows, StatusBadge, Switch, Textarea } from '../components/ui'
 import { notify } from '../components/Toaster'
 import ModelPicker from '../components/ModelPicker'
 import { fmtInt, fmtTime, tokenStatusLabel, tokenStatusTone } from '../lib/format'
@@ -72,6 +72,79 @@ export default function Tokens() {
   const [deleteTarget, setDeleteTarget] = useState<Token | null>(null)
   const update = useUpdateToken()
   const [editing, setEditing] = useState<Token | 'new' | null>(null)
+  const columns: DataTableColumn<Token>[] = [
+      { id: 'name', header: t('table.name'), cell: (tok) => <span className="font-medium">{tok.name}</span>, sortKey: (tok) => tok.name },
+      { id: 'status', header: t('table.status'), cell: (tok) => <StatusBadge tone={tokenStatusTone(tok.status)}>{tokenStatusLabel(tok.status)}</StatusBadge>, sortKey: (tok) => tok.status },
+      {
+        id: 'quota',
+        header: t('table.quota'),
+        sortKey: (tok) => tok.quota,
+        cell: (tok) =>
+          tok.quota > 0 ? (
+            <div>
+              <div>{fmtInt(tok.used_quota)} / {fmtInt(tok.quota)}</div>
+              <div className={`text-xs ${tok.remaining_quota === 0 ? 'text-danger-text' : 'text-subtle'}`}>
+                {tf('tokens.remaining', { quota: fmtInt(tok.remaining_quota) })}
+              </div>
+            </div>
+          ) : (
+            <span className="text-subtle">{t('tokens.unlimited')}</span>
+          ),
+      },
+      {
+        id: 'rateLimit',
+        header: t('table.rateLimit'),
+        className: 'hidden text-xs text-muted-foreground min-[1180px]:table-cell',
+        hideable: true,
+        cell: (tok) =>
+          tok.rpm_limit > 0 || tok.concurrency_limit > 0
+            ? tf('tokens.rateLimitSummary', {
+              rpm: tok.rpm_limit > 0 ? fmtInt(tok.rpm_limit) : '∞',
+              concurrency: tok.concurrency_limit > 0 ? fmtInt(tok.concurrency_limit) : '∞',
+            })
+            : <span className="text-subtle">{t('tokens.unlimited')}</span>,
+      },
+      {
+        id: 'models',
+        header: t('table.allowedModels'),
+        className: 'max-w-40 text-xs text-muted-foreground',
+        cell: (tok) => (
+          <>
+            <div className="truncate" title={(tok.allowed_models || []).join(', ')}>
+              {(tok.allowed_models || []).join(', ') || t('tokens.allModels')}
+            </div>
+            {tok.disable_fallback && <Badge tone="warning">{t('tokens.fallbackDisabled')}</Badge>}
+          </>
+        ),
+      },
+      {
+        id: 'ips',
+        header: t('table.allowedIPs'),
+        className: 'hidden max-w-40 text-xs text-muted-foreground min-[1320px]:table-cell',
+        hideable: true,
+        cell: (tok) => <div className="truncate" title={(tok.allowed_ips || []).join(', ')}>{(tok.allowed_ips || []).join(', ') || t('tokens.allIPs')}</div>,
+      },
+      { id: 'expires', header: t('table.expiresAt'), className: 'text-xs', cell: (tok) => fmtTime(tok.expired_at), sortKey: (tok) => tok.expired_at ?? '' },
+      { id: 'created', header: t('table.createdAt'), className: 'hidden text-xs text-subtle min-[1400px]:table-cell', cell: (tok) => fmtTime(tok.created_at), sortKey: (tok) => tok.created_at },
+      {
+        id: 'enabled',
+        header: t('table.enabled'),
+        cell: (tok) => (
+          <Switch checked={tok.enabled} disabled={update.isPending && update.variables?.id === tok.id} onChange={(enabled) => update.mutate({ id: tok.id, enabled })} label={tf('tokens.enableAria', { name: tok.name })} />
+        ),
+      },
+      {
+        id: 'actions',
+        header: <span className="block pr-2.5 text-right">{t('table.actions')}</span>,
+        headerClassName: 'w-24',
+        cell: (tok) => (
+          <div className="flex justify-end gap-1">
+            <IconButton label={tf('tokens.editAria', { name: tok.name })} onClick={() => setEditing(tok)}><Pencil size={13} /></IconButton>
+            <IconButton label={tf('tokens.deleteAria', { name: tok.name })} danger onClick={() => setDeleteTarget(tok)}><Trash2 size={13} /></IconButton>
+          </div>
+        ),
+      },
+  ]
 
   return (
     <div className="eg-page-stack">
@@ -92,67 +165,7 @@ export default function Tokens() {
               action={<Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> {t('page.tokens.create')}</Button>}
             />
           ) : (
-            <div className="overflow-x-auto">
-            <table className="w-full min-w-[700px] lg:min-w-0">
-              <thead className="border-b border-line-soft bg-surface-soft">
-                <tr>
-                  <Th>{t('table.name')}</Th><Th>{t('table.status')}</Th><Th>{t('table.quota')}</Th><Th className="hidden min-[1180px]:table-cell">{t('table.rateLimit')}</Th><Th>{t('table.allowedModels')}</Th><Th className="hidden min-[1320px]:table-cell">{t('table.allowedIPs')}</Th>
-                  <Th>{t('table.expiresAt')}</Th><Th className="hidden min-[1400px]:table-cell">{t('table.createdAt')}</Th><Th>{t('table.enabled')}</Th>
-                  <Th className="w-24"><span className="block pr-2.5 text-right">{t('table.actions')}</span></Th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-soft">
-                {tokens.data?.items.map((tok) => (
-                  <tr key={tok.id} className="hover:bg-surface-soft">
-                    <Td className="font-medium">{tok.name}</Td>
-        <Td><StatusBadge tone={tokenStatusTone(tok.status)}>{tokenStatusLabel(tok.status)}</StatusBadge></Td>
-                    <Td>
-                      {tok.quota > 0 ? (
-                        <div>
-                          <div>{fmtInt(tok.used_quota)} / {fmtInt(tok.quota)}</div>
-                          <div className={`text-xs ${tok.remaining_quota === 0 ? 'text-danger-text' : 'text-subtle'}`}>
-                            {tf('tokens.remaining', { quota: fmtInt(tok.remaining_quota) })}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-subtle">{t('tokens.unlimited')}</span>
-                      )}
-                    </Td>
-                    <Td className="hidden text-xs text-muted-foreground min-[1180px]:table-cell">
-                      {tok.rpm_limit > 0 || tok.concurrency_limit > 0
-                        ? tf('tokens.rateLimitSummary', {
-                          rpm: tok.rpm_limit > 0 ? fmtInt(tok.rpm_limit) : '∞',
-                          concurrency: tok.concurrency_limit > 0 ? fmtInt(tok.concurrency_limit) : '∞',
-                        })
-                        : <span className="text-subtle">{t('tokens.unlimited')}</span>}
-                    </Td>
-                    <Td className="max-w-40 text-xs text-muted-foreground">
-                      <div className="truncate" title={(tok.allowed_models || []).join(', ')}>
-                        {(tok.allowed_models || []).join(', ') || t('tokens.allModels')}
-                      </div>
-                      {tok.disable_fallback && <Badge tone="warning">{t('tokens.fallbackDisabled')}</Badge>}
-                    </Td>
-                    <Td className="hidden max-w-40 text-xs text-muted-foreground min-[1320px]:table-cell">
-                      <div className="truncate" title={(tok.allowed_ips || []).join(', ')}>
-                        {(tok.allowed_ips || []).join(', ') || t('tokens.allIPs')}
-                      </div>
-                    </Td>
-                    <Td className="text-xs">{fmtTime(tok.expired_at)}</Td>
-                    <Td className="hidden text-xs text-subtle min-[1400px]:table-cell">{fmtTime(tok.created_at)}</Td>
-                    <Td>
-            <Switch checked={tok.enabled} disabled={update.isPending && update.variables?.id === tok.id} onChange={(enabled) => update.mutate({ id: tok.id, enabled })} label={tf('tokens.enableAria', { name: tok.name })} />
-                    </Td>
-                    <Td>
-                      <div className="flex justify-end gap-1">
-                        <IconButton label={tf('tokens.editAria', { name: tok.name })} onClick={() => setEditing(tok)}><Pencil size={13} /></IconButton>
-                        <IconButton label={tf('tokens.deleteAria', { name: tok.name })} danger onClick={() => setDeleteTarget(tok)}><Trash2 size={13} /></IconButton>
-                      </div>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+                        <DataTable columns={columns} rows={tokens.data?.items ?? []} rowKey={(tok) => tok.id} minWidth={700} className="lg:min-w-0" />
           )}
         </ContentSwap>
       </Card>

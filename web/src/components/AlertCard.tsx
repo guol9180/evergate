@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { BellRing, Send } from 'lucide-react'
 import { useAlerts, useSaveAlerts, useTestAlert } from '../api/hooks'
-import type { AlertSetting } from '../api/types'
-import { Alert, Badge, Button, Card, Checkbox, Field, Input, Select, SettingRow, SkeletonRows, Td, Th } from './ui'
+import type { AlertRecord, AlertSetting } from '../api/types'
+import { Alert, Badge, Button, Card, Checkbox, DataTable, type DataTableColumn, Field, Input, Select, SettingRow, SkeletonRows } from './ui'
 import { notify } from './Toaster'
 import { fmtTime } from '../lib/format'
 import { t, type MessageKey } from '../lib/i18n'
@@ -33,6 +33,21 @@ export default function AlertCard() {
 
   const events = alerts.data?.events ?? []
   const records = alerts.data?.records ?? []
+  const columns: DataTableColumn<AlertRecord>[] = [
+    { id: 'time', header: t('alerts.record.time'), className: 'whitespace-nowrap text-xs text-subtle', sortKey: (record) => record.created_at, cell: (record) => fmtTime(record.created_at) },
+    { id: 'event', header: t('alerts.record.event'), className: 'text-xs', sortKey: (record) => record.event, cell: (record) => eventLabel(record.event) },
+    {
+      id: 'result',
+      header: t('alerts.record.result'),
+      sortKey: (record) => record.result,
+      cell: (record) => (
+        <Badge tone={record.result === 'failed' ? 'danger' : record.result === 'test' ? 'brand' : 'success'}>
+          {resultLabel(record.result)}
+        </Badge>
+      ),
+    },
+    { id: 'detail', header: t('alerts.record.detail'), className: 'max-w-72 text-xs text-muted-foreground', cell: (record) => <span className="block truncate" title={record.error || record.message}>{record.error || record.message || '—'}</span> },
+  ]
   const toggleEvent = (event: string) => {
     setDraft({
       ...draft,
@@ -107,31 +122,7 @@ export default function AlertCard() {
           {records.length === 0 ? (
             <p className="text-xs text-subtle">{t('alerts.recentEmpty')}</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px]">
-                <thead className="border-b border-line-soft bg-surface-soft">
-                  <tr>
-                    <Th>{t('alerts.record.time')}</Th><Th>{t('alerts.record.event')}</Th><Th>{t('alerts.record.result')}</Th><Th>{t('alerts.record.detail')}</Th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-line-soft">
-                  {records.map((record) => (
-                    <tr key={record.id}>
-                      <Td className="whitespace-nowrap text-xs text-subtle">{fmtTime(record.created_at)}</Td>
-                      <Td className="text-xs">{eventLabel(record.event)}</Td>
-                      <Td>
-                        <Badge tone={record.result === 'failed' ? 'danger' : record.result === 'test' ? 'brand' : 'success'}>
-                          {resultLabel(record.result)}
-                        </Badge>
-                      </Td>
-                      <Td className="max-w-72 truncate text-xs text-muted-foreground" title={record.error || record.message}>
-                        {record.error || record.message || '—'}
-                      </Td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DataTable columns={columns} rows={records} rowKey={(record) => record.id} minWidth={520} />
           )}
         </div>
       </div>

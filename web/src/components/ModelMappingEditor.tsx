@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
-import { Button, FieldError, IconButton, Input, Textarea } from './ui'
+import { Button, DataTable, FieldError, IconButton, Input, Textarea } from './ui'
 import { t, tf } from '../lib/i18n'
 import { errorMessage } from '../lib/errors'
 
@@ -88,52 +88,61 @@ export default function ModelMappingEditor({ value, onChange }: { value: Mapping
       </div>
       {mode === 'table' ? (
         <>
-          <div className="overflow-x-auto rounded-lg border border-line">
-            <table className="w-full min-w-[420px] text-sm">
-              <thead className="bg-surface-soft">
-                <tr>
-                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted-foreground">{t('mapping.publicHeader')}</th>
-                  <th scope="col" className="eg-cell-x eg-cell-y text-left text-xs font-semibold text-muted-foreground">{t('mapping.upstreamHeader')}</th>
-                  <th scope="col" className="w-12" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-soft">
-                {rows.map((row, i) => {
-                  const isNew = i === rows.length - 1 && !row.from && !row.to
-                  return (
-                    <tr key={i}>
-                      <td className="eg-cell-x eg-cell-y">
-                        <Input
-                          aria-label={isNew ? t('mapping.newPublicAria') : tf('mapping.publicAria', { n: i + 1 })}
-                          value={row.from}
-                          placeholder={isNew ? t('mapping.publicPlaceholder') : ''}
-                          onChange={(e) => updateRow(i, 'from', e.target.value)}
-                          className="h-8 px-2"
-                        />
-                      </td>
-                      <td className="eg-cell-x eg-cell-y">
-                        <Input
-                          aria-label={isNew ? t('mapping.newUpstreamAria') : tf('mapping.upstreamAria', { n: i + 1 })}
-                          value={row.to}
-                          placeholder={isNew ? t('mapping.upstreamPlaceholder') : ''}
-                          onChange={(e) => updateRow(i, 'to', e.target.value)}
-                          className="h-8 px-2"
-                        />
-                      </td>
-                      <td className="eg-cell-x eg-cell-y text-right">
-                        {isNew ? (
-                          <span className="inline-block whitespace-nowrap text-xs text-subtle" title={t('mapping.addRowTitle')}>{t('mapping.addRow')}</span>
-                        ) : (
-                          <IconButton danger onClick={() => removeRow(i)} label={tf('mapping.deleteRowAria', { n: i + 1 })}>
-                            <Trash2 size={13} aria-hidden="true" />
-                          </IconButton>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="rounded-lg border border-line">
+            <DataTable
+              columns={[
+                {
+                  id: 'from',
+                  header: t('mapping.publicHeader'),
+                  cell: (row, i) => {
+                    const isNew = i === rows.length - 1 && !row.from && !row.to
+                    return (
+                      <Input
+                        aria-label={isNew ? t('mapping.newPublicAria') : tf('mapping.publicAria', { n: i + 1 })}
+                        value={row.from}
+                        placeholder={isNew ? t('mapping.publicPlaceholder') : ''}
+                        onChange={(e) => updateRow(i, 'from', e.target.value)}
+                        className="h-8 px-2"
+                      />
+                    )
+                  },
+                },
+                {
+                  id: 'to',
+                  header: t('mapping.upstreamHeader'),
+                  cell: (row, i) => {
+                    const isNew = i === rows.length - 1 && !row.from && !row.to
+                    return (
+                      <Input
+                        aria-label={isNew ? t('mapping.newUpstreamAria') : tf('mapping.upstreamAria', { n: i + 1 })}
+                        value={row.to}
+                        placeholder={isNew ? t('mapping.upstreamPlaceholder') : ''}
+                        onChange={(e) => updateRow(i, 'to', e.target.value)}
+                        className="h-8 px-2"
+                      />
+                    )
+                  },
+                },
+                {
+                  id: 'actions',
+                  header: '',
+                  headerClassName: 'w-12',
+                  className: 'text-right',
+                  cell: (row, i) =>
+                    i === rows.length - 1 && !row.from && !row.to ? (
+                      <span className="inline-block whitespace-nowrap text-xs text-subtle" title={t('mapping.addRowTitle')}>{t('mapping.addRow')}</span>
+                    ) : (
+                      <IconButton danger onClick={() => removeRow(i)} label={tf('mapping.deleteRowAria', { n: i + 1 })}>
+                        <Trash2 size={13} aria-hidden="true" />
+                      </IconButton>
+                    ),
+                },
+              ]}
+              rows={rows}
+              rowKey={(_row, i) => i}
+              minWidth={420}
+              className="text-sm"
+            />
           </div>
           <p className="text-xs text-subtle">{t('mapping.hint')}</p>
         </>

@@ -16,7 +16,7 @@ import {
 } from '../api/hooks'
 import type { ModelPrice, UsageDailyPoint, UsageDimensionRow } from '../api/types'
 import { bucketByLocalDay, localDateKey } from '../lib/usage'
-import { Alert, Badge, Button, Card, Empty, Field, IconButton, Input, PageHeader, SegmentedControl, Select, Spinner, Td, Th } from '../components/ui'
+import { Alert, Badge, Button, Card, DataTable, Empty, Field, IconButton, Input, PageHeader, SegmentedControl, Select, Spinner } from '../components/ui'
 import { notify } from '../components/Toaster'
 import { TREND_METRICS, TrendChart, type TrendMetric } from '../components/TrendChart'
 import PriceTable, { fmtPriceMicros } from '../components/PriceTable'
@@ -202,37 +202,35 @@ function TopCard({ title, rows, latency }: { title: string; rows: UsageDimension
     <Card flush>
       <h3 className="border-b border-line-soft text-sm font-semibold" style={{ padding: 'var(--eg-cell-y) var(--eg-card-pad)' }}>{title}</h3>
       {rows.length === 0 ? <Empty title={t('empty.usage.title')} /> : (
-        <div className="overflow-x-auto">
-          <table className={`w-full ${latency ? 'min-w-[340px]' : 'min-w-[300px]'}`}>
-            <thead className="bg-surface-soft">
-              <tr>
-                <Th>{t('table.name')}</Th><Th>{t('table.requests')}</Th>
-                {latency && <Th title={t('usage.firstTokenHint')}>{t('table.firstToken')}</Th>}
-                <Th>{t('table.cost')}</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line-soft">
-              {rows.map((row) => (
-                <tr key={`${row.id}-${row.name}`}>
-                  <Td className="max-w-40 truncate font-medium" title={row.name}>{dimensionName(row)}</Td>
-                  <Td>{fmtInt(row.requests)}</Td>
-                  {latency && (
-                    <Td className="text-xs" title={t('usage.firstTokenHint')}>
-                      {row.first_token_avg_ms == null
-                        ? <span className="text-subtle">—</span>
-                        : `${fmtMs(row.first_token_avg_ms)} / ${fmtMs(row.first_token_p50_ms ?? undefined)}`}
-                    </Td>
-                  )}
-                  <Td className="text-xs">
-                    {row.priced_requests === 0
-                      ? <span className="text-subtle" title={t('usage.topCostHint')}>—</span>
-                      : fmtMoney(row.cost_micros)}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={[
+            { id: 'name', header: t('table.name'), className: 'max-w-40 font-medium', sortKey: (row) => dimensionName(row), cell: (row) => <span className="block truncate" title={row.name}>{dimensionName(row)}</span> },
+            { id: 'requests', header: t('table.requests'), sortKey: (row) => row.requests, cell: (row) => fmtInt(row.requests) },
+            ...(latency
+              ? [{
+                  id: 'firstToken',
+                  header: t('table.firstToken'),
+                  headerTitle: t('usage.firstTokenHint'),
+                  className: 'text-xs',
+                  sortKey: (row: UsageDimensionRow) => row.first_token_avg_ms ?? -1,
+                  cell: (row: UsageDimensionRow) =>
+                    row.first_token_avg_ms == null
+                      ? <span className="text-subtle">—</span>
+                      : `${fmtMs(row.first_token_avg_ms)} / ${fmtMs(row.first_token_p50_ms ?? undefined)}`,
+                }]
+              : []),
+            {
+              id: 'cost',
+              header: t('table.cost'),
+              className: 'text-xs',
+              sortKey: (row) => row.cost_micros,
+              cell: (row) => (row.priced_requests === 0 ? <span className="text-subtle" title={t('usage.topCostHint')}>—</span> : fmtMoney(row.cost_micros)),
+            },
+          ]}
+          rows={rows}
+          rowKey={(row) => `${row.id}-${row.name}`}
+          minWidth={latency ? 340 : 300}
+        />
       )}
     </Card>
   )

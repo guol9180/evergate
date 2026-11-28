@@ -1,17 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { useChannelsTestAll } from '../api/hooks'
-import { Alert, Button, Card, Select, StatusBadge, Td, Th } from './ui'
+import { Alert, Button, Card, DataTable, type DataTableColumn, StatusBadge } from './ui'
+import type { TestAllItem } from '../api/types'
 import { fmtMs } from '../lib/format'
 import { t, tf } from '../lib/i18n'
 import { errorMessage } from '../lib/errors'
 
-type SortKey = 'latency' | 'name' | 'result'
-
 /** 渠道批量探测结果：一键摸底、按延迟排序；只调用模型列表 GET，不触发推理。 */
 export default function TestAllPanel() {
   const testAll = useChannelsTestAll()
-  const [sortKey, setSortKey] = useState<SortKey>('latency')
   // 面板打开即开始探测：此前首屏是另一个同名「测试全部」按钮，用户点两次才知道要再点一次
   const started = useRef(false)
   useEffect(() => {
@@ -20,20 +18,19 @@ export default function TestAllPanel() {
     if (!testAll.data && !testAll.isPending) testAll.mutate()
   }, [testAll])
 
-  const items = useMemo(() => {
-    const list = [...(testAll.data?.items ?? [])]
-    switch (sortKey) {
-      case 'name':
-        return list.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))
-      case 'result':
-        return list.sort((a, b) => Number(b.ok) - Number(a.ok) || a.latency_ms - b.latency_ms)
-      default:
-        return list.sort((a, b) => {
-          if (a.ok !== b.ok) return Number(b.ok) - Number(a.ok)
-          return (a.latency_ms || Number.MAX_SAFE_INTEGER) - (b.latency_ms || Number.MAX_SAFE_INTEGER)
-        })
-    }
-  }, [testAll.data, sortKey])
+  const items = testAll.data?.items ?? []
+  // 默认按延迟升序（无延迟的失败项沉底）；表头可切换为名称 / 结果
+  const columns: DataTableColumn<TestAllItem>[] = [
+      { id: 'name', header: t('table.channel'), className: 'font-medium text-foreground', sortKey: (item) => item.name, cell: (item) => item.name },
+      {
+        id: 'result',
+        header: t('testAll.sort.result'),
+        sortKey: (item) => (item.ok ? 0 : item.result === 'inconclusive' ? 1 : 2),
+        cell: (item) => <StatusBadge tone={item.ok ? 'success' : item.result === 'inconclusive' ? 'neutral' : 'danger'}>{item.ok ? t('testAll.ok') : item.result === 'inconclusive' ? t('keyState.inconclusive') : t('testAll.fail')}</StatusBadge>,
+      },
+      { id: 'latency', header: t('testAll.col.latency'), className: 'tabular-nums', sortKey: (item) => item.latency_ms || Number.MAX_SAFE_INTEGER, cell: (item) => (item.latency_ms ? fmtMs(item.latency_ms) : '—') },
+      { id: 'error', header: t('testAll.col.error'), className: 'max-w-md text-xs text-muted-foreground', cell: (item) => <span className="block truncate" title={item.error}>{item.error || '—'}</span> },
+  ]
 
   if (testAll.isPending && !testAll.data) {
     return (
@@ -63,18 +60,6 @@ export default function TestAllPanel() {
         {t('testAll.title')} <span className="ml-2 text-xs font-normal text-muted-foreground">{tf('testAll.summary', { ok: okCount, total: items.length })}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground">{t('testAll.sort')}</span>
-        <Select
-          size="sm"
-          aria-label={t('testAll.sort')}
-          value={sortKey}
-          onValueChange={(next) => setSortKey(next as SortKey)}
-          options={[
-            { value: 'latency', label: t('testAll.sort.latency') },
-            { value: 'name', label: t('testAll.sort.name') },
-            { value: 'result', label: t('testAll.sort.result') },
-          ]}
-        />
         <Button size="sm" variant="outline" onClick={() => testAll.mutate()} loading={testAll.isPending}>
           <RefreshCw size={14} /> {t('testAll.retry')}
         </Button>
@@ -89,28 +74,7 @@ export default function TestAllPanel() {
   return (
     <Card flush>
       <div className="eg-card-fluid">{header}</div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[560px]">
-          <thead className="border-b border-line-soft bg-surface-soft">
-            <tr>
-              <Th>{t('table.channel')}</Th>
-              <Th>{t('testAll.sort.result')}</Th>
-              <Th>{t('testAll.col.latency')}</Th>
-              <Th>{t('testAll.col.error')}</Th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line-soft">
-            {items.map((item) => (
-              <tr key={item.channel_id}>
-                <Td className="font-medium text-foreground">{item.name}</Td>
-                <Td><StatusBadge tone={item.ok ? 'success' : item.result === 'inconclusive' ? 'neutral' : 'danger'}>{item.ok ? t('testAll.ok') : item.result === 'inconclusive' ? t('keyState.inconclusive') : t('testAll.fail')}</StatusBadge></Td>
-                <Td className="tabular-nums">{item.latency_ms ? fmtMs(item.latency_ms) : '—'}</Td>
-                <Td className="max-w-md truncate text-xs text-muted-foreground" title={item.error}>{item.error || '—'}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable columns={columns} rows={items} rowKey={(item) => item.channel_id} minWidth={560} defaultSorting={[{ id: 'latency', desc: false }]} />
     </Card>
   )
 }
