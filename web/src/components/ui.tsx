@@ -1,27 +1,39 @@
 // 全站 UI 原语唯一入口（barrel）：shadcn/ui（Radix 变体）的实现放在 components/ui/，这里保留项目特有的组合组件。
 // 颜色一律走 index.css 语义 token（T76），禁止在此出现调色板类名。
 import {
-  type KeyboardEvent,
+  createContext,
+  forwardRef,
   type ReactNode,
   cloneElement,
   isValidElement,
+  useContext,
   useEffect,
   useId,
   useRef,
   useState,
 } from 'react'
-import * as DialogPrimitive from '@radix-ui/react-dialog'
-import * as SelectPrimitive from '@radix-ui/react-select'
-import * as RadioGroupPrimitive from '@radix-ui/react-radio-group'
-import * as SwitchPrimitive from '@radix-ui/react-switch'
-import * as TooltipPrimitive from '@radix-ui/react-tooltip'
-import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
+import { Checkbox as CheckboxPrimitive, Dialog as DialogPrimitive, Select as SelectPrimitive, Switch as SwitchPrimitive } from 'radix-ui'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ChevronUp, CircleAlert, CircleCheck, Copy, Inbox, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react'
 import type { Tone } from '../lib/tone'
 import { t, tf } from '../lib/i18n'
 import { copyText } from '../lib/clipboard'
 import { errorMessage } from '../lib/errors'
+import { cn } from '../lib/utils'
 import { Button, type ButtonProps } from './ui/button'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './ui/accordion'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog'
+import { Badge as BadgePrimitive } from './ui/badge'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from './ui/collapsible'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from './ui/dropdown-menu'
+import { Field as FieldPrimitive, FieldDescription, FieldError as FieldErrorPrimitive, FieldLabel } from './ui/field'
+import { Kbd, KbdGroup } from './ui/kbd'
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from './ui/popover'
+import { Progress as ProgressPrimitive } from './ui/progress'
+import { Separator } from './ui/separator'
+import { Skeleton as SkeletonPrimitive } from './ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { Tooltip as TooltipPrimitive, TooltipContent, TooltipProvider as TooltipProviderPrimitive, TooltipTrigger } from './ui/tooltip'
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 
 export type { Tone }
 
@@ -37,6 +49,14 @@ export const toneClass: Record<Tone, string> = {
 // shadcn/ui（radix-nova）生成的实现放在 components/ui/，这里导入后再导出：页面仍然只从 components/ui 取原语。
 export { Button, buttonVariants } from './ui/button'
 export type { ButtonProps } from './ui/button'
+export { Accordion, AccordionContent, AccordionItem, AccordionTrigger }
+export { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle }
+export { Collapsible, CollapsibleContent, CollapsibleTrigger }
+export { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger }
+export { Kbd, KbdGroup }
+export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger }
+export { Separator }
+export { Tabs, TabsContent, TabsList, TabsTrigger }
 
 // 控件带 aria-invalid 时由 Field 置为出错态：红边 + 红色聚焦环，错误文字紧贴其下。
 const invalidRing = 'aria-invalid:border-danger-solid aria-invalid:focus:border-danger-solid aria-invalid:focus:ring-danger-subtle'
@@ -146,25 +166,34 @@ export function Checkbox({ className = '', ...props }: React.ComponentProps<type
   )
 }
 
-/**
- * 控件说明 tooltip（Radix）：图标按钮 / 侧栏按钮统一走这里；数据截断预览仍用原生 title。
- * Provider 内置在组件里：任何地方（含测试）都能直接渲染，不依赖根部装配。
- */
-export function Tooltip({ content, side = 'top', children, className = '' }: { content?: ReactNode; side?: 'top' | 'right' | 'bottom' | 'left'; children: ReactNode; className?: string }) {
-  if (!content) return <>{children}</>
+/** 根部是否已挂 TooltipProvider：有则共用一份延迟配置，没有（测试 / 独立渲染）就地补一个。 */
+const TooltipRootContext = createContext(false)
+
+/** 应用根部的 Tooltip Provider（main.tsx 挂一次），统一延迟与跳过重叠交互的设置。 */
+export function TooltipProvider({ children, delayDuration = 200 }: { children: ReactNode; delayDuration?: number }) {
   return (
-    <TooltipPrimitive.Provider delayDuration={200}>
-      <TooltipPrimitive.Root>
-        <TooltipPrimitive.Trigger asChild>{children}</TooltipPrimitive.Trigger>
-        <TooltipPrimitive.Portal>
-          <TooltipPrimitive.Content side={side} sideOffset={6} className={`eg-tooltip eg-tooltip-in ${className}`}>
-            {content}
-            <TooltipPrimitive.Arrow className="eg-tooltip-arrow" />
-          </TooltipPrimitive.Content>
-        </TooltipPrimitive.Portal>
-      </TooltipPrimitive.Root>
-    </TooltipPrimitive.Provider>
+    <TooltipRootContext.Provider value>
+      <TooltipProviderPrimitive delayDuration={delayDuration}>{children}</TooltipProviderPrimitive>
+    </TooltipRootContext.Provider>
   )
+}
+
+/**
+ * 控件说明 tooltip（shadcn/Radix）：图标按钮 / 侧栏按钮统一走这里；数据截断预览仍用原生 title。
+ * 无 content 时直接透传 children；根部没挂 Provider 时就地补一个，页面与测试都不必关心装配。
+ */
+export function Tooltip({ content, side = 'top', children, className }: { content?: ReactNode; side?: 'top' | 'right' | 'bottom' | 'left'; children: ReactNode; className?: string }) {
+  const hasRootProvider = useContext(TooltipRootContext)
+  if (!content) return <>{children}</>
+  const tree = (
+    <TooltipPrimitive>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side} sideOffset={6} className={cn('eg-tooltip', className)}>
+        {content}
+      </TooltipContent>
+    </TooltipPrimitive>
+  )
+  return hasRootProvider ? tree : <TooltipProvider>{tree}</TooltipProvider>
 }
 
 /** 图标按钮：Button + Tooltip + aria-label 只在这里组合；表格行操作 / 分页箭头 / 侧栏共用。 */
@@ -229,10 +258,10 @@ export function Switch({ checked, onChange, disabled, label, id }: { checked: bo
 }
 
 /**
- * Field：label 通过 useId 自动关联第一个控件，hint / error 作为 aria-describedby；
- * error 存在时控件置 aria-invalid 并以 FieldError 取代 hint。不再用 <label> 包裹控件，避免内含按钮时误触发。
+ * Field（shadcn Field 组合）：label 通过 useId 自动关联第一个控件，hint / error 作为 aria-describedby；
+ * error 存在时控件置 aria-invalid 并以 FieldError 取代 hint。不用 <label> 包裹控件，避免内含按钮时误触发。
  */
-export function Field({ label, children, hint, error, className = '' }: { label: ReactNode; children: ReactNode; hint?: ReactNode; error?: ReactNode; className?: string }) {
+export function Field({ label, children, hint, error, className }: { label: ReactNode; children: ReactNode; hint?: ReactNode; error?: ReactNode; className?: string }) {
   const id = useId()
   const hintId = `${id}-hint`
   const errorId = `${id}-error`
@@ -248,21 +277,21 @@ export function Field({ label, children, hint, error, className = '' }: { label:
     })
   }
   return (
-    <div className={`space-y-1.5 ${className}`}>
-      <label className="block text-sm font-medium text-foreground-soft" htmlFor={id}>{label}</label>
+    <FieldPrimitive data-invalid={error ? true : undefined} className={cn('gap-1.5', className)}>
+      <FieldLabel htmlFor={id} className="block w-fit text-sm font-medium text-foreground-soft">{label}</FieldLabel>
       {control}
-      {error ? <FieldError id={errorId}>{error}</FieldError> : hint ? <span id={hintId} className="block text-xs text-subtle">{hint}</span> : null}
-    </div>
+      {error ? <FieldError id={errorId}>{error}</FieldError> : hint ? <FieldDescription id={hintId} className="text-xs text-subtle">{hint}</FieldDescription> : null}
+    </FieldPrimitive>
   )
 }
 
-/** 字段级内联错误：紧贴出错控件。不用 live region，由 aria-invalid + aria-describedby 在聚焦时播报。 */
-export function FieldError({ id, children, className = '' }: { id?: string; children: ReactNode; className?: string }) {
+/** 字段级内联错误：紧贴出错控件。不用 live region（覆盖 shadcn 默认的 role=alert），由 aria-invalid + aria-describedby 在聚焦时播报。 */
+export function FieldError({ id, children, className }: { id?: string; children: ReactNode; className?: string }) {
   return (
-    <p id={id} data-field-error="" className={`flex items-start gap-1.5 text-xs leading-5 text-danger-text ${className}`}>
+    <FieldErrorPrimitive id={id} role={undefined} data-field-error="" className={cn('flex items-start gap-1.5 text-xs leading-5 text-danger-text', className)}>
       <CircleAlert size={13} className="mt-0.5 shrink-0" aria-hidden="true" />
       <span>{children}</span>
-    </p>
+    </FieldErrorPrimitive>
   )
 }
 
@@ -273,10 +302,21 @@ export function focusFirstInvalid(root: ParentNode | null) {
   })
 }
 
-export function Badge({ tone = 'neutral', compact = false, className = '', title, children }: { tone?: Tone; compact?: boolean; className?: string; title?: string; children: ReactNode }) {
-  const size = compact ? 'px-1.5 py-0 text-[10px]' : 'px-2 py-0.5 text-xs'
-  return <span title={title} className={`inline-flex items-center whitespace-nowrap rounded-full font-medium transition-colors ${size} ${toneClass[tone]} ${className}`}>{children}</span>
-}
+export type BadgeProps = React.ComponentProps<'span'> & { tone?: Tone; compact?: boolean }
+
+/** 徽标（shadcn Badge）：tone 只换底色 / 文字色；透传 ref 与 rest props，可直接当 Radix Trigger（asChild）用。 */
+export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(function Badge({ tone = 'neutral', compact = false, className, children, ...props }, ref) {
+  return (
+    <BadgePrimitive
+      ref={ref}
+      variant="secondary"
+      className={cn('h-auto gap-0 rounded-full border-transparent py-0.5 transition-colors', compact ? 'px-1.5 text-[10px]' : 'px-2 text-xs', toneClass[tone], className)}
+      {...props}
+    >
+      {children}
+    </BadgePrimitive>
+  )
+})
 
 /** 状态徽标：与 Badge 同源，语义化命名用于渠道/令牌/HTTP 状态展示。 */
 const dotClass: Record<Tone, string> = {
@@ -288,14 +328,16 @@ const dotClass: Record<Tone, string> = {
   brand: 'bg-brand',
 }
 
-export function StatusBadge({ tone, className = '', title, children }: { tone: Tone; className?: string; title?: string; children: ReactNode }) {
+export type StatusBadgeProps = React.ComponentProps<'span'> & { tone: Tone }
+
+export const StatusBadge = forwardRef<HTMLSpanElement, StatusBadgeProps>(function StatusBadge({ tone, className, children, ...props }, ref) {
   return (
-    <Badge tone={tone} className={className} title={title}>
+    <Badge ref={ref} tone={tone} className={className} {...props}>
       <span aria-hidden="true" className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${dotClass[tone]}`} />
       {children}
     </Badge>
   )
-}
+})
 
 export function Card({ className = '', children, flush = false }: { className?: string; children: ReactNode; flush?: boolean }) {
   return <div className={`${flush ? '' : 'eg-card-fluid'} rounded-xl border border-line bg-surface shadow-sm ${className}`}>{children}</div>
@@ -366,9 +408,9 @@ export function Alert({
   )
 }
 
-/** 骨架块：首次加载时替代 Spinner，保持布局稳定。 */
-export function Skeleton({ className = '', style }: { className?: string; style?: React.CSSProperties }) {
-  return <div aria-hidden="true" className={`eg-skeleton ${className}`} style={style} />
+/** 骨架块（shadcn Skeleton）：首次加载时替代 Spinner，保持布局稳定；外观由 eg-skeleton 令牌类负责。 */
+export function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {
+  return <SkeletonPrimitive aria-hidden="true" className={cn('eg-skeleton', className)} {...props} />
 }
 
 /**
@@ -515,25 +557,32 @@ export function ConfirmDialog({ open, title, message, confirmText, cancelText, d
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const restoreFocus = useRestoreFocus(open)
   return (
-    <Dialog
+    <AlertDialog
       open={open}
-      onClose={onCancel}
-      title={title}
-      role="alertdialog"
-      footer={(
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onCancel} disabled={loading}>{cancelText ?? t('common.cancel')}</Button>
-      <Button variant={danger ? 'destructive' : 'default'} onClick={onConfirm} loading={loading} autoFocus>
-            {confirmText ?? t('common.confirm')}
-          </Button>
-        </div>
-      )}
+      onOpenChange={(next) => {
+        if (!next) onCancel()
+      }}
     >
-      <div className="space-y-3 text-sm text-foreground-soft">
-        {typeof message === 'string' ? <p>{message}</p> : message}
-      </div>
-    </Dialog>
+      <AlertDialogContent onCloseAutoFocus={restoreFocus}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+        </AlertDialogHeader>
+        <AlertDialogDescription asChild>
+          <div className="space-y-3 text-sm text-foreground-soft">{typeof message === 'string' ? <p>{message}</p> : message}</div>
+        </AlertDialogDescription>
+        <AlertDialogFooter>
+          {/* 按钮不自动关闭：确认后是否关闭由调用方按请求结果决定，取消只走 onCancel 一个出口（Esc 同样落到 onCancel） */}
+          <AlertDialogCancel variant="outline" disabled={loading} onClick={onCancel}>
+            {cancelText ?? t('common.cancel')}
+          </AlertDialogCancel>
+          <AlertDialogAction variant={danger ? 'destructive' : 'default'} loading={loading} autoFocus onClick={onConfirm}>
+            {confirmText ?? t('common.confirm')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
@@ -559,11 +608,11 @@ export function SettingRow({ title, description, checked, onChange, label, disab
 }
 
 /**
- * 分段单选（Radix RadioGroup）：单条轨道内凸起选中段；不传 orientation，四个方向键都沿 DOM 顺序前后移动。
- * Radix 在下一拍才把焦点移到目标段、再靠「聚焦即点击」选中，keydown / keyup 同帧的快速点按会错过这个时机，
- * 所以方向键按下时先同步选中，焦点与选中之间不出现空窗。
+ * 分段单选（shadcn ToggleGroup，type=single，单项即 radio）：单条轨道内凸起选中段；roving focus 与方向键由 Radix 负责。
+ * Radix 的方向键只移动焦点，这里让「焦点到哪就选到哪」（radio 语义，也是键盘用户少按一次的来源），
+ * 不再需要在 keydown 里手写方向补丁。
  */
-export function SegmentedControl<T extends string>({ value, onChange, options, label, disabled, size = 'md', className = '' }: {
+export function SegmentedControl<T extends string>({ value, onChange, options, label, disabled, size = 'md', className }: {
   value: T
   onChange: (value: T) => void
   options: readonly { value: T; label: ReactNode }[]
@@ -572,44 +621,51 @@ export function SegmentedControl<T extends string>({ value, onChange, options, l
   size?: 'sm' | 'md'
   className?: string
 }) {
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const delta = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 0
-    if (!delta || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
-    const index = options.findIndex((option) => option.value === value)
-    if (index >= 0) onChange(options[(index + delta + options.length) % options.length].value)
-  }
   return (
-    <RadioGroupPrimitive.Root
-      aria-label={label}
+    <ToggleGroup
+      type="single"
+      role="radiogroup"
       value={value}
-      onValueChange={(next) => onChange(next as T)}
+      onValueChange={(next) => {
+        // type=single 允许点选当前段取消；分段控件必须始终有一段选中，空值与重复值都不向外抛
+        if (next && next !== value) onChange(next as T)
+      }}
       disabled={disabled}
-      loop
-      onKeyDown={onKeyDown}
-      className={`grid gap-1 rounded-lg bg-surface-strong p-1 ${className}`}
+      aria-label={label}
+      spacing={1}
+      className={cn('rounded-lg bg-surface-strong p-1', className)}
     >
       {options.map((option) => (
-        <RadioGroupPrimitive.Item
+        <ToggleGroupItem
           key={option.value}
           value={option.value}
-          className={`flex items-center justify-center rounded-md font-medium text-muted-foreground outline-none transition hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand data-[state=checked]:bg-surface data-[state=checked]:text-foreground data-[state=checked]:shadow-sm disabled:opacity-50 ${
+          onFocus={() => {
+            if (option.value !== value) onChange(option.value)
+          }}
+          className={cn(
+            'min-w-0 flex-1 shrink items-center justify-center rounded-md font-medium text-muted-foreground hover:bg-transparent hover:text-foreground focus-visible:ring-2 focus-visible:ring-brand data-[state=on]:bg-surface data-[state=on]:text-foreground data-[state=on]:shadow-sm disabled:opacity-50',
             size === 'sm' ? 'h-6 px-2 text-xs' : 'h-7 px-3 text-sm'
-          }`}
+          )}
         >
-          {option.label}
-        </RadioGroupPrimitive.Item>
+          <span className="truncate">{option.label}</span>
+        </ToggleGroupItem>
       ))}
-    </RadioGroupPrimitive.Root>
+    </ToggleGroup>
   )
 }
 
 /** 进度条：更新流程等需要展示百分比的位置共用；颜色只走语义色。 */
-export function Progress({ value, tone = 'brand', className = '' }: { value: number; tone?: 'brand' | 'danger'; className?: string }) {
+export function Progress({ value, tone = 'brand', className }: { value: number; tone?: 'brand' | 'danger'; className?: string }) {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))
   return (
-    <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(clamped)} className={`h-2 overflow-hidden rounded-full bg-surface-strong ${className}`}>
-      <div className={`h-full rounded-full transition-all ${tone === 'danger' ? 'bg-danger-solid' : 'bg-brand'}`} style={{ width: `${clamped}%` }} />
-    </div>
+    <ProgressPrimitive
+      value={clamped}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(clamped)}
+      className={cn('h-2 bg-surface-strong', className)}
+      indicatorClassName={tone === 'danger' ? 'bg-danger-solid' : 'bg-brand'}
+    />
   )
 }
 
@@ -632,10 +688,10 @@ export function Empty({ icon, title, hint, action, filtered = false, className =
 }
 
 /**
- * 折叠分组：原生 <details>，展开状态、键盘与无障碍语义由浏览器负责，不引入折叠库；
+ * 折叠分组（shadcn Collapsible）：展开状态、按钮语义与 aria-expanded 由 Radix 负责；
  * 这里只统一版式与箭头旋转。defaultOpen 只决定初始状态，之后由用户掌控。
  */
-export function Disclosure({ title, badge, defaultOpen = true, children, className = '' }: {
+export function Disclosure({ title, badge, defaultOpen = true, children, className }: {
   title: ReactNode
   badge?: ReactNode
   defaultOpen?: boolean
@@ -643,14 +699,14 @@ export function Disclosure({ title, badge, defaultOpen = true, children, classNa
   className?: string
 }) {
   return (
-    <details open={defaultOpen} className={`group rounded-lg border border-line ${className}`}>
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-xs font-semibold text-foreground-soft select-none [&::-webkit-details-marker]:hidden">
-        <ChevronRight size={14} className="shrink-0 text-subtle transition-transform group-open:rotate-90" aria-hidden="true" />
+    <Collapsible defaultOpen={defaultOpen} className={cn('group rounded-lg border border-line', className)}>
+      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-t-lg px-3 py-2 text-left text-xs font-semibold text-foreground-soft outline-none select-none focus-visible:ring-2 focus-visible:ring-brand">
+        <ChevronRight size={14} className="shrink-0 text-subtle transition-transform group-data-[state=open]:rotate-90" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate">{title}</span>
         {badge && <span className="shrink-0">{badge}</span>}
-      </summary>
-      <div className="border-t border-line-soft px-3 py-3">{children}</div>
-    </details>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="border-t border-line-soft px-3 py-3">{children}</CollapsibleContent>
+    </Collapsible>
   )
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Layout from '../../src/components/Layout'
 import { getLocale, setLocale } from '../../src/lib/i18n'
@@ -37,7 +37,7 @@ describe('sidebar footer (T101)', () => {
     // jsdom 没有 matchMedia，侧栏按收起态渲染：文字标签不可见，名称只能来自 aria-label
     expect(screen.getByRole('button', { name: '退出登录' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '语言：当前中文，点击切换为 English' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: '切换主题：当前跟随系统，点击切换为浅色' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '主题：跟随系统' })).toBeTruthy()
   })
 
   it('shows only the username in the account block and keeps the upgrade link when available', () => {
@@ -60,11 +60,14 @@ describe('sidebar footer (T101)', () => {
     expect(screen.getByText('English')).toBeTruthy()
   })
 
-  it('cycles theme from the theme row and shows the new current value', () => {
+  it('picks a theme from the theme menu and shows the new current value', async () => {
     renderLayout()
-    const row = screen.getByRole('button', { name: '切换主题：当前跟随系统，点击切换为浅色' })
+    const row = screen.getByRole('button', { name: '主题：跟随系统' })
     fireEvent.click(row)
-    expect(row.getAttribute('aria-label')).toBe('切换主题：当前浅色，点击切换为深色')
-    expect(screen.getByText('浅色')).toBeTruthy()
+    fireEvent.keyDown(row, { key: 'ArrowDown' })
+    const light = await screen.findByRole('menuitemradio', { name: '浅色' })
+    fireEvent.click(light)
+    await waitFor(() => expect(row.getAttribute('aria-label')).toBe('主题：浅色'))
+    expect(localStorage.getItem('eg-theme')).toBe('light')
   })
 })

@@ -136,7 +136,7 @@ export default function ModelPicker({
           <span>{t('picker.writeMode')}</span>
           <SegmentedControl
             size="sm"
-            className="w-52 grid-cols-2"
+      className="w-52"
             label={t('picker.writeMode')}
             value={mode}
             onChange={setMode}

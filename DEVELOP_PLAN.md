@@ -35,7 +35,7 @@
 | P4（已完成） | 三视角审视改进批次：T73 流程治理与文档体系、T74 CI 门禁补齐、T75 后端补齐、T76 前端设计系统、T77 前端页面体验、T78 README 与用户文档、T79 i18n | 排除有支出项（Windows 代码签名、Apple 签名公证）；各卡按验收标准通过并整卡归档至 [P4](./docs/archive/P4.md)；`go test -race ./...`、`npm test`、`npm run build`、`make build` 证据已入卡 |
 | P5（已完成） | 内置浏览器体验审查修复与预设/价格/目录/首启：T96 单实例互斥按数据目录隔离、T88 全局布局与导航修复、T89 表单反馈与信息表达修复、T90 i18n 字典补全、T91 渠道预设/自定义分离与四协议、T92 预设模型价格、T98 全局控件尺寸与对齐统一、T93 下游模型目录接口、T94 首启管理员设置向导、T97 全页面 UI/UX 逐项验收、T99 统一反馈体系与三方原语替换、T100 登录空表单校验与提示文案、T101 概览事实条与侧栏底栏重排、T102 分段控件与下拉选择重做、T95 发布 v0.7.0 | 各卡按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint/test/build 通过；T97 矩阵全绿后才进入发版；v0.7.0 按发版检查清单发布 |
 | P6（已完成） | 2026-11-26 代码质量审查整改与交互打磨：T103 缓存 token 计价、T104 key 导入修复、T105 接口加固与信封统一、T106 工程门禁补齐、T107 全局交互动效体系、T108 请求日志详情信息表达、T109 会话 / 错误处理 / 国际化收口、T110 表单体系与 UI 细节、T111 可维护性重构、T112 转发热路径与服务生命周期、T113 令牌限流与事件告警、T114 一键备份与恢复、T115 调试台增强与观测补充 | T103–T116 全部按验收标准通过并附验证证据；`go test -p 1 ./...`、`go vet ./...`、`make build`、前端 lint / test / build 通过；UI 类卡在 18787 内置浏览器逐页复验且 `audit:layout` 全绿；整卡归档至 [P6](./docs/archive/P6.md) |
-| P7（进行中） | 2026-11-27 第二次全量代码质量审查整改批次：T117–T124、T130、T137 已 done；T130–T133 组件化基座与迁移（shadcn/ui Radix 变体、TanStack Table、cmdk、React Aria、react-day-picker、vaul、streamdown）；T121 / T125–T127 体验收口；T128–T129 工程与性能；T134–T136 组件增强、工程基建与 i18n | 按任务卡验收；done 卡归档至 `docs/archive/P7.md` |
+| P7（进行中） | 2026-11-27 第二次全量代码质量审查整改批次：T117–T124、T130、T131、T137 已 done；T130–T133 组件化基座与迁移（shadcn/ui Radix 变体、TanStack Table、cmdk、React Aria、react-day-picker、vaul、streamdown）；T121 / T125–T127 体验收口；T128–T129 工程与性能；T134–T136 组件增强、工程基建与 i18n | 按任务卡验收；done 卡归档至 `docs/archive/P7.md` |
 
 P0 功能完成定义（1–10 全部通过）：
 
@@ -66,14 +66,6 @@ P0 功能完成定义（1–10 全部通过）：
 #### 批次一 · 后端与接口加固
 
 #### 批次二 · 组件化基座（shadcn/ui · Radix 变体）
-
-#### T131: 基础原语迁移（P1，G1 #8–#13）
-
-- 目标：`ui.tsx` 内的手写原语换成 shadcn（Radix 变体）实现：Field / Form、AlertDialog、DropdownMenu、Tabs / ToggleGroup、Accordion / Collapsible、Progress、Badge、Tooltip、Spinner、Empty、Skeleton、Kbd、Separator、Popover
-- 验收标准：① 页面只从 `components/ui` 取原语（barrel 保持唯一出处），实现文件在 `components/ui/` 由 shadcn 管理；② `Badge` / `StatusBadge` 透传 ref 与 rest props（Radix Trigger 可用）；③ Tooltip Provider 提升到根部；④ 视觉映射到 `--eg-*` 令牌，浅 / 深 / 中 / 英、907 与 1440 宽 `audit:layout` 全绿；⑤ 18787 逐页复验：对话框、下拉、分段控件、折叠、进度条、提示的行为与现状一致或更好；⑥ 约束文档与 AGENTS.md 的目录约定同步更新
-- 边界：表格、选择器、数字与日期、抽屉、Markdown、侧栏在后续卡；`SegmentedControl` 的键盘补丁随 Tabs / ToggleGroup 替换删除
-- 阻塞项：无；类型：—；重启条件：—；复查日期：—
-- 状态：planned
 
 #### 批次三 · 组件迁移
 

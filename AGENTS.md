@@ -11,7 +11,7 @@
 ## 目录约定（压缩版，完整版见 [docs/agents/目录约定.md](./docs/agents/目录约定.md)）
 
 - `cmd/evergate/main.go` 唯一入口；`internal/` 每包一个职责（relay 转发、router/pool/retry/affinity 调度、store/admin/health/settings/usage 数据与管理、desktop/winres/browser 桌面、update/selfupdate/npmregistry 更新发布、metrics/telemetry 可观测、config/appdir/applog/server 基础设施）
-- `web/` React 管理台（`web/dist` 随仓库提交，改前端后必须 `make build-web` 并提交）；`web/public/logo.svg` 品牌图标唯一视觉源
+- `web/` React 管理台（`web/dist` 随仓库提交，改前端后必须 `make build-web` 并提交）；`web/public/logo.svg` 品牌图标唯一视觉源；shadcn/ui 实现文件放 `web/src/components/ui/<kebab>.tsx`，页面只从 barrel `web/src/components/ui.tsx` 取原语，Radix 一律走统一包 `radix-ui`
 - `scripts/` 构建发布脚本；`installer/` 桌面安装器；`npm/` 发布模板；`docs/agents/` 现行领域文档；`docs/archive/` 历史原文；`docs/research/`、`docs/design/`、`docs/adr/` 按需创建
 - 业务数据一律存 DB，不进 YAML；配置与数据路径统一由 `internal/appdir` 解析；Go 文件小写、测试同包白盒；React 组件 PascalCase
 

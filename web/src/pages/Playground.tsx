@@ -143,7 +143,7 @@ export default function Playground() {
                 onChange={setProtocol}
                 options={PROTOCOLS}
                 disabled={running}
-                className="grid-cols-2 sm:grid-cols-4 lg:grid-cols-2"
+                className="grid w-full grid-cols-2 sm:grid-cols-4 lg:grid-cols-2"
               />
             </div>
 

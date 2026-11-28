@@ -12,9 +12,10 @@ export function getTheme(): Theme {
   return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
 }
 
-export function setTheme(theme: Theme) {
+export function setTheme(theme: Theme): Theme {
   window.localStorage.setItem(STORAGE_KEY, theme)
   applyTheme(theme)
+  return theme
 }
 
 /** 解析 system 的实际值，用于切换按钮显示当前生效模式。 */
@@ -56,9 +57,3 @@ export function initTheme() {
   })
 }
 
-/** 循环切换 light → dark → system，返回新主题。 */
-export function cycleTheme(theme: Theme = getTheme()): Theme {
-  const next: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
-  setTheme(next[theme])
-  return next[theme]
-}

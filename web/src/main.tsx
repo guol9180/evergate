@@ -10,7 +10,7 @@ import { initTheme } from './lib/theme'
 import { t } from './lib/i18n'
 import { setUnauthorizedHandler } from './api/client'
 import Layout from './components/Layout'
-import { PageSkeleton } from './components/ui'
+import { PageSkeleton, TooltipProvider } from './components/ui'
 import { Toaster } from './components/Toaster'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import Login from './pages/Login'
@@ -43,6 +43,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
       <ErrorBoundary scope="app">
     <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
       <BrowserRouter basename={currentBasePath() || undefined}>
     <Suspense fallback={<div className="eg-page" role="status" aria-label={t('common.loading')}><PageSkeleton /></div>}>
           <Routes>
@@ -63,6 +64,7 @@ createRoot(document.getElementById('root')!).render(
         </Suspense>
       </BrowserRouter>
       <Toaster />
+      </TooltipProvider>
     </QueryClientProvider>
       </ErrorBoundary>
   </StrictMode>,

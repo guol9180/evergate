@@ -3,11 +3,11 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { ExternalLink, LayoutDashboard, Waypoints, KeyRound, ScrollText, Settings, LogOut, BarChart3, FlaskConical, UserRound, Sun, Moon, Monitor, Languages } from 'lucide-react'
 import { useLogout, useMe, useUpdateStatus } from '../api/hooks'
 import { ApiError } from '../api/client'
-import { Alert, Button, PageSkeleton, Spinner, Tooltip } from './ui'
+import { Alert, Button, DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, PageSkeleton, Spinner, Tooltip } from './ui'
 import { ErrorBoundary } from './ErrorBoundary'
 import { withBasePath } from '../lib/runtime'
 import { loginUrl } from '../lib/session'
-import { cycleTheme, getTheme, initTheme, resolvedTheme, type Theme } from '../lib/theme'
+import { getTheme, initTheme, resolvedTheme, setTheme, type Theme } from '../lib/theme'
 import { getLocale, setLocale, t, tf, useLocale, type MessageKey } from '../lib/i18n'
 import { useMediaQuery } from '../lib/useMediaQuery'
 import { errorMessage } from '../lib/errors'
@@ -27,7 +27,7 @@ const themeIcon = (theme: Theme, dark: boolean) => {
   return dark ? Moon : Sun
 }
 const themeLabelKey: Record<Theme, MessageKey> = { light: 'theme.light', dark: 'theme.dark', system: 'theme.system' }
-const nextTheme: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
+const themeOrder: Theme[] = ['light', 'dark', 'system']
 
 export default function Layout() {
   const me = useMe()
@@ -135,18 +135,27 @@ export default function Layout() {
                 <span className="eg-sidebar-label ml-auto text-subtle">{t(localeName)}</span>
               </button>
             </Tooltip>
-            <Tooltip content={sidebarExpanded ? undefined : tf('theme.title', { current: t(themeLabelKey[theme]) })} side="right">
-              <button
-                type="button"
-                onClick={() => setThemeState(cycleTheme(theme))}
-                aria-label={tf('theme.aria', { current: t(themeLabelKey[theme]), next: t(themeLabelKey[nextTheme[theme]]) })}
-                className={actionRowClass}
-              >
-                <ThemeIcon size={16} className="shrink-0" aria-hidden="true" />
-                <span className="eg-sidebar-label">{t('nav.theme')}</span>
-                <span className="eg-sidebar-label ml-auto text-subtle">{t(themeLabelKey[theme])}</span>
-              </button>
-            </Tooltip>
+            {/* 主题三态用菜单直接选，不再点一次换一个地循环 */}
+            <DropdownMenu>
+              <Tooltip content={sidebarExpanded ? undefined : tf('theme.title', { current: t(themeLabelKey[theme]) })} side="right">
+                <DropdownMenuTrigger asChild>
+                  <button type="button" aria-label={tf('theme.title', { current: t(themeLabelKey[theme]) })} className={actionRowClass}>
+                    <ThemeIcon size={16} className="shrink-0" aria-hidden="true" />
+                    <span className="eg-sidebar-label">{t('nav.theme')}</span>
+                    <span className="eg-sidebar-label ml-auto text-subtle">{t(themeLabelKey[theme])}</span>
+                  </button>
+                </DropdownMenuTrigger>
+              </Tooltip>
+              <DropdownMenuContent side="right" align="start" sideOffset={8} className="z-[60] min-w-36 border border-line bg-surface shadow-lg">
+                <DropdownMenuRadioGroup value={theme} onValueChange={(next) => setThemeState(setTheme(next as Theme))}>
+                  {themeOrder.map((item) => (
+                    <DropdownMenuRadioItem key={item} value={item} className="text-sm">
+                      {t(themeLabelKey[item])}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Tooltip content={sidebarExpanded ? undefined : t('nav.logout')} side="right">
               <button
                 type="button"

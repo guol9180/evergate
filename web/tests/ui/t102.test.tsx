@@ -10,7 +10,7 @@ const options = [
   { value: 'gemini', label: 'Gemini' },
 ]
 
-// 与页面一致受控：选中后 value 跟随变化。Radix 对「已选中项」的再次点击不会再触发 onValueChange
+// 与页面一致受控：选中后 value 跟随变化。已选中项的再次点击不会触发 onChange
 function ProtocolPicker({ disabled = false }: { disabled?: boolean }) {
   const [value, setValue] = useState('chat')
   return <SegmentedControl label="协议" value={value} onChange={setValue} options={options} disabled={disabled} />
@@ -19,30 +19,38 @@ function ProtocolPicker({ disabled = false }: { disabled?: boolean }) {
 const radio = (name: string) => screen.getByRole('radio', { name })
 const checkedLabel = () => screen.getAllByRole('radio').find((item) => item.getAttribute('aria-checked') === 'true')?.textContent
 
-describe('SegmentedControl on Radix RadioGroup (T102)', () => {
+describe('SegmentedControl on shadcn ToggleGroup (T102 / T131)', () => {
   it('moves selection with every arrow key because orientation is not forced', async () => {
     render(<ProtocolPicker />)
+    // roving focus：方向键作用于当前聚焦的分段；Radix 在下一拍移动焦点，选中随之变化
+    act(() => radio('Chat').focus())
     fireEvent.keyDown(radio('Chat'), { key: 'ArrowDown' })
     fireEvent.keyUp(radio('Chat'), { key: 'ArrowDown' })
-    // 选中在 keydown 当下生效，不依赖 keyup 时序；焦点由 Radix 在下一拍跟上
-    expect(checkedLabel()).toBe('Responses')
+    await waitFor(() => expect(checkedLabel()).toBe('Responses'))
     await waitFor(() => expect(document.activeElement).toBe(radio('Responses')))
 
     fireEvent.keyDown(radio('Responses'), { key: 'ArrowLeft' })
-    expect(checkedLabel()).toBe('Chat')
+    await waitFor(() => expect(checkedLabel()).toBe('Chat'))
     await waitFor(() => expect(document.activeElement).toBe(radio('Chat')))
   })
 
-  it('makes the group the tab stop and forwards keyboard focus to the checked segment', async () => {
+  it('keeps roving focus: the checked segment is the tab stop and focus entering the group lands on it', async () => {
     render(<ProtocolPicker />)
     const group = screen.getByRole('radiogroup', { name: '协议' })
-    // 分段注册完成后由组本身承接 Tab，各分段不单独成为 Tab 停靠点
-    await waitFor(() => expect(group.getAttribute('tabindex')).toBe('0'))
+    // Roving focus：组本身是 Tab 停靠点，各分段 tabindex=-1
+    expect(group.getAttribute('tabindex')).toBe('0')
     expect(screen.getAllByRole('radio').map((item) => item.getAttribute('tabindex'))).toEqual(['-1', '-1', '-1', '-1'])
 
+    // 焦点进入组时转到选中段，该段成为组内停靠点
     await act(async () => group.focus())
     expect(document.activeElement).toBe(radio('Chat'))
-    expect(radio('Chat').getAttribute('tabindex')).toBe('0')
+    await waitFor(() => expect(radio('Chat').getAttribute('tabindex')).toBe('0'))
+
+    fireEvent.keyDown(radio('Chat'), { key: 'ArrowRight' })
+    await waitFor(() => expect(checkedLabel()).toBe('Responses'))
+    await waitFor(() => expect(document.activeElement).toBe(radio('Responses')))
+    expect(radio('Responses').getAttribute('tabindex')).toBe('0')
+    expect(radio('Chat').getAttribute('tabindex')).toBe('-1')
   })
 
   it('disables every segment together with the group', () => {

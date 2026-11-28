@@ -74,10 +74,12 @@ function Button({
       className={cn(buttonVariants({ variant, size, className }), loading && "relative")}
       {...props}
     >
-      {/* 保留原标签参与布局，加载时只降到透明：读屏仍能读到按钮名称。 */}
-      <span className={cn("inline-flex items-center justify-center gap-1.5", loading && "opacity-0")}>
-        {children}
-      </span>
+      {/* asChild 时子元素直接交给 Slot 合并（不能再包一层 span）；否则保留原标签参与布局，加载时只降到透明：读屏仍能读到按钮名称。 */}
+      {Comp === Slot.Root ? children : (
+        <span className={cn("inline-flex items-center justify-center gap-1.5", loading && "opacity-0")}>
+          {children}
+        </span>
+      )}
       {loading && (
         <span className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
           <Spinner size="sm" tone="current" />

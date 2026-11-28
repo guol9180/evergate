@@ -90,7 +90,7 @@ describe('Logs list and detail (T108)', () => {
     // 对外模型只在摘要带出现一次（降级边界里的 from / to 是轨迹事实，不算重复）
     expect(within(dialog).getByText('gpt-4o', { selector: '[title="模型"]' })).toBeTruthy()
     // 请求上下文默认折叠
-    expect(within(dialog).getByText('请求上下文').closest('details')?.open).toBe(false)
+    expect(within(dialog).getByText('请求上下文').closest('[data-slot="collapsible"]')?.getAttribute('data-state')).toBe('closed')
     // 摘要带给出最后尝试的渠道并标注
     expect(within(dialog).getByText(/DeepSeek 备用（最后尝试）/)).toBeTruthy()
     // 降级边界：标题 + 本地化原因，不回显后端写入的中文展示文案

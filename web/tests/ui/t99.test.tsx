@@ -59,9 +59,11 @@ describe('SegmentedControl', () => {
     const gemini = screen.getByRole('radio', { name: 'Gemini' })
     expect(chat.getAttribute('aria-checked')).toBe('true')
     expect(gemini.getAttribute('tabindex')).toBe('-1')
+    // roving focus：方向键作用于当前聚焦的分段
+    act(() => chat.focus())
     fireEvent.keyDown(chat, { key: 'ArrowRight' })
-    expect(onChange).toHaveBeenCalledWith('gemini')
-    // 焦点由 Radix 在下一拍跟上
+    // Radix 在下一拍移动焦点，选中随焦点变化
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith('gemini'))
     await waitFor(() => expect(document.activeElement).toBe(gemini))
   })
 })
