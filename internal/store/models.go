@@ -278,4 +278,5 @@ type AlertRecord struct {
 	StatusCode int       `json:"status_code"`
 	Error      string    `json:"error"`
 	Message    string    `json:"message"`
+	Draft      bool      `gorm:"not null;default:false" json:"draft"` // 测试发送用的是未保存的草稿配置
 }

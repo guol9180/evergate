@@ -148,11 +148,17 @@ export function useSaveAlerts() {
   })
 }
 
+/** 测试发送：带当前草稿配置时按草稿发（不保存，记录标注 draft）；不带则用已保存配置。 */
 export function useTestAlert() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () => api<{ record: AlertRecord }>('/admin/api/alerts/test', { method: 'POST' }),
+    mutationFn: (draft?: { enabled: boolean; preset: string; url: string; events: string[] }) =>
+      api<{ record: AlertRecord }>('/admin/api/alerts/test', {
+        method: 'POST',
+        body: draft ? JSON.stringify(draft) : undefined,
+      }),
     meta: { silentError: true },
+    // 只刷新记录：草稿由 AlertCard 自己持有，回填只发生在首次加载与保存成功
     onSuccess: () => qc.invalidateQueries({ queryKey: ['alerts'] }),
   })
 }

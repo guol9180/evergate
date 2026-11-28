@@ -473,6 +473,8 @@ export interface AlertRecord {
   status_code: number
   error: string
   message: string
+  /** 测试发送用的是未保存的草稿配置 */
+  draft: boolean
 }
 
 export interface AlertsPayload {

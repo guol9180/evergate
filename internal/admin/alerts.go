@@ -3,11 +3,13 @@ package admin
 // 告警配置：读取 / 保存 Webhook 预设与订阅事件、发送测试、查看最近记录。
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 
 	"evergate/internal/alert"
+	"evergate/internal/store"
 )
 
 func (a *API) getAlerts(c *gin.Context) {
@@ -73,8 +75,46 @@ func (a *API) testAlert(c *gin.Context) {
 		fail(c, http.StatusServiceUnavailable, "alerts_disabled", "告警未启用")
 		return
 	}
-	record, err := a.opt.Alerts.SendTest()
+	// 可选请求体：设置页尚未保存的草稿配置（叠在已保存配置上），只用来发送测试，不落库
+	var req struct {
+		Enabled *bool     `json:"enabled"`
+		Preset  *string   `json:"preset"`
+		URL     *string   `json:"url"`
+		Events  *[]string `json:"events"`
+	}
+	var draft *store.AlertSetting
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			fail(c, http.StatusBadRequest, "invalid_param", "参数错误："+err.Error())
+			return
+		}
+		if req.Enabled != nil || req.Preset != nil || req.URL != nil || req.Events != nil {
+			setting, err := a.opt.Alerts.Setting()
+			if err != nil {
+				fail(c, http.StatusInternalServerError, "query_failed", "查询失败")
+				return
+			}
+			if req.Enabled != nil {
+				setting.Enabled = *req.Enabled
+			}
+			if req.Preset != nil {
+				setting.Preset = *req.Preset
+			}
+			if req.URL != nil {
+				setting.URL = *req.URL
+			}
+			if req.Events != nil {
+				setting.Events = *req.Events
+			}
+			draft = &setting
+		}
+	}
+	record, err := a.opt.Alerts.SendTest(draft)
 	if err != nil {
+		if errors.Is(err, alert.ErrInvalidSetting) {
+			fail(c, http.StatusBadRequest, "invalid_param", err.Error())
+			return
+		}
 		fail(c, http.StatusBadGateway, "alert_send_failed", err.Error())
 		return
 	}

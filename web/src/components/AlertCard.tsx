@@ -19,9 +19,10 @@ export default function AlertCard() {
   const test = useTestAlert()
   const [draft, setDraft] = useState<AlertSetting | null>(null)
 
-  // 服务端数据视为唯一事实源：首次加载与保存后回填
+  // 草稿只在首次加载时从服务端回填；保存成功用响应回填。测试发送会刷新记录但不能清掉未保存的编辑
   useEffect(() => {
-    if (alerts.data) setDraft(alerts.data.setting)
+    const setting = alerts.data?.setting
+    if (setting) setDraft((current) => current ?? setting)
   }, [alerts.data])
 
   if (alerts.isPending) {
@@ -41,9 +42,12 @@ export default function AlertCard() {
       header: t('alerts.record.result'),
       sortKey: (record) => record.result,
       cell: (record) => (
-        <Badge tone={record.result === 'failed' ? 'danger' : record.result === 'test' ? 'brand' : 'success'}>
-          {resultLabel(record.result)}
-        </Badge>
+        <span className="flex flex-wrap items-center gap-1">
+          <Badge tone={record.result === 'failed' ? 'danger' : record.result === 'test' ? 'brand' : 'success'}>
+            {resultLabel(record.result)}
+          </Badge>
+          {record.draft && <Badge compact tone="neutral">{t('alerts.record.draft')}</Badge>}
+        </span>
       ),
     },
     { id: 'detail', header: t('alerts.record.detail'), className: 'max-w-72 text-xs text-muted-foreground', cell: (record) => <span className="block truncate" title={record.error || record.message}>{record.error || record.message || '—'}</span> },
@@ -54,10 +58,13 @@ export default function AlertCard() {
       events: draft.events.includes(event) ? draft.events.filter((item) => item !== event) : [...draft.events, event],
     })
   }
-  const onSave = () => save.mutate(
-    { enabled: draft.enabled, preset: draft.preset, url: draft.url, events: draft.events },
-    { onSuccess: () => notify.success(t('alerts.saved')) },
-  )
+  const payload = { enabled: draft.enabled, preset: draft.preset, url: draft.url, events: draft.events }
+  const onSave = () => save.mutate(payload, {
+    onSuccess: (resp) => {
+      setDraft(resp.setting)
+      notify.success(t('alerts.saved'))
+    },
+  })
 
   return (
     <Card>
@@ -109,7 +116,8 @@ export default function AlertCard() {
         {save.isError && <Alert tone="danger">{errorMessage(save.error)}</Alert>}
         {test.isError && <Alert tone="danger">{errorMessage(test.error)}</Alert>}
         <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" loading={test.isPending} onClick={() => test.mutate(undefined, {
+          {/* 按当前草稿发送：未保存的地址 / 预设也能先测，不会顺带保存 */}
+          <Button variant="outline" loading={test.isPending} onClick={() => test.mutate(payload, {
             onSuccess: () => notify.success(t('alerts.testSent')),
           })}>
             <Send size={14} /> {t('alerts.test')}

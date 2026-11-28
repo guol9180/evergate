@@ -273,22 +273,23 @@ function CatalogDriftDetail({ diff }: { diff: ChannelCatalogDiff | null | undefi
   const added = diff.added ?? []
   const removed = diff.removed ?? []
   return (
+    // 气泡是反转色（.eg-tooltip 统一前景 / 背景字色），层级只用字重与透明度表达，不再写页面侧的 text-foreground-soft / text-subtle
     <div className="max-w-xs space-y-1.5 text-xs">
-      <div className="font-semibold text-foreground">{t('channels.catalog.driftTitle')}</div>
+      <div className="font-semibold">{t('channels.catalog.driftTitle')}</div>
       {added.length > 0 && (
         <div>
-          <div className="text-subtle">{tf('channels.catalog.added', { n: added.length })}</div>
-          <div className="break-all font-mono text-[11px] text-foreground-soft">{added.join(', ')}</div>
+          <div className="opacity-70">{tf('channels.catalog.added', { n: added.length })}</div>
+          <div className="break-all font-mono text-[11px] opacity-90">{added.join(', ')}</div>
         </div>
       )}
       {removed.length > 0 && (
         <div>
-          <div className="text-subtle">{tf('channels.catalog.removed', { n: removed.length })}</div>
-          <div className="break-all font-mono text-[11px] text-foreground-soft">{removed.join(', ')}</div>
+          <div className="opacity-70">{tf('channels.catalog.removed', { n: removed.length })}</div>
+          <div className="break-all font-mono text-[11px] opacity-90">{removed.join(', ')}</div>
         </div>
       )}
-      <div className="pt-1 text-subtle">{tf('channels.catalog.checkedAt', { time: fmtTime(diff.checked_at), count: fmtInt(diff.upstream_count ?? 0) })}</div>
-      <div className="text-subtle">{t('channels.catalog.hint')}</div>
+      <div className="pt-1 opacity-70">{tf('channels.catalog.checkedAt', { time: fmtTime(diff.checked_at), count: fmtInt(diff.upstream_count ?? 0) })}</div>
+      <div className="opacity-70">{t('channels.catalog.hint')}</div>
     </div>
   )
 }

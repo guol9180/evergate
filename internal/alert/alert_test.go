@@ -2,6 +2,7 @@ package alert
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -135,16 +136,83 @@ func TestSendTestIgnoresEnabledAndRecords(t *testing.T) {
 	if _, err := m.Save(store.AlertSetting{Enabled: false, Preset: PresetGeneric, URL: m.mustSettingURL(t)}); err != nil {
 		t.Fatalf("save disabled setting: %v", err)
 	}
-	record, err := m.SendTest()
+	record, err := m.SendTest(nil)
 	if err != nil {
 		t.Fatalf("send test: %v", err)
 	}
-	if hits.Load() != 1 || record.Result != "test" {
+	if hits.Load() != 1 || record.Result != "test" || record.Draft {
 		t.Fatalf("hits=%d record=%+v", hits.Load(), record)
 	}
 	records, _ := m.Recent(10)
 	if len(records) == 0 || records[0].Result != "test" {
 		t.Fatalf("test record missing: %+v", records)
+	}
+}
+
+func TestSendTestWithDraftUsesDraftWithoutSaving(t *testing.T) {
+	m, savedHits, _ := newAlertFixture(t)
+	var draftHits atomic.Int32
+	var draftBodies []string
+	draftServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		data, _ := io.ReadAll(r.Body)
+		draftBodies = append(draftBodies, string(data))
+		draftHits.Add(1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(draftServer.Close)
+	saved, err := m.Setting()
+	if err != nil {
+		t.Fatalf("setting: %v", err)
+	}
+
+	record, err := m.SendTest(&store.AlertSetting{
+		Enabled: false, Preset: PresetWeCom, URL: draftServer.URL, Events: []string{EventKeyDisabled},
+	})
+	if err != nil {
+		t.Fatalf("send draft test: %v", err)
+	}
+	if record.Result != "test" || record.Preset != PresetWeCom || !record.Draft {
+		t.Fatalf("record = %+v", record)
+	}
+	if savedHits.Load() != 0 {
+		t.Fatalf("saved webhook should not be called, hits=%d", savedHits.Load())
+	}
+	if draftHits.Load() != 1 || !strings.Contains(draftBodies[0], `"msgtype":"text"`) {
+		t.Fatalf("draft webhook hits=%d bodies=%v", draftHits.Load(), draftBodies)
+	}
+	after, err := m.Setting()
+	if err != nil || after.URL != saved.URL || after.Preset != saved.Preset || !after.Enabled {
+		t.Fatalf("draft test must not change the saved setting: before=%+v after=%+v err=%v", saved, after, err)
+	}
+	records, _ := m.Recent(10)
+	if len(records) != 1 || !records[0].Draft || records[0].Preset != PresetWeCom {
+		t.Fatalf("records = %+v", records)
+	}
+}
+
+func TestSendTestWithInvalidDraftFailsWithoutSending(t *testing.T) {
+	m, hits, _ := newAlertFixture(t)
+	if _, err := m.SendTest(&store.AlertSetting{Preset: "slack", URL: "https://x"}); !errors.Is(err, ErrInvalidSetting) {
+		t.Fatalf("unknown preset should be ErrInvalidSetting, got %v", err)
+	}
+	if _, err := m.SendTest(&store.AlertSetting{Preset: PresetGeneric, URL: "ftp://x"}); !errors.Is(err, ErrInvalidSetting) {
+		t.Fatalf("non-http url should be ErrInvalidSetting, got %v", err)
+	}
+	if _, err := m.SendTest(&store.AlertSetting{Preset: PresetGeneric, URL: "https://x", Events: []string{"nope"}}); !errors.Is(err, ErrInvalidSetting) {
+		t.Fatalf("unknown event should be ErrInvalidSetting, got %v", err)
+	}
+	// 空 URL 通过校验（未启用时允许留空），但在发送阶段被拦下，且不会落到已保存的地址
+	if _, err := m.SendTest(&store.AlertSetting{Preset: PresetGeneric, URL: ""}); err == nil || errors.Is(err, ErrInvalidSetting) {
+		t.Fatalf("empty url should fail at send stage, got %v", err)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("no webhook should be called, hits=%d", hits.Load())
+	}
+	records, _ := m.Recent(10)
+	for _, record := range records {
+		if record.Result != "failed" {
+			t.Fatalf("only failed records expected: %+v", records)
+		}
 	}
 }
 

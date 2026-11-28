@@ -73,6 +73,9 @@ type Manager struct {
 	lastSent map[string]time.Time
 }
 
+// ErrInvalidSetting 表示配置未通过校验（预设 / URL / 事件），与发送失败区分开。
+var ErrInvalidSetting = errors.New("invalid alert setting")
+
 func New(db *gorm.DB, logger *slog.Logger, now func() time.Time) *Manager {
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
@@ -102,20 +105,35 @@ func (m *Manager) Setting() (store.AlertSetting, error) {
 
 // Save 校验并保存配置（单行 upsert）。
 func (m *Manager) Save(setting store.AlertSetting) (store.AlertSetting, error) {
+	setting, err := m.validate(setting)
+	if err != nil {
+		return setting, err
+	}
+	setting.UpdatedAt = m.now()
+	if m.db != nil {
+		if err := m.db.Save(&setting).Error; err != nil {
+			return setting, err
+		}
+	}
+	return setting, nil
+}
+
+// validate 校验并归一化配置；保存与草稿测试共用，草稿测试只校验不落库。
+func (m *Manager) validate(setting store.AlertSetting) (store.AlertSetting, error) {
 	if !ValidPreset(setting.Preset) {
-		return setting, fmt.Errorf("unsupported preset %q", setting.Preset)
+		return setting, fmt.Errorf("%w: unsupported preset %q", ErrInvalidSetting, setting.Preset)
 	}
 	if setting.Enabled && strings.TrimSpace(setting.URL) == "" {
-		return setting, errors.New("url is required when alerts are enabled")
+		return setting, fmt.Errorf("%w: url is required when alerts are enabled", ErrInvalidSetting)
 	}
 	if setting.URL != "" && !strings.HasPrefix(setting.URL, "http://") && !strings.HasPrefix(setting.URL, "https://") {
-		return setting, errors.New("url must start with http:// or https://")
+		return setting, fmt.Errorf("%w: url must start with http:// or https://", ErrInvalidSetting)
 	}
 	events := make([]string, 0, len(setting.Events))
 	seen := make(map[string]bool, len(setting.Events))
 	for _, event := range setting.Events {
 		if !validEvent(event) {
-			return setting, fmt.Errorf("unsupported event %q", event)
+			return setting, fmt.Errorf("%w: unsupported event %q", ErrInvalidSetting, event)
 		}
 		if !seen[event] {
 			seen[event] = true
@@ -125,12 +143,6 @@ func (m *Manager) Save(setting store.AlertSetting) (store.AlertSetting, error) {
 	setting.ID = settingRowID
 	setting.Events = events
 	setting.URL = strings.TrimSpace(setting.URL)
-	setting.UpdatedAt = m.now()
-	if m.db != nil {
-		if err := m.db.Save(&setting).Error; err != nil {
-			return setting, err
-		}
-	}
 	return setting, nil
 }
 
@@ -165,16 +177,30 @@ func (m *Manager) Notify(event, summary string, details map[string]any) {
 }
 
 // SendTest 同步发送一条测试告警（忽略启用状态与事件订阅），返回落库的记录。
-func (m *Manager) SendTest() (store.AlertRecord, error) {
-	return m.deliver(EventTest, "test alert", map[string]any{"source": "settings page"}, true)
+// draft 非空时按草稿配置发送：只校验不保存，记录标注 draft；为空时用已保存的配置。
+func (m *Manager) SendTest(draft *store.AlertSetting) (store.AlertRecord, error) {
+	details := map[string]any{"source": "settings page"}
+	if draft == nil {
+		return m.deliver(EventTest, "test alert", details, true)
+	}
+	setting, err := m.validate(*draft)
+	if err != nil {
+		return store.AlertRecord{}, err
+	}
+	return m.deliverSetting(setting, EventTest, "test alert", details, true, true)
 }
 
 func (m *Manager) deliver(event, summary string, details map[string]any, force bool) (store.AlertRecord, error) {
-	record := store.AlertRecord{CreatedAt: m.now(), Event: event, Message: summary}
 	setting, err := m.Setting()
 	if err != nil {
-		return record, err
+		return store.AlertRecord{}, err
 	}
+	return m.deliverSetting(setting, event, summary, details, force, false)
+}
+
+// deliverSetting 按给定配置发送；draft 只影响记录标注。
+func (m *Manager) deliverSetting(setting store.AlertSetting, event, summary string, details map[string]any, force, draft bool) (store.AlertRecord, error) {
+	record := store.AlertRecord{CreatedAt: m.now(), Event: event, Message: summary, Draft: draft}
 	record.Preset = setting.Preset
 	if !force {
 		if !setting.Enabled || setting.URL == "" || !subscribed(setting.Events, event) {
